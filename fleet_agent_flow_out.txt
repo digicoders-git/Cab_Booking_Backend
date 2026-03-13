@@ -1,0 +1,16 @@
+🚀 Starting Agent + Fleet Money Flow Test...
+Setting up Admin, Agent, Fleet and Fleet-Driver...
+
+--- 📝 Creating Agent Booking (Fare: 1000) ---
+--- 🏁 Driver is Ending the Trip... ---
+
+--- 💰 MONEY DISTRIBUTION RESULTS ---
+Agent (Ramesh) Wallet: ₹150 (Expected 150 - 15% Comm)
+Admin Wallet: ₹200 (Expected 200 - 20% Fleet Comm)
+Fleet (XYZ Travels) Wallet: ₹650 (Expected 1000 - 150 - 200 = ₹650)
+Driver (Rohan) Wallet: ₹0 (Expected ₹0 - because he is a Fleet Driver)
+
+Total Transactions Recorded: 3
+- Agent [Commission]: ₹150 status: Completed
+- Admin [Commission]: ₹200 status: Completed
+- Fleet [Ride Earning]: ₹650 status: Completed

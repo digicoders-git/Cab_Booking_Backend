@@ -1,0 +1,102 @@
+{
+	"info": {
+		"_postman_id": "capbokkin-final-master",
+		"name": "CapBokkin API - FIXED",
+		"description": "Complete fixed collection with URLs and Bodies.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "01. Admin APIs",
+			"item": [
+				{
+					"name": "Admin Register",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Admin", "type": "text" },
+								{ "key": "email", "value": "admin@test.com", "type": "text" },
+								{ "key": "password", "value": "123456", "type": "text" },
+								{ "key": "phone", "value": "1234567890", "type": "text" }
+							]
+						},
+						"url": { "raw": "http://localhost:5000/api/admin/register", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "register"] }
+					}
+				},
+				{
+					"name": "Admin Login",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"admin@test.com\",\n    \"password\": \"123456\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "http://localhost:5000/api/admin/login", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "login"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "02. Driver APIs",
+			"item": [
+				{
+					"name": "Driver Login",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"driver@test.com\",\n    \"password\": \"123456\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "http://localhost:5000/api/drivers/login", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "drivers", "login"] }
+					}
+				},
+				{
+					"name": "Go Online",
+					"request": {
+						"method": "PUT",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"url": { "raw": "http://localhost:5000/api/drivers/toggle-online", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "drivers", "toggle-online"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "03. Booking APIs",
+			"item": [
+				{
+					"name": "Create Booking",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"passengerName\": \"Test User\",\n    \"passengerPhone\": \"999\",\n    \"rideType\": \"Private\",\n    \"carCategoryId\": \"ID_HERE\",\n    \"pickupAddress\": \"A\",\n    \"pickupLat\": 28.1,\n    \"pickupLng\": 77.1,\n    \"dropAddress\": \"B\",\n    \"dropLat\": 28.2,\n    \"dropLng\": 77.2,\n    \"distanceKm\": 10,\n    \"pickupDate\": \"2024-04-01\",\n    \"pickupTime\": \"10:00\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "http://localhost:5000/api/bookings/create", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "bookings", "create"] }
+					}
+				},
+				{
+					"name": "End Trip (CASH)",
+					"request": {
+						"method": "PUT",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"paymentMethod\": \"Cash\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "http://localhost:5000/api/trips/execute/:bookingId/end", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "trips", "execute", ":bookingId", "end"] }
+					}
+				}
+			]
+		}
+	]
+}

@@ -1,0 +1,379 @@
+{
+	"info": {
+		"_postman_id": "capbokkin-master-collection",
+		"name": "CapBokkin FULL System (Agentic)",
+		"description": "This is a complete Postman collection for the CapBokkin Cab App, including Admin, Fleet, Agent, User, and Driver flows with Wallet and Shared Ride support.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "01. Admin (Super Control)",
+			"item": [
+				{
+					"name": "Register Admin",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Admin User", "type": "text" },
+								{ "key": "email", "value": "admin@test.com", "type": "text" },
+								{ "key": "phone", "value": "1234567890", "type": "text" },
+								{ "key": "password", "value": "123456", "type": "text" },
+								{ "key": "image", "type": "file", "src": null }
+							]
+						},
+						"url": { "raw": "{{baseUrl}}/api/admin/register" }
+					}
+				},
+				{
+					"name": "Login Admin",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"admin@test.com\",\n  \"password\": \"123456\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{baseUrl}}/api/admin/login" }
+					}
+				},
+				{
+					"name": "Create Agent (Dynamic Commission)",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{adminToken}}" } ],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Agent Rahul", "type": "text" },
+								{ "key": "email", "value": "rahul_agent@test.com", "type": "text" },
+								{ "key": "phone", "value": "9988776655", "type": "text" },
+								{ "key": "password", "value": "123456", "type": "text" },
+								{ "key": "commissionPercentage", "value": "10", "type": "text" }
+							]
+						},
+						"url": { "raw": "{{baseUrl}}/api/admin/create-agent" }
+					}
+				},
+				{
+					"name": "Create Fleet (Manager)",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{adminToken}}" } ],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Fleet CityCab", "type": "text" },
+								{ "key": "email", "value": "citycab@test.com", "type": "text" },
+								{ "key": "phone", "value": "8877665544", "type": "text" },
+								{ "key": "password", "value": "123456", "type": "text" },
+								{ "key": "commissionPercentage", "value": "15", "type": "text" }
+							]
+						},
+						"url": { "raw": "{{baseUrl}}/api/admin/create-fleet" }
+					}
+				},
+				{
+					"name": "Approve Driver",
+					"request": {
+						"method": "PUT",
+						"header": [ { "key": "Authorization", "value": "Bearer {{adminToken}}" } ],
+						"url": { "raw": "{{baseUrl}}/api/drivers/approve/:id" }
+					}
+				},
+				{
+					"name": "Create Car Category (Pricing)",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{adminToken}}" } ],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Sedan", "type": "text" },
+								{ "key": "baseFare", "value": "50", "type": "text" },
+								{ "key": "privateRatePerKm", "value": "12", "type": "text" },
+								{ "key": "sharedRatePerSeatPerKm", "value": "5", "type": "text" },
+								{ "key": "seatCapacity", "value": "4", "type": "text" }
+							]
+						},
+						"url": { "raw": "{{baseUrl}}/api/car-categories/create" }
+					}
+				}
+			]
+		},
+		{
+			"name": "02. User & Agent (Booking Side)",
+			"item": [
+				{
+					"name": "User Register",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Lucky", "type": "text" },
+								{ "key": "phone", "value": "7788990011", "type": "text" },
+								{ "key": "email", "value": "lucky@test.com", "type": "text" }
+							]
+						},
+						"url": { "raw": "{{baseUrl}}/api/users/create" }
+					}
+				},
+				{
+					"name": "Estimate Fare (Price Quote)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"carCategoryId\": \"ID_HERE\",\n  \"distanceKm\": 15,\n  \"rideType\": \"Private\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{baseUrl}}/api/bookings/estimate-fare" }
+					}
+				},
+				{
+					"name": "Create Booking (Private)",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"passengerName\": \"Lucky\",\n  \"passengerPhone\": \"7788990011\",\n  \"rideType\": \"Private\",\n  \"carCategoryId\": \"ID_HERE\",\n  \"seatsBooked\": 1,\n  \"pickupAddress\": \"Mall Road\",\n  \"pickupLat\": 28.5,\n  \"pickupLng\": 77.2,\n  \"dropAddress\": \"Airport\",\n  \"dropLat\": 28.6,\n  \"dropLng\": 77.1,\n  \"distanceKm\": 20,\n  \"pickupDate\": \"2024-04-01\",\n  \"pickupTime\": \"11:00\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{baseUrl}}/api/bookings/create" }
+					}
+				}
+			]
+		},
+		{
+			"name": "03. Fleet Manager (Inventory)",
+			"item": [
+				{
+					"name": "Fleet Create Driver",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{fleetToken}}" } ],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Suresh Driver", "type": "text" },
+								{ "key": "email", "value": "suresh@citycab.com", "type": "text" },
+								{ "key": "password", "value": "123456", "type": "text" },
+								{ "key": "phone", "value": "7776665554", "type": "text" }
+							]
+						},
+						"url": { "raw": "{{baseUrl}}/api/fleet-drivers/create" }
+					}
+				},
+				{
+					"name": "Fleet Create Car",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{fleetToken}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"carNumber\": \"DL01CZ1234\",\n  \"carModel\": \"Swift Dzire\",\n  \"carType\": \"ID_OF_SEDAN_CAT\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{baseUrl}}/api/fleet-cars/create" }
+					}
+				},
+				{
+					"name": "Assign Car to Driver",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{fleetToken}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"driverId\": \"DRIVER_ID\",\n  \"carId\": \"CAR_ID\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{baseUrl}}/api/fleet-assignments/assign" }
+					}
+				}
+			]
+		},
+		{
+			"name": "04. Driver App (Live Operations)",
+			"item": [
+				{
+					"name": "Driver Login",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"suresh@citycab.com\",\n  \"password\": \"123456\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{baseUrl}}/api/drivers/login" }
+					}
+				},
+				{
+					"name": "Go Online",
+					"request": {
+						"method": "PUT",
+						"header": [ { "key": "Authorization", "value": "Bearer {{driverToken}}" } ],
+						"url": { "raw": "{{baseUrl}}/api/drivers/toggle-online" }
+					}
+				},
+				{
+					"name": "Get Ride Requests",
+					"request": {
+						"method": "GET",
+						"header": [ { "key": "Authorization", "value": "Bearer {{driverToken}}" } ],
+						"url": { "raw": "{{baseUrl}}/api/trips/requests/pending" }
+					}
+				},
+				{
+					"name": "Accept Ride",
+					"request": {
+						"method": "PUT",
+						"header": [ { "key": "Authorization", "value": "Bearer {{driverToken}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"Accepted\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{baseUrl}}/api/trips/requests/:requestId/respond" }
+					}
+				},
+				{
+					"name": "Start Trip (Enter OTP)",
+					"request": {
+						"method": "PUT",
+						"header": [ { "key": "Authorization", "value": "Bearer {{driverToken}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"otp\": \"1234\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{baseUrl}}/api/trips/execute/:bookingId/start" }
+					}
+				},
+				{
+					"name": "End Trip (CASH or ONLINE choice)",
+					"request": {
+						"method": "PUT",
+						"header": [ { "key": "Authorization", "value": "Bearer {{driverToken}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"paymentMethod\": \"Cash\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{baseUrl}}/api/trips/execute/:bookingId/end" }
+					}
+				}
+			]
+		},
+		{
+			"name": "05. Shared Rides (Advanced)",
+			"item": [
+				{
+					"name": "Search Available Shared Rides",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/api/trips/shared-rides/search/:bookingId" }
+					}
+				},
+				{
+					"name": "Book Specific Seat Name",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"driverId\": \"DRIVER_ID\",\n  \"seatNames\": [\"Front Left\", \"Rear Window\"]\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{baseUrl}}/api/trips/shared-rides/book-seat/:bookingId" }
+					}
+				}
+			]
+		},
+		{
+			"name": "06. Wallets & Payouts",
+			"item": [
+				{
+					"name": "Check My Wallet",
+					"request": {
+						"method": "GET",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"url": { "raw": "{{baseUrl}}/api/wallet/my-wallet" }
+					}
+				},
+				{
+					"name": "Request Payout (Withdrawal)",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"amount\": 500\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{baseUrl}}/api/wallet/withdraw" }
+					}
+				},
+				{
+					"name": "Admin: Approve Payout",
+					"request": {
+						"method": "PUT",
+						"header": [ { "key": "Authorization", "value": "Bearer {{adminToken}}" } ],
+						"url": { "raw": "{{baseUrl}}/api/wallet/admin/payouts/:transactionId/approve" }
+					}
+				}
+			]
+		},
+		{
+			"name": "07. Notifications",
+			"item": [
+				{
+					"name": "Get My Notifications",
+					"request": {
+						"method": "GET",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"url": { "raw": "{{baseUrl}}/api/notifications/my-notifications" }
+					}
+				},
+				{
+					"name": "Admin: Send Global Notification",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{adminToken}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"title\": \"Weekend Offer\",\n  \"message\": \"10% off on all Sedan rides!\",\n  \"targetRoles\": [\"user\", \"agent\"]\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "{{baseUrl}}/api/notifications/create" }
+					}
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": { "type": "text/javascript", "exec": [""] }
+		},
+		{
+			"listen": "test",
+			"script": { "type": "text/javascript", "exec": [""] }
+		}
+	],
+	"variable": [
+		{ "key": "baseUrl", "value": "http://localhost:5000", "type": "string" },
+		{ "key": "adminToken", "value": "ADMIN_JWT_HERE", "type": "string" },
+		{ "key": "driverToken", "value": "DRIVER_JWT_HERE", "type": "string" },
+		{ "key": "fleetToken", "value": "FLEET_JWT_HERE", "type": "string" },
+		{ "key": "token", "value": "GENERAL_JWT_HERE", "type": "string" }
+	]
+}

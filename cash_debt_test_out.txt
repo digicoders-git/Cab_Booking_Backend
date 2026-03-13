@@ -1,0 +1,14 @@
+🚀 Starting CASH vs ONLINE & Debt Limit Test...
+
+--- 💵 SCENARIO 1: CASH TRIP (Fare 1000) ---
+Driver Wallet: ₹-200 (Expected -200: -100 agent, -100 admin)
+Agent Wallet: ₹100 (Expected 100)
+Driver Status: Active (Expected Active)
+
+--- 🛑 SCENARIO 2: CASH TRIP (Fare 4000) -> Debt total 1000 ---
+Driver Wallet: ₹-1000 (Expected -1000: -200 past + -800 current)
+Driver Status: Suspended (Expected Suspended)
+Driver Online: Offline (Expected Offline)
+
+--- 🔒 SCENARIO 3: Try to Go Online with Debt ---
+Toggle Result: Cannot go online. Your debt (₹1000) exceeds the limit. Please recharge.

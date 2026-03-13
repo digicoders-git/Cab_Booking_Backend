@@ -1,0 +1,1042 @@
+{
+	"info": {
+		"_postman_id": "capbokkin-master-collection",
+		"name": "CAPBOKKIN MASTER API COLLECTION",
+		"description": "Comprehensive API collection for the CapBokkin Cab Booking System.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Admin APIs",
+			"item": [
+				{
+					"name": "Register Admin",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Admin Name", "type": "text" },
+								{ "key": "email", "value": "admin@example.com", "type": "text" },
+								{ "key": "password", "value": "admin123", "type": "text" },
+								{ "key": "image", "type": "file", "src": [] }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/register",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "admin", "register"]
+						}
+					}
+				},
+				{
+					"name": "Login Admin",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"admin@example.com\",\n    \"password\": \"admin123\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "admin", "login"]
+						}
+					}
+				},
+				{
+					"name": "Get Admin Profile",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/profile",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "admin", "profile"]
+						}
+					}
+				},
+				{
+					"name": "Update Admin Profile",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Updated Admin", "type": "text" },
+								{ "key": "email", "value": "admin@example.com", "type": "text" },
+								{ "key": "password", "value": "newpassword123", "type": "text" },
+								{ "key": "image", "type": "file", "src": [] }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/admin/profile-update",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "admin", "profile-update"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "2. User APIs",
+			"item": [
+				{
+					"name": "Register User",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "John Doe", "type": "text" },
+								{ "key": "email", "value": "john@example.com", "type": "text" },
+								{ "key": "phone", "value": "9876543210", "type": "text" },
+								{ "key": "password", "value": "user123", "type": "text" },
+								{ "key": "otp", "value": "123456", "type": "text" },
+								{ "key": "image", "type": "file", "src": [] }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/users/create",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "create"]
+						}
+					}
+				},
+				{
+					"name": "Login User",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"phone\": \"9876543210\",\n    \"otp\": \"123456\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/users/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "login"]
+						}
+					}
+				},
+				{
+					"name": "Get All Users (Admin)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/users/all",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "all"]
+						}
+					}
+				},
+				{
+					"name": "Get User Profile",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/users/profile/:userId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "profile", ":userId"],
+							"variable": [
+								{ "key": "userId", "value": "" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Delete User (Admin)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/users/delete/:userId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "delete", ":userId"],
+							"variable": [
+								{ "key": "userId", "value": "" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Toggle User Status (Admin)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/users/toggle-status/:userId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "toggle-status", ":userId"],
+							"variable": [
+								{ "key": "userId", "value": "" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "3. Agent APIs",
+			"item": [
+				{
+					"name": "Create Agent (Admin Only)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Agent One", "type": "text" },
+								{ "key": "email", "value": "agent@example.com", "type": "text" },
+								{ "key": "phone", "value": "9999999999", "type": "text" },
+								{ "key": "password", "value": "agent123", "type": "text" },
+								{ "key": "commissionPercentage", "value": "10", "type": "text" },
+								{ "key": "address", "value": "123 Agent St", "type": "text" },
+								{ "key": "city", "value": "New Delhi", "type": "text" },
+								{ "key": "state", "value": "Delhi", "type": "text" },
+								{ "key": "pincode", "value": "110001", "type": "text" },
+								{ "key": "image", "type": "file", "src": [] }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/agents/create",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "agents", "create"]
+						}
+					}
+				},
+				{
+					"name": "Agent Login",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"agent@example.com\",\n    \"password\": \"agent123\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/agents/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "agents", "login"]
+						}
+					}
+				},
+				{
+					"name": "Get Agent Profile",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{agentToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/agents/profile",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "agents", "profile"]
+						}
+					}
+				},
+				{
+					"name": "Update Agent Profile",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{agentToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Updated Agent Name", "type": "text" },
+								{ "key": "address", "value": "456 Updated St", "type": "text" },
+								{ "key": "accountNumber", "value": "1234567890", "type": "text" },
+								{ "key": "ifscCode", "value": "HDFC0001234", "type": "text" },
+								{ "key": "image", "type": "file", "src": [] }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/agents/profile-update",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "agents", "profile-update"]
+						}
+					}
+				},
+				{
+					"name": "Get All Agents (Admin)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/agents/all",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "agents", "all"]
+						}
+					}
+				},
+				{
+					"name": "Update Commission (Admin)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"commissionPercentage\": 15\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/agents/update-commission/:agentId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "agents", "update-commission", ":agentId"],
+							"variable": [
+								{ "key": "agentId", "value": "" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "4. Driver APIs",
+			"item": [
+				{
+					"name": "Register Driver (Self)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Driver Name", "type": "text" },
+								{ "key": "email", "value": "driver@example.com", "type": "text" },
+								{ "key": "phone", "value": "8888888888", "type": "text" },
+								{ "key": "password", "value": "driver123", "type": "text" },
+								{ "key": "licenseNumber", "value": "DL123456789", "type": "text" },
+								{ "key": "address", "value": "Driver Colony", "type": "text" },
+								{ "key": "carNumber", "value": "DL-01-AB-1234", "type": "text" },
+								{ "key": "carModel", "value": "Swift Dzire", "type": "text" },
+								{ "key": "carType", "value": "car_category_id_here", "type": "text" },
+								{ "key": "image", "type": "file", "src": [] }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/drivers/register",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "drivers", "register"]
+						}
+					}
+				},
+				{
+					"name": "Driver Login",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"driver@example.com\",\n    \"password\": \"driver123\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/drivers/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "drivers", "login"]
+						}
+					}
+				},
+				{
+					"name": "Get Driver Profile",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{driverToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/drivers/profile",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "drivers", "profile"]
+						}
+					}
+				},
+				{
+					"name": "Update Driver Profile",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{driverToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Hero Driver", "type": "text" },
+								{ "key": "bankName", "value": "SBI", "type": "text" },
+								{ "key": "accountNumber", "value": "987654321", "type": "text" },
+								{ "key": "image", "type": "file", "src": [] }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/drivers/profile-update",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "drivers", "profile-update"]
+						}
+					}
+				},
+				{
+					"name": "Toggle Online Status",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{driverToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/drivers/toggle-online",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "drivers", "toggle-online"]
+						}
+					}
+				},
+				{
+					"name": "Update Driver Location",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{driverToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"latitude\": 28.6139,\n    \"longitude\": 77.2090\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/drivers/update-location",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "drivers", "update-location"]
+						}
+					}
+				},
+				{
+					"name": "Approve Driver (Admin)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/drivers/approve/:driverId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "drivers", "approve", ":driverId"],
+							"variable": [
+								{ "key": "driverId", "value": "" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Pending Drivers (Admin)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/drivers/pending",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "drivers", "pending"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "5. Fleet APIs",
+			"item": [
+				{
+					"name": "Create Fleet (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Fleet Owner", "type": "text" },
+								{ "key": "email", "value": "fleet@example.com", "type": "text" },
+								{ "key": "companyName", "value": "Speedy Cabs", "type": "text" },
+								{ "key": "password", "value": "fleet123", "type": "text" },
+								{ "key": "phone", "value": "7777777777", "type": "text" },
+								{ "key": "image", "type": "file", "src": [] }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/fleet/create",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "fleet", "create"]
+						}
+					}
+				},
+				{
+					"name": "Fleet Login",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"fleet@example.com\",\n    \"password\": \"fleet123\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/fleet/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "fleet", "login"]
+						}
+					}
+				},
+				{
+					"name": "Get Fleet Dashboard",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{fleetToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/fleet/dashboard",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "fleet", "dashboard"]
+						}
+					}
+				},
+				{
+					"name": "Create Fleet Driver (Fleet)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{fleetToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Fleet Driver 1", "type": "text" },
+								{ "key": "phone", "value": "7654321098", "type": "text" },
+								{ "key": "email", "value": "fleetdriver1@speedy.com", "type": "text" },
+								{ "key": "password", "value": "driver123", "type": "text" },
+								{ "key": "licenseNumber", "value": "UP-14-12345", "type": "text" },
+								{ "key": "image", "type": "file", "src": [] }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/fleet/drivers/create",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "fleet", "drivers", "create"]
+						}
+					}
+				},
+				{
+					"name": "Add Car to Fleet (Fleet)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{fleetToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"carNumber\": \"DL-01-XX-9999\",\n    \"carModel\": \"Toyota Glanza\",\n    \"carBrand\": \"Toyota\",\n    \"carType\": \"car_category_id_here\",\n    \"seatCapacity\": 4,\n    \"carColor\": \"White\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/fleet/cars/create",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "fleet", "cars", "create"]
+						}
+					}
+				},
+				{
+					"name": "Assign Car to Driver (Fleet)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{fleetToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"driverId\": \"fleet_driver_id_here\",\n    \"carId\": \"fleet_car_id_here\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/fleet/assignment/assign",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "fleet", "assignment", "assign"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "6. Car Category APIs",
+			"item": [
+				{
+					"name": "Create Category (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Mini", "type": "text" },
+								{ "key": "seatCapacity", "value": "4", "type": "text" },
+								{ "key": "privateRatePerKm", "value": "12", "type": "text" },
+								{ "key": "sharedRatePerSeatPerKm", "value": "5", "type": "text" },
+								{ "key": "baseFare", "value": "50", "type": "text" },
+								{ "key": "image", "type": "file", "src": [] }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/car-categories/create",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "car-categories", "create"]
+						}
+					}
+				},
+				{
+					"name": "Get Active Categories (Public)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/car-categories/active",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "car-categories", "active"]
+						}
+					}
+				},
+				{
+					"name": "Get All Categories (Admin)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/car-categories/all",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "car-categories", "all"]
+						}
+					}
+				},
+				{
+					"name": "Update Category (Admin)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "privateRatePerKm", "value": "14", "type": "text" },
+								{ "key": "isActive", "value": "true", "type": "text" },
+								{ "key": "image", "type": "file", "src": [] }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/car-categories/update/:categoryId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "car-categories", "update", ":categoryId"],
+							"variable": [
+								{ "key": "categoryId", "value": "" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "7. Booking APIs",
+			"item": [
+				{
+					"name": "Estimate Fare",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"carCategoryId\": \"category_id_here\",\n    \"distanceKm\": 15.5,\n    \"rideType\": \"Private\",\n    \"seatsBooked\": 1\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/bookings/estimate-fare",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "bookings", "estimate-fare"]
+						}
+					}
+				},
+				{
+					"name": "Create Booking",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userOrAgentToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"passengerName\": \"Rahul Kumar\",\n    \"passengerPhone\": \"9998887770\",\n    \"rideType\": \"Private\",\n    \"carCategoryId\": \"category_id_here\",\n    \"pickupAddress\": \"Connaught Place, Delhi\",\n    \"pickupLat\": 28.6328,\n    \"pickupLng\": 77.2197,\n    \"dropAddress\": \"IGI Airport, Delhi\",\n    \"dropLat\": 28.5562,\n    \"dropLng\": 77.1000,\n    \"distanceKm\": 20.2,\n    \"pickupDate\": \"2024-03-15\",\n    \"pickupTime\": \"10:30 AM\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/bookings/create",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "bookings", "create"]
+						}
+					}
+				},
+				{
+					"name": "My Bookings",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userOrAgentToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/bookings/my-bookings",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "bookings", "my-bookings"]
+						}
+					}
+				},
+				{
+					"name": "Cancel Booking",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"reason\": \"Changed my mind\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/bookings/cancel/:bookingId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "bookings", "cancel", ":bookingId"],
+							"variable": [
+								{ "key": "bookingId", "value": "" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "8. Trip & Driver Actions",
+			"item": [
+				{
+					"name": "Search Shared Rides (Marketplace)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/trips/shared-rides/search/:bookingId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "trips", "shared-rides", "search", ":bookingId"],
+							"variable": [
+								{ "key": "bookingId", "value": "" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Book Specific Seat (Shared)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"driverId\": \"driver_id_here\",\n    \"selectedSeats\": [\"Front\"]\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/trips/shared-rides/book-seat/:bookingId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "trips", "shared-rides", "book-seat", ":bookingId"],
+							"variable": [
+								{ "key": "bookingId", "value": "" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Trigger Auto-Match (Manual Admin/System)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/trips/trigger-match/:bookingId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "trips", "trigger-match", ":bookingId"],
+							"variable": [
+								{ "key": "bookingId", "value": "" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Pending Requests (Driver)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{driverToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/trips/requests/pending",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "trips", "requests", "pending"]
+						}
+					}
+				},
+				{
+					"name": "Respond to Request (Driver)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{driverToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"action\": \"Accept\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/trips/requests/:requestId/respond",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "trips", "requests", ":requestId", "respond"],
+							"variable": [
+								{ "key": "requestId", "value": "" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Start Trip (Driver - OTP)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{driverToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"otp\": \"4592\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/trips/execute/:bookingId/start",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "trips", "execute", ":bookingId", "start"],
+							"variable": [
+								{ "key": "bookingId", "value": "" }
+							]
+						}
+					}
+				},
+				{
+					"name": "End Trip (Driver)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{driverToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"paymentMethod\": \"Cash\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/trips/execute/:bookingId/end",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "trips", "execute", ":bookingId", "end"],
+							"variable": [
+								{ "key": "bookingId", "value": "" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "9. Notification APIs",
+			"item": [
+				{
+					"name": "Create Notification (Admin)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Diwali Mega Sale\",\n    \"message\": \"Get up to 30% off on all private rides this week!\",\n    \"targetRoles\": [\"user\", \"agent\"]\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/notifications/create",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "notifications", "create"]
+						}
+					}
+				},
+				{
+					"name": "Get My Notifications",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{anyToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/notifications/my-notifications",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "notifications", "my-notifications"]
+						}
+					}
+				},
+				{
+					"name": "Get All Notifications (Admin)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/notifications/all",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "notifications", "all"]
+						}
+					}
+				},
+				{
+					"name": "Toggle Notification (Admin)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/notifications/toggle/:notifId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "notifications", "toggle", ":notifId"],
+							"variable": [
+								{ "key": "notifId", "value": "" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "10. Wallet & Payments",
+			"item": [
+				{
+					"name": "Get Wallet Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{anyRoleToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/wallet/my-wallet",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallet", "my-wallet"]
+						}
+					}
+				},
+				{
+					"name": "Request Withdrawal",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{driverOrAgentToken}}", "type": "text" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"amount\": 1000,\n    \"description\": \"Need to pay rent\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/wallet/withdraw",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallet", "withdraw"]
+						}
+					}
+				},
+				{
+					"name": "Approve Payout (Admin)",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{adminToken}}", "type": "text" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/wallet/admin/payouts/:transactionId/approve",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallet", "admin", "payouts", ":transactionId", "approve"],
+							"variable": [
+								{ "key": "transactionId", "value": "" }
+							]
+						}
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:5000"
+		},
+		{
+			"key": "adminToken",
+			"value": ""
+		},
+		{
+			"key": "userToken",
+			"value": ""
+		},
+		{
+			"key": "agentToken",
+			"value": ""
+		},
+		{
+			"key": "driverToken",
+			"value": ""
+		},
+		{
+			"key": "fleetToken",
+			"value": ""
+		}
+	]
+}

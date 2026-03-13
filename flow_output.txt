@@ -1,0 +1,32 @@
+Database Connected!
+
+🚕 DRIVER SETUP: Suresh is Online (Layout: Front, Back-Left, Back-Middle, Back-Right)
+
+--- 🕵️‍♂️ USER 1 Books a specific seat ---
+🔍 USER 1 Searching Shared Rides...
+API Response: {"success":true,"count":1,"drivers":[{"driverId":"69b3b63ae288d550c70686dd","driverName":"Suresh (SUV Driver)","distanceKm":0,"seatMap":[{"seatName":"Front","isBooked":false,"bookingId":null},{"seatName":"Back-Left","isBooked":false,"bookingId":null},{"seatName":"Back-Middle","isBooked":false,"bookingId":null},{"seatName":"Back-Right","isBooked":false,"bookingId":null}],"carModel":null}]}
+Found 1 driver(s) nearby!
+Driver 0 SeatMap: ["Front=Green","Back-Left=Green","Back-Middle=Green","Back-Right=Green"]
+
+👉 USER 1 Selects 'Front' Seat!
+Result: Temporary Hold Applied! Direct request sent to the specific driver's Screen.
+✅ Driver Accepted! Booking Status: Accepted
+
+--- 🕵️‍♂️ USER 2 Books a specific seat (Should see Front is RED) ---
+🔍 USER 2 Searching...
+Driver 0 SeatMap NOW: ["Front=Red","Back-Left=Green","Back-Middle=Green","Back-Right=Green"]
+
+👉 USER 2 Tries to maliciously select 'Front' anyway (should fail)!
+Result: Uh-oh! One or more of the seats you selected were literally just taken. Please select again.
+
+👉 USER 2 Selects 'Back-Right' correctly!
+Result: Temporary Hold Applied! Direct request sent to the specific driver's Screen.
+✅ Driver Accepted User 2!
+
+🏆 FINAL DRIVER SEAT MAP IN DATABASE:
+Seat [Front] => Booked: true
+Seat [Back-Left] => Booked: false
+Seat [Back-Middle] => Booked: false
+Seat [Back-Right] => Booked: true
+
+✅ MARKETPLACE SEAT MATCHING FULLY TESTED!

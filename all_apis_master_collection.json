@@ -1,0 +1,82 @@
+{
+  "info": {
+    "name": "CapBokkin Master API Collection",
+    "description": "Complete collection of all APIs in the CapBokkin project.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Admin APIs",
+      "item": [
+        { "name": "Register Admin", "request": { "method": "POST", "url": "{{baseUrl}}/api/admin/register" } },
+        { "name": "Login Admin", "request": { "method": "POST", "url": "{{baseUrl}}/api/admin/login" } },
+        { "name": "Get Profile", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/profile", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } },
+        { "name": "Update Profile", "request": { "method": "PUT", "url": "{{baseUrl}}/api/admin/profile-update", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } },
+        { "name": "Create Agent", "request": { "method": "POST", "url": "{{baseUrl}}/api/admin/create-agent", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } },
+        { "name": "Create Fleet", "request": { "method": "POST", "url": "{{baseUrl}}/api/admin/create-fleet", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } }
+      ]
+    },
+    {
+      "name": "Agent APIs",
+      "item": [
+        { "name": "Login Agent", "request": { "method": "POST", "url": "{{baseUrl}}/api/agents/login" } },
+        { "name": "Get Profile", "request": { "method": "GET", "url": "{{baseUrl}}/api/agents/profile", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } },
+        { "name": "Update Profile", "request": { "method": "PUT", "url": "{{baseUrl}}/api/agents/profile-update", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } },
+        { "name": "Get All Agents (Admin)", "request": { "method": "GET", "url": "{{baseUrl}}/api/agents/all", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } },
+        { "name": "Update Commission (Admin)", "request": { "method": "PUT", "url": "{{baseUrl}}/api/agents/update-commission/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } }
+      ]
+    },
+    {
+      "name": "Driver APIs",
+      "item": [
+        { "name": "Register Driver (Self)", "request": { "method": "POST", "url": "{{baseUrl}}/api/drivers/register" } },
+        { "name": "Login Driver", "request": { "method": "POST", "url": "{{baseUrl}}/api/drivers/login" } },
+        { "name": "Toggle Online Status", "request": { "method": "PUT", "url": "{{baseUrl}}/api/drivers/toggle-online", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } },
+        { "name": "Update Location", "request": { "method": "PUT", "url": "{{baseUrl}}/api/drivers/update-location", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } },
+        { "name": "Get Available Drivers", "request": { "method": "GET", "url": "{{baseUrl}}/api/drivers/available" } },
+        { "name": "Approve Driver (Admin)", "request": { "method": "PUT", "url": "{{baseUrl}}/api/drivers/approve/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } }
+      ]
+    },
+    {
+      "name": "User APIs",
+      "item": [
+        { "name": "Register User", "request": { "method": "POST", "url": "{{baseUrl}}/api/users/create" } },
+        { "name": "Login User", "request": { "method": "POST", "url": "{{baseUrl}}/api/users/login" } },
+        { "name": "Get Profile", "request": { "method": "GET", "url": "{{baseUrl}}/api/users/profile/:id", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } }
+      ]
+    },
+    {
+      "name": "Fleet APIs",
+      "item": [
+        { "name": "Login Fleet", "request": { "method": "POST", "url": "{{baseUrl}}/api/fleets/login" } },
+        { "name": "Fleet Dashboard", "request": { "method": "GET", "url": "{{baseUrl}}/api/fleets/dashboard", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } },
+        { "name": "Create Fleet Driver", "request": { "method": "POST", "url": "{{baseUrl}}/api/fleet-drivers/create", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } },
+        { "name": "Create Fleet Car", "request": { "method": "POST", "url": "{{baseUrl}}/api/fleet-cars/create", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } },
+        { "name": "Assign Car to Driver", "request": { "method": "POST", "url": "{{baseUrl}}/api/fleet-assignments/assign", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } }
+      ]
+    },
+    {
+      "name": "Booking & Trip APIs",
+      "item": [
+        { "name": "Estimate Fare", "request": { "method": "POST", "url": "{{baseUrl}}/api/bookings/estimate-fare" } },
+        { "name": "Create Booking", "request": { "method": "POST", "url": "{{baseUrl}}/api/bookings/create", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } },
+        { "name": "Search Shared Rides", "request": { "method": "GET", "url": "{{baseUrl}}/api/trips/shared-rides/search/:bookingId" } },
+        { "name": "Respond to Request (Accept/Reject)", "request": { "method": "PUT", "url": "{{baseUrl}}/api/trips/requests/:requestId/respond", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } },
+        { "name": "Start Trip (OTP)", "request": { "method": "PUT", "url": "{{baseUrl}}/api/trips/execute/:bookingId/start", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } },
+        { "name": "End Trip (Payment Choice)", "request": { "method": "PUT", "url": "{{baseUrl}}/api/trips/execute/:bookingId/end", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } }
+      ]
+    },
+    {
+      "name": "Wallet & Notifications",
+      "item": [
+        { "name": "My Wallet", "request": { "method": "GET", "url": "{{baseUrl}}/api/wallet/my-wallet", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } },
+        { "name": "Withdraw Request", "request": { "method": "POST", "url": "{{baseUrl}}/api/wallet/withdraw", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } },
+        { "name": "My Notifications", "request": { "method": "GET", "url": "{{baseUrl}}/api/notifications/my-notifications", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }] } }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000" },
+    { "key": "token", "value": "" }
+  ]
+}

@@ -1,0 +1,681 @@
+{
+  "info": {
+    "name": "CapBokkin - Complete API Collection",
+    "_postman_id": "capbokkin-complete-2026",
+    "description": "CapBokkin Cab Booking Backend - Saari APIs ka complete Postman Collection.\n\n🔐 Auth Flow:\n1. Admin Login karo → Token copy karo → adminToken variable mein daalo\n2. Fleet Login karo → Token copy karo → fleetToken variable mein daalo\n3. Driver Login karo → Token copy karo → driverToken variable mein daalo\n4. Agent Login karo → Token copy karo → agentToken variable mein daalo\n\n📌 Variables:\n- baseUrl: http://localhost:5000\n- adminToken: (Admin login ke baad milega)\n- fleetToken: (Fleet login ke baad milega)\n- driverToken: (Driver login ke baad milega)\n- agentToken: (Agent login ke baad milega)\n- driverId, carId, fleetDriverId, assignmentId, etc.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",      "value": "http://localhost:5000", "type": "string" },
+    { "key": "adminToken",   "value": "", "type": "string" },
+    { "key": "fleetToken",   "value": "", "type": "string" },
+    { "key": "driverToken",  "value": "", "type": "string" },
+    { "key": "agentToken",   "value": "", "type": "string" },
+    { "key": "driverId",     "value": "", "type": "string" },
+    { "key": "userId",       "value": "", "type": "string" },
+    { "key": "agentId",      "value": "", "type": "string" },
+    { "key": "fleetId",      "value": "", "type": "string" },
+    { "key": "fleetDriverId","value": "", "type": "string" },
+    { "key": "carId",        "value": "", "type": "string" },
+    { "key": "assignmentId", "value": "", "type": "string" }
+  ],
+  "item": [
+
+    {
+      "name": "🛡️ ADMIN APIs",
+      "item": [
+        {
+          "name": "1. Admin Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/register", "host": ["{{baseUrl}}"], "path": ["api","admin","register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Super Admin\",\n  \"email\": \"admin@capbokkin.com\",\n  \"password\": \"admin@123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2. Admin Login → Token Copy Karo",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/login", "host": ["{{baseUrl}}"], "path": ["api","admin","login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@capbokkin.com\",\n  \"password\": \"admin@123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "3. Admin Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/profile", "host": ["{{baseUrl}}"], "path": ["api","admin","profile"] }
+          }
+        },
+        {
+          "name": "4. Admin Update Profile",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" },{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/profile-update", "host": ["{{baseUrl}}"], "path": ["api","admin","profile-update"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Admin Name\",\n  \"email\": \"admin@capbokkin.com\",\n  \"password\": \"newpassword123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "5. Admin Creates Agent",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" },{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/create-agent", "host": ["{{baseUrl}}"], "path": ["api","admin","create-agent"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ramesh Agent\",\n  \"email\": \"ramesh@agent.com\",\n  \"phone\": \"9811223344\",\n  \"password\": \"agent@123\",\n  \"commissionPercentage\": 12,\n  \"city\": \"Delhi\",\n  \"state\": \"Delhi\"\n}"
+            }
+          }
+        },
+        {
+          "name": "6. Admin Creates Fleet Owner",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" },{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/create-fleet", "host": ["{{baseUrl}}"], "path": ["api","admin","create-fleet"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Suresh Fleet\",\n  \"email\": \"suresh@fleet.com\",\n  \"phone\": \"9900112233\",\n  \"password\": \"fleet@123\",\n  \"companyName\": \"Suresh Motors Pvt Ltd\",\n  \"gstNumber\": \"GST123456789\",\n  \"panNumber\": \"ABCDE1234F\",\n  \"address\": \"123 MG Road\",\n  \"city\": \"Delhi\",\n  \"state\": \"Delhi\",\n  \"pincode\": \"110001\"\n}"
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "👤 USER APIs",
+      "item": [
+        {
+          "name": "1. User Register (OTP: 123456)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/users/create", "host": ["{{baseUrl}}"], "path": ["api","users","create"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rahul Kumar\",\n  \"email\": \"rahul@gmail.com\",\n  \"phone\": \"9876543210\",\n  \"password\": \"user@123\",\n  \"otp\": \"123456\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2. User Login (OTP: 123456) → Token Copy Karo",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/users/login", "host": ["{{baseUrl}}"], "path": ["api","users","login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"9876543210\",\n  \"otp\": \"123456\"\n}"
+            }
+          }
+        },
+        {
+          "name": "3. Get All Users (Admin Only)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/users/all", "host": ["{{baseUrl}}"], "path": ["api","users","all"] }
+          }
+        },
+        {
+          "name": "4. Get Single User Profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/users/profile/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","users","profile","{{userId}}"] }
+          }
+        },
+        {
+          "name": "5. Delete User (Admin Only)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/users/delete/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","users","delete","{{userId}}"] }
+          }
+        },
+        {
+          "name": "6. Toggle User Status - Block/Unblock (Admin Only)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/users/toggle-status/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","users","toggle-status","{{userId}}"] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🚗 DRIVER APIs",
+      "item": [
+        {
+          "name": "1. Driver Self Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/register", "host": ["{{baseUrl}}"], "path": ["api","drivers","register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mohan Driver\",\n  \"email\": \"mohan@driver.com\",\n  \"phone\": \"9711223344\",\n  \"password\": \"driver@123\",\n  \"licenseNumber\": \"DL1234567890\",\n  \"licenseExpiry\": \"2027-12-31\",\n  \"city\": \"Delhi\",\n  \"state\": \"Delhi\",\n  \"address\": \"Karol Bagh, Delhi\",\n  \"pincode\": \"110005\",\n  \"carNumber\": \"DL01AB1234\",\n  \"carModel\": \"Swift Dzire\",\n  \"carBrand\": \"Maruti\",\n  \"carType\": \"Sedan\",\n  \"seatCapacity\": 4,\n  \"carColor\": \"White\",\n  \"manufacturingYear\": 2022\n}"
+            }
+          }
+        },
+        {
+          "name": "2. Driver Login → Token Copy Karo",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/login", "host": ["{{baseUrl}}"], "path": ["api","drivers","login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"mohan@driver.com\",\n  \"password\": \"driver@123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "3. Driver Get Own Profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{driverToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/profile", "host": ["{{baseUrl}}"], "path": ["api","drivers","profile"] }
+          }
+        },
+        {
+          "name": "4. Driver Update Profile + Car Details + Bank Details",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{driverToken}}" },{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/profile-update", "host": ["{{baseUrl}}"], "path": ["api","drivers","profile-update"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mohan Updated\",\n  \"city\": \"Mumbai\",\n  \"licenseNumber\": \"MH1234567\",\n  \"accountNumber\": \"1234567890\",\n  \"ifscCode\": \"HDFC0001234\",\n  \"accountHolderName\": \"Mohan Driver\",\n  \"bankName\": \"HDFC Bank\",\n  \"carNumber\": \"MH02AB9999\",\n  \"carModel\": \"Honda City\",\n  \"carBrand\": \"Honda\",\n  \"carType\": \"Sedan\",\n  \"seatCapacity\": 4\n}"
+            }
+          }
+        },
+        {
+          "name": "5. Driver Toggle Online/Offline",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{driverToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/toggle-online", "host": ["{{baseUrl}}"], "path": ["api","drivers","toggle-online"] }
+          }
+        },
+        {
+          "name": "6. Driver Update GPS Location",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{driverToken}}" },{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/update-location", "host": ["{{baseUrl}}"], "path": ["api","drivers","update-location"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 28.6139,\n  \"longitude\": 77.2090\n}"
+            }
+          }
+        },
+        {
+          "name": "7. Get Pending Drivers (Admin Only)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/pending", "host": ["{{baseUrl}}"], "path": ["api","drivers","pending"] }
+          }
+        },
+        {
+          "name": "8. Get Approved Drivers (Admin Only)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/approved", "host": ["{{baseUrl}}"], "path": ["api","drivers","approved"] }
+          }
+        },
+        {
+          "name": "9. Get Available Drivers (Online + Available)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/available", "host": ["{{baseUrl}}"], "path": ["api","drivers","available"] }
+          }
+        },
+        {
+          "name": "10. Get All Drivers",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/all", "host": ["{{baseUrl}}"], "path": ["api","drivers","all"] }
+          }
+        },
+        {
+          "name": "11. Get All Drivers Live Location",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/locations/all", "host": ["{{baseUrl}}"], "path": ["api","drivers","locations","all"] }
+          }
+        },
+        {
+          "name": "12. Get Single Driver Location",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/location/{{driverId}}", "host": ["{{baseUrl}}"], "path": ["api","drivers","location","{{driverId}}"] }
+          }
+        },
+        {
+          "name": "13. Get Single Driver",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/{{driverId}}", "host": ["{{baseUrl}}"], "path": ["api","drivers","{{driverId}}"] }
+          }
+        },
+        {
+          "name": "14. Approve Driver (Admin Only)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/approve/{{driverId}}", "host": ["{{baseUrl}}"], "path": ["api","drivers","approve","{{driverId}}"] }
+          }
+        },
+        {
+          "name": "15. Reject Driver (Admin Only)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" },{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/reject/{{driverId}}", "host": ["{{baseUrl}}"], "path": ["api","drivers","reject","{{driverId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Documents incomplete ya invalid hain\"\n}"
+            }
+          }
+        },
+        {
+          "name": "16. Toggle Driver Status - Block/Unblock (Admin Only)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/toggle-status/{{driverId}}", "host": ["{{baseUrl}}"], "path": ["api","drivers","toggle-status","{{driverId}}"] }
+          }
+        },
+        {
+          "name": "17. Delete Driver (Admin Only)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/drivers/delete/{{driverId}}", "host": ["{{baseUrl}}"], "path": ["api","drivers","delete","{{driverId}}"] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🧑‍💼 AGENT APIs",
+      "item": [
+        {
+          "name": "1. Agent Login → Token Copy Karo",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/agents/login", "host": ["{{baseUrl}}"], "path": ["api","agents","login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ramesh@agent.com\",\n  \"password\": \"agent@123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2. Agent Get Own Profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{agentToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/agents/profile", "host": ["{{baseUrl}}"], "path": ["api","agents","profile"] }
+          }
+        },
+        {
+          "name": "3. Agent Update Profile",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{agentToken}}" },{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/agents/profile-update", "host": ["{{baseUrl}}"], "path": ["api","agents","profile-update"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ramesh Updated\",\n  \"city\": \"Mumbai\",\n  \"accountNumber\": \"9876543210\",\n  \"ifscCode\": \"ICIC0001234\",\n  \"accountHolderName\": \"Ramesh Agent\",\n  \"bankName\": \"ICICI Bank\"\n}"
+            }
+          }
+        },
+        {
+          "name": "4. Get All Agents (Admin Only)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/agents/all", "host": ["{{baseUrl}}"], "path": ["api","agents","all"] }
+          }
+        },
+        {
+          "name": "5. Get Single Agent (Admin Only)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/agents/{{agentId}}", "host": ["{{baseUrl}}"], "path": ["api","agents","{{agentId}}"] }
+          }
+        },
+        {
+          "name": "6. Toggle Agent Status (Admin Only)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/agents/toggle-status/{{agentId}}", "host": ["{{baseUrl}}"], "path": ["api","agents","toggle-status","{{agentId}}"] }
+          }
+        },
+        {
+          "name": "7. Update Agent Commission % (Admin Only)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" },{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/agents/update-commission/{{agentId}}", "host": ["{{baseUrl}}"], "path": ["api","agents","update-commission","{{agentId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"commissionPercentage\": 15\n}"
+            }
+          }
+        },
+        {
+          "name": "8. Delete Agent (Admin Only)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/agents/delete/{{agentId}}", "host": ["{{baseUrl}}"], "path": ["api","agents","delete","{{agentId}}"] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🏢 FLEET APIs",
+      "item": [
+        {
+          "name": "1. Fleet Login → Token Copy Karo",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/login", "host": ["{{baseUrl}}"], "path": ["api","fleet","login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"suresh@fleet.com\",\n  \"password\": \"fleet@123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2. Fleet Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/profile", "host": ["{{baseUrl}}"], "path": ["api","fleet","profile"] }
+          }
+        },
+        {
+          "name": "3. Fleet Update Profile",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" },{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/profile-update", "host": ["{{baseUrl}}"], "path": ["api","fleet","profile-update"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"Suresh Motors Updated\",\n  \"gstNumber\": \"UPDGST9999\",\n  \"city\": \"Mumbai\",\n  \"accountNumber\": \"1234567890\",\n  \"ifscCode\": \"SBIN0001234\",\n  \"accountHolderName\": \"Suresh Fleet\",\n  \"bankName\": \"SBI\"\n}"
+            }
+          }
+        },
+        {
+          "name": "4. Fleet Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/dashboard", "host": ["{{baseUrl}}"], "path": ["api","fleet","dashboard"] }
+          }
+        },
+        {
+          "name": "5. Fleet Performance Report",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/performance", "host": ["{{baseUrl}}"], "path": ["api","fleet","performance"] }
+          }
+        },
+        {
+          "name": "6. Get All Fleets (Admin Only)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/all", "host": ["{{baseUrl}}"], "path": ["api","fleet","all"] }
+          }
+        },
+        {
+          "name": "7. Get Single Fleet (Admin Only)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/{{fleetId}}", "host": ["{{baseUrl}}"], "path": ["api","fleet","{{fleetId}}"] }
+          }
+        },
+        {
+          "name": "8. Update Fleet Wallet (Admin Only)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" },{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/update-wallet/{{fleetId}}", "host": ["{{baseUrl}}"], "path": ["api","fleet","update-wallet","{{fleetId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 5000,\n  \"type\": \"credit\"\n}"
+            }
+          }
+        },
+        {
+          "name": "9. Toggle Fleet Status (Admin Only)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/toggle-status/{{fleetId}}", "host": ["{{baseUrl}}"], "path": ["api","fleet","toggle-status","{{fleetId}}"] }
+          }
+        },
+        {
+          "name": "10. Delete Fleet (Admin Only)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/delete/{{fleetId}}", "host": ["{{baseUrl}}"], "path": ["api","fleet","delete","{{fleetId}}"] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "👨‍✈️ FLEET DRIVER APIs",
+      "item": [
+        {
+          "name": "1. Fleet Creates Driver ⭐",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" },{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/drivers/create", "host": ["{{baseUrl}}"], "path": ["api","fleet","drivers","create"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ramu Kaka\",\n  \"email\": \"ramu@fleetdriver.com\",\n  \"phone\": \"9811001122\",\n  \"password\": \"drv@123\",\n  \"licenseNumber\": \"DL9988776655\",\n  \"licenseExpiry\": \"2026-12-31\",\n  \"address\": \"Near Red Fort, Delhi\",\n  \"city\": \"Delhi\",\n  \"state\": \"Delhi\",\n  \"pincode\": \"110006\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2. Fleet Get All Fleet Drivers",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/drivers/all", "host": ["{{baseUrl}}"], "path": ["api","fleet","drivers","all"] }
+          }
+        },
+        {
+          "name": "3. Fleet Get Pending Drivers",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/drivers/pending", "host": ["{{baseUrl}}"], "path": ["api","fleet","drivers","pending"] }
+          }
+        },
+        {
+          "name": "4. Fleet Get Approved Drivers",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/drivers/approved", "host": ["{{baseUrl}}"], "path": ["api","fleet","drivers","approved"] }
+          }
+        },
+        {
+          "name": "5. Fleet Get Single Driver",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/drivers/{{fleetDriverId}}", "host": ["{{baseUrl}}"], "path": ["api","fleet","drivers","{{fleetDriverId}}"] }
+          }
+        },
+        {
+          "name": "6. Fleet Delete Driver",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/drivers/delete/{{fleetDriverId}}", "host": ["{{baseUrl}}"], "path": ["api","fleet","drivers","delete","{{fleetDriverId}}"] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🚙 FLEET CAR APIs",
+      "item": [
+        {
+          "name": "1. Fleet Creates Car ⭐",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" },{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/cars/create", "host": ["{{baseUrl}}"], "path": ["api","fleet","cars","create"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"carNumber\": \"DL01AB1234\",\n  \"carModel\": \"Swift Dzire\",\n  \"carBrand\": \"Maruti\",\n  \"carType\": \"Sedan\",\n  \"seatCapacity\": 4,\n  \"carColor\": \"White\",\n  \"manufacturingYear\": 2022,\n  \"insuranceExpiry\": \"2026-12-31\",\n  \"permitExpiry\": \"2026-06-30\",\n  \"pucExpiry\": \"2025-06-30\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2. Fleet Get All Cars",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/cars/all", "host": ["{{baseUrl}}"], "path": ["api","fleet","cars","all"] }
+          }
+        },
+        {
+          "name": "3. Fleet Get Available Cars",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/cars/available", "host": ["{{baseUrl}}"], "path": ["api","fleet","cars","available"] }
+          }
+        },
+        {
+          "name": "4. Fleet Get Busy Cars",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/cars/busy", "host": ["{{baseUrl}}"], "path": ["api","fleet","cars","busy"] }
+          }
+        },
+        {
+          "name": "5. Fleet Get Single Car",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/cars/{{carId}}", "host": ["{{baseUrl}}"], "path": ["api","fleet","cars","{{carId}}"] }
+          }
+        },
+        {
+          "name": "6. Fleet Update Car",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" },{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/cars/{{carId}}", "host": ["{{baseUrl}}"], "path": ["api","fleet","cars","{{carId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"carColor\": \"Black\",\n  \"seatCapacity\": 5,\n  \"lastServiceDate\": \"2025-01-15\",\n  \"nextServiceDate\": \"2025-07-15\",\n  \"insuranceExpiry\": \"2027-12-31\"\n}"
+            }
+          }
+        },
+        {
+          "name": "7. Fleet Delete Car (Car assigned nahi honi chahiye)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/cars/{{carId}}", "host": ["{{baseUrl}}"], "path": ["api","fleet","cars","{{carId}}"] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🔗 FLEET ASSIGNMENT APIs",
+      "item": [
+        {
+          "name": "1. ⭐ Assign Car to Driver (Auto → Driver Model + Admin Approval)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" },{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/assignment/assign", "host": ["{{baseUrl}}"], "path": ["api","fleet","assignment","assign"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driverId\": \"{{fleetDriverId}}\",\n  \"carId\": \"{{carId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2. Get All Assignments",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/assignment/all", "host": ["{{baseUrl}}"], "path": ["api","fleet","assignment","all"] }
+          }
+        },
+        {
+          "name": "3. Get Car Assignment Status",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/assignment/status/{{carId}}", "host": ["{{baseUrl}}"], "path": ["api","fleet","assignment","status","{{carId}}"] }
+          }
+        },
+        {
+          "name": "4. Get Car Assignment History",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/assignment/history/{{carId}}", "host": ["{{baseUrl}}"], "path": ["api","fleet","assignment","history","{{carId}}"] }
+          }
+        },
+        {
+          "name": "5. Unassign Car from Driver",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{fleetToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/fleet/assignment/unassign/{{assignmentId}}", "host": ["{{baseUrl}}"], "path": ["api","fleet","assignment","unassign","{{assignmentId}}"] }
+          }
+        }
+      ]
+    }
+
+  ]
+}

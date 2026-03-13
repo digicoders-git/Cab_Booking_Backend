@@ -1,0 +1,9 @@
+Wallet Phase Test Started...
+--- 🏁 ENDING TRIP: Fare 500 ---
+Agent Wallet: 50 (Expected 50)
+Admin Wallet: 50 (Expected 50 - 10% of 500)
+Driver Wallet: 400 (Expected 400 - 500 minus agent/admin)
+
+--- 💸 WITHDRAWAL TEST ---
+Withdrawal Status: Withdrawal request submitted for Admin approval
+Driver Wallet After Withdraw: 300 (Expected 300)

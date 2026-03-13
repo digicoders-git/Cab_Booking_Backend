@@ -1,0 +1,325 @@
+{
+	"info": {
+		"_postman_id": "capbokkin-complete-system-final",
+		"name": "CapBokkin - FULL APIS (COMPLETE)",
+		"description": "This collection contains EVERY single API endpoint for Admin, Fleet, Driver, Agent, User, Booking, Trip, Wallet, and Notifications. All URLs and Bodies are pre-filled.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "01. Admin Operations",
+			"item": [
+				{
+					"name": "Admin Register",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Super Admin", "type": "text" },
+								{ "key": "email", "value": "admin@test.com", "type": "text" },
+								{ "key": "phone", "value": "1234567890", "type": "text" },
+								{ "key": "password", "value": "123456", "type": "text" }
+							]
+						},
+						"url": { "raw": "http://localhost:5000/api/admin/register", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "register"] }
+					}
+				},
+				{
+					"name": "Admin Login",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"admin@test.com\",\n    \"password\": \"123456\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "http://localhost:5000/api/admin/login", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "login"] }
+					}
+				},
+				{
+					"name": "Create Agent",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Agent Rahul", "type": "text" },
+								{ "key": "email", "value": "agent@test.com", "type": "text" },
+								{ "key": "phone", "value": "9876543210", "type": "text" },
+								{ "key": "password", "value": "123456", "type": "text" },
+								{ "key": "commissionPercentage", "value": "10", "type": "text" }
+							]
+						},
+						"url": { "raw": "http://localhost:5000/api/admin/create-agent", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "create-agent"] }
+					}
+				},
+				{
+					"name": "Create Fleet",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Fleet One", "type": "text" },
+								{ "key": "email", "value": "fleet@test.com", "type": "text" },
+								{ "key": "phone", "value": "8888888888", "type": "text" },
+								{ "key": "password", "value": "123456", "type": "text" },
+								{ "key": "commissionPercentage", "value": "15", "type": "text" }
+							]
+						},
+						"url": { "raw": "http://localhost:5000/api/admin/create-fleet", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "create-fleet"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "02. Driver Management",
+			"item": [
+				{
+					"name": "Driver Register (Self)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Driver Name", "type": "text" },
+								{ "key": "email", "value": "driver@test.com", "type": "text" },
+								{ "key": "phone", "value": "1112223334", "type": "text" },
+								{ "key": "password", "value": "123456", "type": "text" },
+								{ "key": "carNumber", "value": "DL10AB1234", "type": "text" }
+							]
+						},
+						"url": { "raw": "http://localhost:5000/api/drivers/register", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "drivers", "register"] }
+					}
+				},
+				{
+					"name": "Approve Driver (Admin)",
+					"request": {
+						"method": "PUT",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"url": { "raw": "http://localhost:5000/api/drivers/approve/:driverId", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "drivers", "approve", ":driverId"] }
+					}
+				},
+				{
+					"name": "Driver Login",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"driver@test.com\",\n    \"password\": \"123456\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "http://localhost:5000/api/drivers/login", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "drivers", "login"] }
+					}
+				},
+				{
+					"name": "Toggle Online Status",
+					"request": {
+						"method": "PUT",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"url": { "raw": "http://localhost:5000/api/drivers/toggle-online", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "drivers", "toggle-online"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "03. User & Agent Bookings",
+			"item": [
+				{
+					"name": "Create User",
+					"request": {
+						"method": "POST",
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "User One", "type": "text" },
+								{ "key": "email", "value": "user@test.com", "type": "text" },
+								{ "key": "phone", "value": "5556667778", "type": "text" }
+							]
+						},
+						"url": { "raw": "http://localhost:5000/api/users/create", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "users", "create"] }
+					}
+				},
+				{
+					"name": "Fare Estimate",
+					"request": {
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"carCategoryId\": \"ID_HERE\",\n    \"distanceKm\": 10,\n    \"rideType\": \"Private\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "http://localhost:5000/api/bookings/estimate-fare", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "bookings", "estimate-fare"] }
+					}
+				},
+				{
+					"name": "Create Booking",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"passengerName\": \"Test User\",\n    \"passengerPhone\": \"12345\",\n    \"rideType\": \"Private\",\n    \"carCategoryId\": \"CAT_ID\",\n    \"pickupAddress\": \"Point A\",\n    \"pickupLat\": 28.5,\n    \"pickupLng\": 77.2,\n    \"dropAddress\": \"Point B\",\n    \"dropLat\": 28.6,\n    \"dropLng\": 77.1,\n    \"distanceKm\": 10,\n    \"pickupDate\": \"2024-12-01\",\n    \"pickupTime\": \"10:00\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "http://localhost:5000/api/bookings/create", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "bookings", "create"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "04. Trip LifeCycle",
+			"item": [
+				{
+					"name": "Get Pending Requests (Driver Polling)",
+					"request": {
+						"method": "GET",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"url": { "raw": "http://localhost:5000/api/trips/requests/pending", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "trips", "requests", "pending"] }
+					}
+				},
+				{
+					"name": "Accept Ride Request",
+					"request": {
+						"method": "PUT",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"Accepted\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "http://localhost:5000/api/trips/requests/:requestId/respond", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "trips", "requests", ":requestId", "respond"] }
+					}
+				},
+				{
+					"name": "Start Trip (OTP Required)",
+					"request": {
+						"method": "PUT",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"otp\": \"1234\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "http://localhost:5000/api/trips/execute/:bookingId/start", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "trips", "execute", ":bookingId", "start"] }
+					}
+				},
+				{
+					"name": "End Trip (CASH or ONLINE)",
+					"request": {
+						"method": "PUT",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"paymentMethod\": \"Cash\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "http://localhost:5000/api/trips/execute/:bookingId/end", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "trips", "execute", ":bookingId", "end"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "05. Shared Rides",
+			"item": [
+				{
+					"name": "Search Shared Rides",
+					"request": {
+						"method": "GET",
+						"url": { "raw": "http://localhost:5000/api/trips/shared-rides/search/:bookingId", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "trips", "shared-rides", "search", ":bookingId"] }
+					}
+				},
+				{
+					"name": "Book Specific Seat",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"driverId\": \"DRIVER_ID\",\n    \"seatNames\": [\"Front Window\"]\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "http://localhost:5000/api/trips/shared-rides/book-seat/:bookingId", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "trips", "shared-rides", "book-seat", ":bookingId"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "06. Fleet Maanager APIs",
+			"item": [
+				{
+					"name": "Fleet Login",
+					"request": {
+						"method": "POST",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"fleet@test.com\",\n    \"password\": \"123456\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "http://localhost:5000/api/fleets/login", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "fleets", "login"] }
+					}
+				},
+				{
+					"name": "Create Fleet Driver",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "name", "value": "Fleet Driver", "type": "text" },
+								{ "key": "email", "value": "fdriver@test.com", "type": "text" },
+								{ "key": "password", "value": "123456", "type": "text" }
+							]
+						},
+						"url": { "raw": "http://localhost:5000/api/fleet-drivers/create", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "fleet-drivers", "create"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "07. Wallet & Money",
+			"item": [
+				{
+					"name": "Check Wallet Balance",
+					"request": {
+						"method": "GET",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"url": { "raw": "http://localhost:5000/api/wallet/my-wallet", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "wallet", "my-wallet"] }
+					}
+				},
+				{
+					"name": "Request Withdrawal",
+					"request": {
+						"method": "POST",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"amount\": 500\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": { "raw": "http://localhost:5000/api/wallet/withdraw", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "wallet", "withdraw"] }
+					}
+				},
+				{
+					"name": "Approve Withdrawal (Admin)",
+					"request": {
+						"method": "PUT",
+						"header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+						"url": { "raw": "http://localhost:5000/api/wallet/admin/payouts/:transactionId/approve", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "wallet", "admin", "payouts", ":transactionId", "approve"] }
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{ "key": "token", "value": "PASTE_YOUR_JWT_HERE", "type": "string" }
+	]
+}

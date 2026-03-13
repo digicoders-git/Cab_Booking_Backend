@@ -1,0 +1,103 @@
+{
+	"info": {
+		"_postman_id": "capbokkin-ultimate-collection",
+		"name": "CapBokkin ULTIMATE - Every Single API",
+		"description": "This collection contains EVERY single endpoint available in the CapBokkin project. Organized by role and module.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "01. Admin Module",
+			"item": [
+				{ "name": "Admin Register", "request": { "method": "POST", "body": { "mode": "formdata", "formdata": [{ "key": "name", "value": "Name", "type": "text" }, { "key": "email", "value": "admin@test.com", "type": "text" }, { "key": "phone", "value": "1234567890", "type": "text" }, { "key": "password", "value": "123456", "type": "text" }, { "key": "image", "type": "file", "src": null }] }, "url": { "raw": "http://localhost:5000/api/admin/register", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "register"] } } },
+				{ "name": "Admin Login", "request": { "method": "POST", "body": { "mode": "raw", "raw": "{\n  \"email\": \"admin@test.com\",\n  \"password\": \"123456\"\n}", "options": { "raw": { "language": "json" } } }, "url": "http://localhost:5000/api/admin/login" } },
+				{ "name": "Get Profile", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/admin/profile" } },
+				{ "name": "Update Profile", "request": { "method": "PUT", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "formdata", "formdata": [{ "key": "name", "value": "New Name", "type": "text" }] }, "url": "http://localhost:5000/api/admin/profile-update" } },
+				{ "name": "Create Agent", "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "formdata", "formdata": [{ "key": "name", "value": "Agent 1", "type": "text" }, { "key": "email", "value": "a1@test.com", "type": "text" }, { "key": "password", "value": "123456", "type": "text" }, { "key": "commissionPercentage", "value": "10", "type": "text" }] }, "url": "http://localhost:5000/api/admin/create-agent" } },
+				{ "name": "Create Fleet", "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "formdata", "formdata": [{ "key": "name", "value": "Fleet 1", "type": "text" }, { "key": "email", "value": "f1@test.com", "type": "text" }, { "key": "password", "value": "123456", "type": "text" }] }, "url": "http://localhost:5000/api/admin/create-fleet" } }
+			]
+		},
+		{
+			"name": "02. Agent Module",
+			"item": [
+				{ "name": "Agent Login", "request": { "method": "POST", "body": { "mode": "raw", "raw": "{\n  \"email\": \"agent@test.com\",\n  \"password\": \"123456\"\n}", "options": { "raw": { "language": "json" } } }, "url": "http://localhost:5000/api/agents/login" } },
+				{ "name": "Get Profile", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/agents/profile" } },
+				{ "name": "Update Profile", "request": { "method": "PUT", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "formdata", "formdata": [{ "key": "name", "value": "Name", "type": "text" }] }, "url": "http://localhost:5000/api/agents/profile-update" } },
+				{ "name": "Get All Agents (Admin)", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/agents/all" } },
+				{ "name": "Single Agent (Admin)", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/agents/:id" } },
+				{ "name": "Delete Agent (Admin)", "request": { "method": "DELETE", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/agents/delete/:id" } },
+				{ "name": "Toggle Status (Admin)", "request": { "method": "PUT", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/agents/toggle-status/:id" } },
+				{ "name": "Update Commission (Admin)", "request": { "method": "PUT", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "raw", "raw": "{\"commissionPercentage\": 12}", "options": { "raw": { "language": "json" } } }, "url": "http://localhost:5000/api/agents/update-commission/:id" } }
+			]
+		},
+		{
+			"name": "03. Driver Module",
+			"item": [
+				{ "name": "Driver Register", "request": { "method": "POST", "body": { "mode": "formdata", "formdata": [{ "key": "name", "value": "D1", "type": "text" }, { "key": "email", "value": "d1@test.com", "type": "text" }, { "key": "password", "value": "123", "type": "text" }, { "key": "phone", "value": "555", "type": "text" }] }, "url": "http://localhost:5000/api/drivers/register" } },
+				{ "name": "Driver Login", "request": { "method": "POST", "body": { "mode": "raw", "raw": "{\"email\":\"d1@test.com\",\"password\":\"123\"}", "options": { "raw": { "language": "json" } } }, "url": "http://localhost:5000/api/drivers/login" } },
+				{ "name": "Get Profile", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/drivers/profile" } },
+				{ "name": "Toggle Online Status", "request": { "method": "PUT", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/drivers/toggle-online" } },
+				{ "name": "Update Location", "request": { "method": "PUT", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "raw", "raw": "{\"latitude\": 28.1, \"longitude\": 77.1}", "options": { "raw": { "language": "json" } } }, "url": "http://localhost:5000/api/drivers/update-location" } },
+				{ "name": "Approve Driver (Admin)", "request": { "method": "PUT", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/drivers/approve/:id" } },
+				{ "name": "Reject Driver (Admin)", "request": { "method": "PUT", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/drivers/reject/:id" } },
+				{ "name": "Get Pending Drivers (Admin)", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/drivers/pending" } },
+				{ "name": "Get Approved Drivers (Admin)", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/drivers/approved" } }
+			]
+		},
+		{
+			"name": "04. Fleet Module",
+			"item": [
+				{ "name": "Fleet Login", "request": { "method": "POST", "body": { "mode": "raw", "raw": "{\"email\":\"f@t.com\",\"password\":\"123\"}", "options": { "raw": { "language": "json" } } }, "url": "http://localhost:5000/api/fleets/login" } },
+				{ "name": "Fleet Dashboard", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/fleets/dashboard" } },
+				{ "name": "Create Fleet Driver", "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "formdata", "formdata": [{ "key": "name", "value": "FD", "type": "text" }] }, "url": "http://localhost:5000/api/fleet-drivers/create" } },
+				{ "name": "Create Fleet Car", "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "raw", "raw": "{\"carNumber\":\"ABC\"}", "options": { "raw": { "language": "json" } } }, "url": "http://localhost:5000/api/fleet-cars/create" } },
+				{ "name": "Assign Car to Driver", "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "raw", "raw": "{\"driverId\":\"ID\", \"carId\":\"ID\"}", "options": { "raw": { "language": "json" } } }, "url": "http://localhost:5000/api/fleet-assignments/assign" } }
+			]
+		},
+		{
+			"name": "05. Booking & Trip (Main Flow)",
+			"item": [
+				{ "name": "Estimate Fare", "request": { "method": "POST", "body": { "mode": "raw", "raw": "{\"carCategoryId\":\"ID\", \"distanceKm\":10, \"rideType\":\"Private\"}", "options": { "raw": { "language": "json" } } }, "url": "http://localhost:5000/api/bookings/estimate-fare" } },
+				{ "name": "Create Booking", "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "raw", "raw": "{\"passengerName\":\"A\",\"passengerPhone\":\"123\",\"rideType\":\"Private\",\"carCategoryId\":\"ID\",\"pickupAddress\":\"A\",\"pickupLat\":1,\"pickupLng\":1,\"dropAddress\":\"B\",\"dropLat\":1.1,\"dropLng\":1.1,\"distanceKm\":10,\"pickupDate\":\"2024-01-01\",\"pickupTime\":\"10:00\"}", "options": { "raw": { "language": "json" } } }, "url": "http://localhost:5000/api/bookings/create" } },
+				{ "name": "Get Pending Requests (Driver)", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/trips/requests/pending" } },
+				{ "name": "Accept Ride Request", "request": { "method": "PUT", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "raw", "raw": "{\"status\":\"Accepted\"}", "options": { "raw": { "language": "json" } } }, "url": "http://localhost:5000/api/trips/requests/:requestId/respond" } },
+				{ "name": "Start Trip (OTP)", "request": { "method": "PUT", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "raw", "raw": "{\"otp\":\"1234\"}", "options": { "raw": { "language": "json" } } }, "url": "http://localhost:5000/api/trips/execute/:bookingId/start" } },
+				{ "name": "End Trip (Payment Choice)", "request": { "method": "PUT", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "raw", "raw": "{\"paymentMethod\":\"Cash\"}", "options": { "raw": { "language": "json" } } }, "url": "http://localhost:5000/api/trips/execute/:bookingId/end" } },
+				{ "name": "Search Shared Rides", "request": { "method": "GET", "url": "http://localhost:5000/api/trips/shared-rides/search/:bookingId" } }
+			]
+		},
+		{
+			"name": "06. User Module",
+			"item": [
+				{ "name": "Create User", "request": { "method": "POST", "body": { "mode": "formdata", "formdata": [{ "key": "name", "value": "U1", "type": "text" }, { "key": "email", "value": "u1@t.com", "type": "text" }, { "key": "phone", "value": "111", "type": "text" }] }, "url": "http://localhost:5000/api/users/create" } },
+				{ "name": "Login User", "request": { "method": "POST", "body": { "mode": "raw", "raw": "{\"email\":\"u1@t.com\"}", "options": { "raw": { "language": "json" } } }, "url": "http://localhost:5000/api/users/login" } },
+				{ "name": "All Users (Admin)", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/users/all" } }
+			]
+		},
+		{
+			"name": "07. Wallet & Payments",
+			"item": [
+				{ "name": "My Wallet", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/wallet/my-wallet" } },
+				{ "name": "Withdraw Request", "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "raw", "raw": "{\"amount\": 500}", "options": { "raw": { "language": "json" } } }, "url": "http://localhost:5000/api/wallet/withdraw" } },
+				{ "name": "Approve Withdrawal (Admin)", "request": { "method": "PUT", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/wallet/admin/payouts/:transactionId/approve" } }
+			]
+		},
+		{
+			"name": "08. Notifications",
+			"item": [
+				{ "name": "Get My Notifications", "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "url": "http://localhost:5000/api/notifications/my-notifications" } },
+				{ "name": "Create Global Notification (Admin)", "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "raw", "raw": "{\"title\":\"News\", \"message\":\"Hello\", \"targetRoles\":[\"user\"]}", "options": { "raw": { "language": "json" } } }, "url": "http://localhost:5000/api/notifications/create" } }
+			]
+		},
+		{
+			"name": "09. Car Categories",
+			"item": [
+				{ "name": "Get Active Categories", "request": { "method": "GET", "url": "http://localhost:5000/api/car-categories/active" } },
+				{ "name": "Create Category (Admin)", "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }], "body": { "mode": "formdata", "formdata": [{ "key": "name", "value": "Sedan", "type": "text" }] }, "url": "http://localhost:5000/api/car-categories/create" } }
+			]
+		}
+	],
+	"variable": [
+		{ "key": "token", "value": "YOUR_JWT_TOKEN_HERE", "type": "string" }
+	]
+}
