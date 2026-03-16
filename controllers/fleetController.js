@@ -1,4 +1,6 @@
 const Fleet = require("../models/Fleet");
+const FleetCar = require("../models/FleetCar");
+const FleetDriver = require("../models/FleetDriver");
 const jwt = require("jsonwebtoken");
 
 // Create Fleet (Admin Only)
@@ -322,10 +324,13 @@ exports.getFleetDashboard = async (req, res) => {
             });
         }
 
-        // You can add more complex calculations here
+        // Real-time calculation: Count actual cars and drivers from their collections
+        const carCount = await FleetCar.countDocuments({ fleetId: req.user.id });
+        const driverCount = await FleetDriver.countDocuments({ fleetId: req.user.id });
+
         const dashboardData = {
-            totalCars: fleet.totalCars,
-            totalDrivers: fleet.totalDrivers,
+            totalCars: carCount,        // Actual count from Database
+            totalDrivers: driverCount,  // Actual count from Database
             totalEarnings: fleet.totalEarnings,
             walletBalance: fleet.walletBalance,
             activeStatus: fleet.isActive

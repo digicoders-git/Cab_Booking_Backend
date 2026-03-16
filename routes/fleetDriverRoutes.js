@@ -7,7 +7,8 @@ const {
     getFleetDriver,
     deleteDriver,
     getPendingDrivers,
-    getApprovedDrivers
+    getApprovedDrivers,
+    updateDriver
 } = require("../controllers/fleetDriverController");
 
 const { auth, fleetOnly } = require("../middleware/auth");
@@ -24,6 +25,9 @@ router.get("/pending", auth, fleetOnly, getPendingDrivers);
 
 // Get Approved Drivers (Fleet Only) - MUST BE BEFORE /:driverId
 router.get("/approved", auth, fleetOnly, getApprovedDrivers);
+
+// Update Driver (Fleet Only)
+router.put("/update/:driverId", auth, fleetOnly, upload.single("image"), updateDriver);
 
 // Delete Driver (Fleet Only) - MUST BE BEFORE /:driverId
 router.delete("/delete/:driverId", auth, fleetOnly, deleteDriver);

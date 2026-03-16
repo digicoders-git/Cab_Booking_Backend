@@ -207,3 +207,69 @@ exports.getApprovedDrivers = async (req, res) => {
         });
     }
 };
+
+// Fleet Update Driver (Fleet Only)
+exports.updateDriver = async (req, res) => {
+    try {
+        const {
+            name, email, phone, password, licenseNumber, licenseExpiry,
+            address, city, state, pincode
+        } = req.body;
+
+        const driver = await FleetDriver.findById(req.params.driverId);
+
+        if (!driver) {
+            return res.status(404).json({
+                success: false,
+                message: "Driver not found"
+            });
+        }
+
+        // Check if driver belongs to this fleet
+        if (driver.fleetId.toString() !== req.user.id) {
+            return res.status(403).json({
+                success: false,
+                message: "You don't have access to update this driver"
+            });
+        }
+
+        const updateData = {
+            name: name || driver.name,
+            email: email || driver.email,
+            phone: phone || driver.phone,
+            licenseNumber: licenseNumber || driver.licenseNumber,
+            licenseExpiry: licenseExpiry || driver.licenseExpiry,
+            address: address || driver.address,
+            city: city || driver.city,
+            state: state || driver.state,
+            pincode: pincode || driver.pincode
+        };
+
+        if (password) {
+            updateData.password = password; // Note: bcrypt hash agar use karna ho toh yahan handle karein
+        }
+
+        if (req.file) {
+            updateData.image = req.file.filename;
+        }
+
+        const updatedDriver = await FleetDriver.findByIdAndUpdate(
+            req.params.driverId,
+            updateData,
+            { new: true }
+        ).select("-password");
+
+        res.json({
+            success: true,
+            message: "Driver updated successfully",
+            driver: updatedDriver
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error updating driver",
+            error: error.message
+        });
+    }
+};

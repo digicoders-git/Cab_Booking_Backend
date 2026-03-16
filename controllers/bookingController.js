@@ -1,6 +1,8 @@
 const Booking = require("../models/Booking");
 const CarCategory = require("../models/CarCategory");
 const User = require("../models/User");
+const RideRequest = require("../models/RideRequest");
+const tripController = require("./tripController");
 
 // 1. Estimate Fare
 exports.estimateFare = async (req, res) => {
@@ -44,6 +46,93 @@ exports.estimateFare = async (req, res) => {
             rideType,
             seatsBooked: rideType === "Private" ? category.seatCapacity : (seatsBooked || 1),
             estimatedFare: Math.round(estimatedFare) // Rounded to handle floating points cleanly
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// 1b. Search Cabs (Google-Ready Flow: Maps Data -> Fare Options)
+exports.getAllFareEstimates = async (req, res) => {
+    try {
+        const { 
+            distanceKm, 
+            rideType, 
+            seatsBooked, 
+            pickupAddress, 
+            dropAddress,
+            pickupLat,
+            pickupLng,
+            dropLat,
+            dropLng 
+        } = req.body;
+
+        if (!distanceKm) {
+            return res.status(400).json({ success: false, message: "Distance from Google Maps is required" });
+        }
+
+        const categories = await CarCategory.find({ isActive: true });
+        const seats = seatsBooked || 1;
+
+        // Normalize rideType to handle lowercase/uppercase (shaired, SHARED, etc.)
+        const normalizedRideType = rideType ? rideType.toLowerCase() : null;
+
+        const options = categories.map(category => {
+            const privateFare = category.baseFare + (category.privateRatePerKm * distanceKm);
+            const sharedFare = category.baseFare + (category.sharedRatePerSeatPerKm * distanceKm * seats);
+
+            // Dynamic Time Calculation based on Category Speed
+            const arrivalMins = Math.floor(Math.random() * (5 - 2 + 1)) + 2; 
+            
+            const speed = category.avgSpeedKmH || 25; 
+            const travelTimeMins = Math.round((distanceKm / speed) * 60);
+            
+            const now = new Date();
+            const dropTime = new Date(now.getTime() + (arrivalMins + travelTimeMins) * 60000);
+            const dropTimeStr = dropTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            let cabOption = {
+                carCategoryId: category._id,
+                name: category.name,
+                image: category.image,
+                seatCapacity: category.seatCapacity,
+                arrivalMins: `${arrivalMins} mins away`,
+                dropTime: `Drop ${dropTimeStr}`,
+                description: category.name === "Auto" ? "Hassle-free Auto rides" : `Affordable ${category.name} rides`,
+                tag: category.name === "Bike" ? "FASTEST" : (category.name === "Premium" ? "PREMIUM" : null)
+            };
+
+            // Only show the specific fare user asked for
+            if (normalizedRideType === "private") {
+                cabOption.fare = Math.round(privateFare);
+                cabOption.rideType = "Private";
+            } else if (normalizedRideType === "shared") {
+                cabOption.fare = Math.round(sharedFare);
+                cabOption.rideType = "Shared";
+            } else {
+                // If no specific choice, show both
+                cabOption.privateFare = Math.round(privateFare);
+                cabOption.sharedFare = Math.round(sharedFare);
+                cabOption.rideType = "Both";
+            }
+
+            return cabOption;
+        });
+
+        res.json({
+            success: true,
+            mapsInfo: {
+                pickup: pickupAddress || "Coordinates Provided",
+                drop: dropAddress || "Coordinates Provided",
+                distanceKm,
+                coordinates: {
+                    from: { lat: pickupLat, lng: pickupLng },
+                    to: { lat: dropLat, lng: dropLng }
+                }
+            },
+            selectedRideType: rideType || "Both Options Available",
+            options
         });
 
     } catch (error) {
@@ -121,12 +210,61 @@ exports.createBooking = async (req, res) => {
 
         const newBooking = await Booking.create(bookingData);
 
+        // --- SEQUENTIAL MATCHING LOGIC (The Waterfall) ---
+        const matchInterval = 30000; // 30 seconds for each driver
+        const maxTime = 120000;      // 2 minutes total wait time
+        let timeElapsed = 0;
+
+        const attemptMatching = async () => {
+            try {
+                // 1. Check current status: Booking abhi bhi pending hai?
+                const checkBooking = await Booking.findById(newBooking._id);
+                if (!checkBooking || checkBooking.bookingStatus !== "Pending") return; 
+
+                if (timeElapsed >= maxTime) {
+                    // 2. 2 Minute over! Expire the booking
+                    checkBooking.bookingStatus = "Expired";
+                    checkBooking.cancelReason = "No driver nearby accepted the request";
+                    await checkBooking.save();
+                    
+                    // Saari pending requests ko timeout kar do
+                    await RideRequest.updateMany({ booking: newBooking._id, status: "Pending" }, { status: "Timeout" });
+                    console.log(`Booking ${newBooking._id} expired after 2 mins matching attempts.`);
+                    return;
+                }
+
+                // 3. Purani pending requests ko timeout kar do (Water-fall effect)
+                await RideRequest.updateMany({ booking: newBooking._id, status: "Pending" }, { status: "Timeout" });
+
+                // 4. Agle nearest driver ko dhundho
+                const matchResult = await tripController.autoMatchDriver(newBooking._id);
+                
+                if (matchResult.success) {
+                    console.log(`[Waterfall] Request sent to Next Driver: ${matchResult.driverDetails.name}`);
+                } else {
+                    console.log(`[Waterfall] No more drivers found for now. Retrying in 30s...`);
+                }
+
+                // 5. Agle attempt ke liye timer set karein (Recursive)
+                timeElapsed += matchInterval;
+                setTimeout(attemptMatching, matchInterval);
+
+            } catch (err) {
+                console.error("Error in matching loop:", err.message);
+            }
+        };
+
+        // Pehla attempt turant shuru karein (Agar Private ride hai)
+        if (rideType === "Private") {
+            attemptMatching();
+        }
+
         res.status(201).json({
             success: true,
-            message: "Booking created successfully. Evaluating nearby drivers.",
+            message: "Booking created. We are connecting you to the nearest drivers one by one.",
             bookingId: newBooking._id,
             fareEstimate,
-            startOtp // Shown to user/agent
+            startOtp 
         });
 
     } catch (error) {
@@ -192,6 +330,29 @@ exports.cancelBooking = async (req, res) => {
         res.json({
             success: true,
             message: "Booking cancelled successfully",
+            booking
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// 5. Get Single Booking Details
+exports.getSingleBooking = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const booking = await Booking.findById(bookingId)
+            .populate("carCategory", "name image")
+            .populate("assignedDriver", "name phone carDetails")
+            .populate("user", "name phone");
+
+        if (!booking) {
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        res.json({
+            success: true,
             booking
         });
 

@@ -47,14 +47,28 @@ function isHeadingSimilar(heading1, heading2, maxTolerance = 45) {
 }
 
 // 1. Core Background Logic: Find Nearest Driver and Send Request
-// (This is usually called internally right after a booking is made, or by a cron job)
 exports.findAndAssignDriver = async (req, res) => {
     try {
         const { bookingId } = req.params;
+        const result = await exports.autoMatchDriver(bookingId);
 
+        if (!result.success) {
+            return res.status(result.status || 400).json(result);
+        }
+
+        res.json(result);
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// Helper function for Internal use (Without req/res)
+exports.autoMatchDriver = async (bookingId) => {
+    try {
         const booking = await Booking.findById(bookingId);
         if (!booking || booking.bookingStatus !== "Pending") {
-            return res.status(400).json({ success: false, message: "Booking not found or not in Pending status" });
+            return { success: false, status: 400, message: "Booking not found or not in Pending status" };
         }
 
         // Find all drivers who previously rejected or missed this request
@@ -70,41 +84,32 @@ exports.findAndAssignDriver = async (req, res) => {
             "carDetails.carType": booking.carCategory
         };
 
-        // Shared Engine matching rules:
         if (booking.rideType === "Private") {
-            driverQuery.currentRideType = null; // Must be completely empty
+            driverQuery.currentRideType = null;
         } else if (booking.rideType === "Shared") {
             driverQuery.$or = [
-                { currentRideType: null }, // Completely empty is fine
-                { currentRideType: "Shared", availableSeats: { $gte: booking.seatsBooked } } // Sharing with enough space
+                { currentRideType: null },
+                { currentRideType: "Shared", availableSeats: { $gte: booking.seatsBooked } }
             ];
         }
 
-        // Find available online drivers with matching car category and Ride Type
         const availableDrivers = await Driver.find(driverQuery)
             .populate("carDetails.carType")
             .select("_id name phone currentLocation availableSeats currentRideType currentHeading carDetails isAvailable");
 
-        // Calculate heading (direction) for the NEW booking
         const newBookingHeading = calculateHeading(
             booking.pickup.latitude, booking.pickup.longitude,
             booking.drop.latitude, booking.drop.longitude
         );
 
-        // Filter out those who already rejected, and calculate distance
         let nearestDriver = null;
-        let minDistance = 10; // Max radius to search: 10 KM limit for testing
+        let minDistance = 10; 
 
         for (const driver of availableDrivers) {
             if (excludedDriverIds.includes(driver._id.toString())) continue;
 
-            // NEW: Shared Ride Direction/Heading Check!
-            // If the driver is already on a Shared ride, compare directions
             if (booking.rideType === "Shared" && driver.currentHeading !== null) {
-                // Must be going in roughly the same direction (e.g. within 45 degrees)
-                if (!isHeadingSimilar(driver.currentHeading, newBookingHeading, 45)) {
-                    continue; // SKIP this driver! They are going the wrong way!
-                }
+                if (!isHeadingSimilar(driver.currentHeading, newBookingHeading, 45)) continue;
             }
 
             const dist = getDistanceFromLatLonInKm(
@@ -112,7 +117,6 @@ exports.findAndAssignDriver = async (req, res) => {
                 driver.currentLocation.latitude, driver.currentLocation.longitude
             );
 
-            // Find the closest one within limits
             if (dist < minDistance) {
                 minDistance = dist;
                 nearestDriver = driver;
@@ -120,26 +124,24 @@ exports.findAndAssignDriver = async (req, res) => {
         }
 
         if (!nearestDriver) {
-            // No drivers found. Usually goes to a waiting queue or notifies user
-            return res.status(404).json({ success: false, message: "No available nearby drivers found for this car category" });
+            return { success: false, status: 404, message: "No available nearby drivers found" };
         }
 
-        // Create a new Ride Request
         const newRequest = await RideRequest.create({
             booking: booking._id,
             driver: nearestDriver._id,
-            status: "Pending" // Waiting for Driver to say Yes/No
+            status: "Pending"
         });
 
-        res.json({
+        return {
             success: true,
             message: "Request sent to nearest driver",
-            driverDetails: { id: nearestDriver._id, name: nearestDriver.name, distanceKn: Math.round(minDistance * 10) / 10 },
+            driverDetails: { id: nearestDriver._id, name: nearestDriver.name, distanceKm: Math.round(minDistance * 10) / 10 },
             requestId: newRequest._id
-        });
+        };
 
     } catch (error) {
-        res.status(500).json({ success: false, message: "Server error", error: error.message });
+        return { success: false, status: 500, message: error.message };
     }
 };
 
@@ -152,9 +154,12 @@ exports.getPendingRequests = async (req, res) => {
             .populate("booking")
             .sort({ createdAt: -1 });
 
+        // Filter: Sirf wahi requests dikhao jinki booking abhi bhi "Pending" hai
+        const activeRequests = requests.filter(req => req.booking && req.booking.bookingStatus === "Pending");
+
         res.json({
             success: true,
-            requests
+            requests: activeRequests
         });
     } catch (error) {
         res.status(500).json({ success: false, message: "Server error", error: error.message });

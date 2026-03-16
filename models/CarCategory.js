@@ -13,6 +13,10 @@ const carCategorySchema = new mongoose.Schema({
     min: 2,
     max: 10 // Max capacity setting
   },
+  avgSpeedKmH: {
+    type: Number,
+    default: 25 // Default speed 25 km/h if not specified
+  },
   // NEW: Shared Ride Seat Mapping
   seatLayout: {
     type: [String],
