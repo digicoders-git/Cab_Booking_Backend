@@ -10,7 +10,7 @@ const carCategorySchema = new mongoose.Schema({
   seatCapacity: {
     type: Number,
     required: true,
-    min: 2,
+    min: 1,
     max: 10 // Max capacity setting
   },
   avgSpeedKmH: {

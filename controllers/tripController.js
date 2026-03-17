@@ -5,6 +5,7 @@ const Transaction = require("../models/Transaction");
 const Agent = require("../models/Agent");
 const Admin = require("../models/Admin");
 const Fleet = require("../models/Fleet");
+const Notification = require("../models/Notification");
 
 // Haversine formula to get distance between two points in km
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
@@ -95,7 +96,7 @@ exports.autoMatchDriver = async (bookingId) => {
 
         const availableDrivers = await Driver.find(driverQuery)
             .populate("carDetails.carType")
-            .select("_id name phone currentLocation availableSeats currentRideType currentHeading carDetails isAvailable");
+            .select("_id name phone currentLocation availableSeats currentRideType currentHeading carDetails isAvailable seatMap");
 
         const newBookingHeading = calculateHeading(
             booking.pickup.latitude, booking.pickup.longitude,
@@ -108,8 +109,34 @@ exports.autoMatchDriver = async (bookingId) => {
         for (const driver of availableDrivers) {
             if (excludedDriverIds.includes(driver._id.toString())) continue;
 
-            if (booking.rideType === "Shared" && driver.currentHeading !== null) {
-                if (!isHeadingSimilar(driver.currentHeading, newBookingHeading, 45)) continue;
+            if (booking.rideType === "Shared") {
+                if (driver.currentHeading !== null) {
+                    if (!isHeadingSimilar(driver.currentHeading, newBookingHeading, 45)) continue;
+                }
+
+                // INITIALIZE SEAT MAP (If new driver) - NEW Logic
+                let finalSeatMap = driver.seatMap || [];
+                if (finalSeatMap.length === 0) {
+                    const layout = driver.carDetails?.carType?.seatLayout;
+                    if (layout && layout.length > 0) {
+                        finalSeatMap = layout.map(s => ({ seatName: s, isBooked: false, bookingId: null }));
+                        driver.seatMap = finalSeatMap;
+                        await driver.save();
+                    }
+                }
+
+                // NEW: Specific Seat Availability Check
+                if (booking.selectedSeats && booking.selectedSeats.length > 0) {
+                    let allSeatsFree = true;
+                    for (const sName of booking.selectedSeats) {
+                        const seat = finalSeatMap.find(s => s.seatName === sName);
+                        if (!seat || seat.isBooked) {
+                            allSeatsFree = false;
+                            break;
+                        }
+                    }
+                    if (!allSeatsFree) continue; // Skip driver if their car doesn't have the chosen seats free
+                }
             }
 
             const dist = getDistanceFromLatLonInKm(
@@ -131,6 +158,16 @@ exports.autoMatchDriver = async (bookingId) => {
             booking: booking._id,
             driver: nearestDriver._id,
             status: "Pending"
+        });
+
+        // SEND NOTIFICATION TO DRIVER
+        await Notification.create({
+            title: "New Ride Request",
+            message: `You have a new ${booking.rideType} ride request from ${booking.pickup.address}.`,
+            recipient: nearestDriver._id,
+            recipientModel: 'Driver',
+            createdBy: booking.user || booking.agent,
+            createdByModel: booking.user ? 'User' : 'Agent'
         });
 
         return {
@@ -202,6 +239,18 @@ exports.respondToRequest = async (req, res) => {
             booking.assignedCar = null; // Normally set to FleetCar id if fleet
 
             await booking.save();
+
+            // SEND NOTIFICATION TO USER
+            if (booking.user) {
+                await Notification.create({
+                    title: "Ride Accepted",
+                    message: `Driver ${driver.name} has accepted your ride request.`,
+                    recipient: booking.user,
+                    recipientModel: 'User',
+                    createdBy: driverId,
+                    createdByModel: 'Driver'
+                });
+            }
 
             // ============================================
             // SHARED RIDE VS PRIVATE RIDE CORE LOGIC
@@ -503,143 +552,45 @@ exports.endTrip = async (req, res) => {
     }
 };
 
-// ===============================================
-// PHASE 2 SYSTEM: MARKETPLACE & SEAT SELECTION
-// ===============================================
-
-// Step 2 of Phase 2 logic: Search specific seats!
-exports.searchSharedRides = async (req, res) => {
+// 6. Track Driver Location (User/Agent Only)
+exports.getDriverLocation = async (req, res) => {
     try {
         const { bookingId } = req.params;
-        const booking = await Booking.findById(bookingId).populate("carCategory");
-        if (!booking || booking.rideType !== "Shared") {
-            return res.status(400).json({ success: false, message: "Only Shared bookings can search for seat maps." });
-        }
+        const booking = await Booking.findById(bookingId).populate("assignedDriver");
 
-        // Base query - only drivers with matching car category
-        let driverQuery = {
-            isOnline: true,
-            isAvailable: true,
-            isActive: true,
-            isApproved: true,
-            "carDetails.carType": booking.carCategory._id
-        };
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+        if (!booking.assignedDriver) return res.status(400).json({ success: false, message: "No driver assigned yet" });
 
-        const availableDrivers = await Driver.find(driverQuery)
-            .populate("carDetails.carType");
+        res.json({
+            success: true,
+            driverId: booking.assignedDriver._id,
+            driverName: booking.assignedDriver.name,
+            location: booking.assignedDriver.currentLocation
+        });
 
-        const newBookingHeading = calculateHeading(
-            booking.pickup.latitude, booking.pickup.longitude,
-            booking.drop.latitude, booking.drop.longitude
-        );
-
-        let matchingDrivers = [];
-
-        for (const driver of availableDrivers) {
-            // Filter by Heading if already doing shared
-            if (driver.currentRideType !== null) {
-                if (!isHeadingSimilar(driver.currentHeading, newBookingHeading, 45)) continue;
-            }
-
-            // Distance filtering
-            const dist = getDistanceFromLatLonInKm(
-                booking.pickup.latitude, booking.pickup.longitude,
-                driver.currentLocation.latitude, driver.currentLocation.longitude
-            );
-            if (dist > 15) continue; // Skip too far
-
-            // INITIALIZE SEAT MAP (If new driver / fresh day)
-            let finalSeatMap = driver.seatMap;
-            const layout = driver.carDetails.carType.seatLayout;
-            
-            if (!finalSeatMap || finalSeatMap.length === 0) {
-                if (layout && layout.length > 0) {
-                    finalSeatMap = layout.map(s => ({ seatName: s, isBooked: false, bookingId: null }));
-                    driver.seatMap = finalSeatMap;
-                    await driver.save();
-                }
-            } else if (finalSeatMap.length !== layout.length) {
-                console.log("WARN: Mismatch between layout & driver map");
-            }
-
-            // Count free available seats accurately
-            const freeSeatsCount = finalSeatMap.filter(s => !s.isBooked).length;
-            if (freeSeatsCount < booking.seatsBooked) continue; // Skip if 2 people want seat but only 1 free
-
-            matchingDrivers.push({
-                driverId: driver._id,
-                driverName: driver.name,
-                distanceKm: Math.round(dist * 10) / 10,
-                seatMap: finalSeatMap,
-                carModel: driver.carDetails.carModel
-            });
-        }
-
-        res.json({ success: true, count: matchingDrivers.length, drivers: matchingDrivers });
-    } catch(err) {
-         res.status(500).json({ success: false, message: "Server Error", error: err.message });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
-
-// Step 3 of Phase 2 Logic: Select & Lock Seat!
-exports.requestSpecificSharedDriver = async (req, res) => {
+// 7. Get Driver's Assigned Bookings (My Trips)
+exports.getDriverTrips = async (req, res) => {
     try {
-        const { bookingId } = req.params;
-        const { driverId, selectedSeats } = req.body; // Expects array: ["Front", "Back-Left"]
+        const driverId = req.user.id;
 
-        const booking = await Booking.findById(bookingId);
-        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+        // Find all bookings assigned to this driver
+        const bookings = await Booking.find({ assignedDriver: driverId })
+            .select("-tripData.startOtp") // SECURITY: Don't show OTP to driver!
+            .populate("carCategory", "name image")
+            .populate("user", "name phone")
+            .sort({ createdAt: -1 });
 
-        if (booking.rideType !== "Shared") {
-            return res.status(400).json({ success: false, message: "Private rides are auto-assigned natively." });
-        }
-
-        if (!selectedSeats || selectedSeats.length !== booking.seatsBooked) {
-             return res.status(400).json({ success: false, message: `Please select exactly ${booking.seatsBooked} seats to continue.` });
-        }
-
-        const driver = await Driver.findById(driverId);
-        if (!driver) return res.status(404).json({ success: false, message: "Driver not found" });
-
-        // CHECK AVAILABILITY OF SELECTED SEATS IMMEDIATELY
-        let allFree = true;
-        for (let sName of selectedSeats) {
-             const seat = driver.seatMap.find(s => s.seatName === sName);
-             if (!seat || seat.isBooked) {
-                 allFree = false;
-                 break;
-             }
-        }
-        
-        if (!allFree) {
-            return res.status(400).json({ success: false, message: "Uh-oh! One or more of the seats you selected were literally just taken. Please select again." });
-        }
-
-        // Lock seats to this Booking (Memories attached)
-        booking.selectedSeats = selectedSeats;
-        await booking.save();
-
-        // Check if a request already exists
-        const existingReq = await RideRequest.findOne({ booking: booking._id, driver: driver._id });
-        if (existingReq) {
-            return res.status(400).json({ success: false, message: "Request already underway for this driver!" });
-        }
-
-        // Send Targeted Notification to ONLY this driver!
-        const newRequest = await RideRequest.create({
-            booking: booking._id,
-            driver: driver._id,
-            status: "Pending" 
+        res.json({
+            success: true,
+            count: bookings.length,
+            trips: bookings
         });
 
-        res.json({ 
-            success: true, 
-            message: "Temporary Hold Applied! Direct request sent to the specific driver's Screen.", 
-            requestId: newRequest._id,
-            selectedSeats: selectedSeats
-        });
-
-    } catch (err) {
-        res.status(500).json({ success: false, message: "Server error", error: err.message });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };

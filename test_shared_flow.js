@@ -173,6 +173,7 @@ async function runTest() {
                 rideType: "Shared",
                 carCategoryId: categoryId,
                 seatsBooked: 2,
+                selectedSeats: ["Front", "Row2-L"], // NEW: Selecting seats at creation
                 pickupAddress: "Eng Chauraha", pickupLat: 26.9124, pickupLng: 80.9435,
                 dropAddress: "Airport", dropLat: 26.7606, dropLng: 80.8893,
                 distanceKm: 15,
@@ -181,29 +182,11 @@ async function runTest() {
             })
         }).then(r => r.json());
         const bookingId = bookingRes.bookingId;
-        console.log(`✅ Shared Booking Created: ${bookingId}`);
+        console.log(`✅ Shared Booking Created: ${bookingId}. Waiting for auto-match...`);
+        await new Promise(r => setTimeout(r, 2000)); // Wait for server matching
 
-        // 10. SEARCH FOR SHARED RIDES
-        console.log("\n--- Step 10: Search Shared Rides ---");
-        const searchRes = await fetch(`${BASE_URL}/trips/shared-rides/search/${bookingId}`).then(r => r.json());
-        console.log(`✅ Found ${searchRes.count} shared drivers`);
-        
-        if (searchRes.count === 0) throw new Error("No shared drivers found!");
-
-        // 11. USER LOCKS SEAT
-        console.log("\n--- Step 11: Locking Seats ---");
-        const lockRes = await fetch(`${BASE_URL}/trips/shared-rides/book-seat/${bookingId}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                driverId: searchRes.drivers[0].driverId,
-                selectedSeats: ["Front", "Row2-L"]
-            })
-        }).then(r => r.json());
-        if (!lockRes.success) throw new Error("Locking failed: " + lockRes.message);
-        console.log("✅ Seats Locked");
-
-        // 12. DRIVER ACCEPTS
+        // 10 & 11 ARE NOW AUTOMATED IN Step 9 Flow (Auto-matching)
+        // We just wait a bit for the system to process or we can manually check pending requests
         console.log("\n--- Step 12: Driver Accepts ---");
         const pendingReqs = await fetch(`${BASE_URL}/trips/requests/pending`, {
             headers: { 'Authorization': `Bearer ${driverToken}` }

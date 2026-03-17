@@ -64,11 +64,11 @@ const bookingSchema = new mongoose.Schema({
   },
   pickupDate: {
     type: Date,
-    required: true
+    default: Date.now // Default to now if not provided
   },
-  pickupTime: { // Can be string like "14:30" or combined into `pickupDate`
+  pickupTime: { 
     type: String, 
-    required: true
+    default: () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   },
 
   // Financials

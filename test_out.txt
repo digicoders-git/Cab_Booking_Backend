@@ -4,19 +4,19 @@
 ✅ Admin Logged In
 
 --- Step 2: Create SUV Category ---
-✅ Category Ready: 69b828a246923e7e25ceb779
+✅ Category Ready: 69b8423666f16fc6de2ab14d
 
 --- Step 3: Fleet Login ---
 ✅ Fleet Logged In
 
 --- Step 4: Create Fleet Car ---
-✅ Car Created: UP32-SH-9724
+✅ Car Created: UP32-SH-7460
 
 --- Step 5: Create Fleet Driver ---
-✅ Fleet Driver Created: shared.driver9656@test.com
+✅ Fleet Driver Created: shared.driver9842@test.com
 
 --- Step 6: Assign Car ---
-✅ Car Assigned. Main Driver ID: 69b828a246923e7e25ceb78c
+✅ Car Assigned. Main Driver ID: 69b8423666f16fc6de2ab160
 
 --- Step 7: Admin Approve Driver ---
 ✅ Main Driver Approved
@@ -25,13 +25,7 @@
 ✅ Driver Online at Pickup Point
 
 --- Step 9: User Create Shared Booking ---
-✅ Shared Booking Created: 69b828a246923e7e25ceb796
-
---- Step 10: Search Shared Rides ---
-✅ Found 1 shared drivers
-
---- Step 11: Locking Seats ---
-✅ Seats Locked
+✅ Shared Booking Created: 69b8423666f16fc6de2ab16a. Waiting for auto-match...
 
 --- Step 12: Driver Accepts ---
 ✅ Driver Accepted Trip

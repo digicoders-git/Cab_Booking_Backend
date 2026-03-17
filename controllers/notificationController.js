@@ -35,10 +35,13 @@ exports.getMyNotifications = async (req, res) => {
     try {
         const myRole = req.user.role; // Extract role from the JWT token magic!
 
-        // Find active notifications meant for "all" or specifically targeting my role
+        // Find active notifications meant for "all", my role OR specifically for ME
         const notifications = await Notification.find({
             isActive: true,
-            targetRoles: { $in: ["all", myRole] }
+            $or: [
+                { targetRoles: { $in: ["all", myRole] } },
+                { recipient: req.user.id }
+            ]
         }).sort({ createdAt: -1 }); // Newest first
 
         res.json({

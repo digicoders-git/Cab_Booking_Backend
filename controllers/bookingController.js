@@ -25,11 +25,11 @@ exports.estimateFare = async (req, res) => {
             estimatedFare = category.baseFare + (category.privateRatePerKm * distanceKm);
         } else if (rideType === "Shared") {
             const seats = seatsBooked || 1; // Default to 1 seat if not provided
-            
+
             if (seats > category.seatCapacity) {
-                return res.status(400).json({ 
-                    success: false, 
-                    message: `Requested seats (${seats}) exceed car capacity (${category.seatCapacity})` 
+                return res.status(400).json({
+                    success: false,
+                    message: `Requested seats (${seats}) exceed car capacity (${category.seatCapacity})`
                 });
             }
 
@@ -56,11 +56,11 @@ exports.estimateFare = async (req, res) => {
 // 1b. Search Cabs (Google-Ready Flow: Maps Data -> Fare Options)
 exports.getAllFareEstimates = async (req, res) => {
     try {
-        const { 
-            distanceKm, 
-            rideType, 
-            seatsBooked, 
-            pickupAddress, 
+        const {
+            distanceKm,
+            rideType,
+            seatsBooked,
+            pickupAddress,
             dropAddress,
             pickupLat,
             pickupLng,
@@ -68,76 +68,79 @@ exports.getAllFareEstimates = async (req, res) => {
             dropLng 
         } = req.body;
 
-        if (!distanceKm) {
-            return res.status(400).json({ success: false, message: "Distance from Google Maps is required" });
+    if (!distanceKm) {
+        return res.status(400).json({ success: false, message: "Distance from Google Maps is required" });
+    }
+
+    const categories = await CarCategory.find({ isActive: true });
+    const seats = seatsBooked || 1;
+
+    // Normalize rideType to handle lowercase/uppercase (shaired, SHARED, etc.)
+    const normalizedRideType = rideType ? rideType.toLowerCase() : null;
+
+    const options = categories.map(category => {
+        const privateFare = category.baseFare + (category.privateRatePerKm * distanceKm);
+        const sharedFare = category.baseFare + (category.sharedRatePerSeatPerKm * distanceKm * seats);
+
+        // Dynamic Time Calculation based on Category Speed
+        const arrivalMins = Math.floor(Math.random() * (5 - 2 + 1)) + 2;
+
+        const speed = category.avgSpeedKmH || 25;
+        const travelTimeMins = Math.round((distanceKm / speed) * 60);
+
+        const now = new Date();
+        const dropTime = new Date(now.getTime() + (arrivalMins + travelTimeMins) * 60000);
+        const dropTimeStr = dropTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        let cabOption = {
+            carCategoryId: category._id,
+            name: category.name,
+            image: category.image,
+            seatCapacity: category.seatCapacity,
+            arrivalMins: `${arrivalMins} mins away`,
+            dropTime: `Drop ${dropTimeStr}`,
+            description: category.name === "Auto" ? "Hassle-free Auto rides" : `Affordable ${category.name} rides`,
+            tag: category.name === "Bike" ? "FASTEST" : (category.name === "Premium" ? "PREMIUM" : null)
+        };
+
+        // Only show the specific fare user asked for
+        if (normalizedRideType === "private") {
+            cabOption.fare = Math.round(privateFare);
+            cabOption.rideType = "Private";
+            cabOption.seatLayout = null; 
+        } else if (normalizedRideType === "shared") {
+            cabOption.fare = Math.round(sharedFare);
+            cabOption.rideType = "Shared";
+            cabOption.seatLayout = category.seatLayout; 
+        } else {
+            // If no specific choice, show both
+            cabOption.privateFare = Math.round(privateFare);
+            cabOption.sharedFare = Math.round(sharedFare);
+            cabOption.rideType = "Both";
+            cabOption.seatLayout = category.seatLayout;
         }
 
-        const categories = await CarCategory.find({ isActive: true });
-        const seats = seatsBooked || 1;
+        return cabOption;
+    });
 
-        // Normalize rideType to handle lowercase/uppercase (shaired, SHARED, etc.)
-        const normalizedRideType = rideType ? rideType.toLowerCase() : null;
-
-        const options = categories.map(category => {
-            const privateFare = category.baseFare + (category.privateRatePerKm * distanceKm);
-            const sharedFare = category.baseFare + (category.sharedRatePerSeatPerKm * distanceKm * seats);
-
-            // Dynamic Time Calculation based on Category Speed
-            const arrivalMins = Math.floor(Math.random() * (5 - 2 + 1)) + 2; 
-            
-            const speed = category.avgSpeedKmH || 25; 
-            const travelTimeMins = Math.round((distanceKm / speed) * 60);
-            
-            const now = new Date();
-            const dropTime = new Date(now.getTime() + (arrivalMins + travelTimeMins) * 60000);
-            const dropTimeStr = dropTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-            let cabOption = {
-                carCategoryId: category._id,
-                name: category.name,
-                image: category.image,
-                seatCapacity: category.seatCapacity,
-                arrivalMins: `${arrivalMins} mins away`,
-                dropTime: `Drop ${dropTimeStr}`,
-                description: category.name === "Auto" ? "Hassle-free Auto rides" : `Affordable ${category.name} rides`,
-                tag: category.name === "Bike" ? "FASTEST" : (category.name === "Premium" ? "PREMIUM" : null)
-            };
-
-            // Only show the specific fare user asked for
-            if (normalizedRideType === "private") {
-                cabOption.fare = Math.round(privateFare);
-                cabOption.rideType = "Private";
-            } else if (normalizedRideType === "shared") {
-                cabOption.fare = Math.round(sharedFare);
-                cabOption.rideType = "Shared";
-            } else {
-                // If no specific choice, show both
-                cabOption.privateFare = Math.round(privateFare);
-                cabOption.sharedFare = Math.round(sharedFare);
-                cabOption.rideType = "Both";
+    res.json({
+        success: true,
+        mapsInfo: {
+            pickup: pickupAddress || "Coordinates Provided",
+            drop: dropAddress || "Coordinates Provided",
+            distanceKm,
+            coordinates: {
+                from: { lat: pickupLat, lng: pickupLng },
+                to: { lat: dropLat, lng: dropLng }
             }
+        },
+        selectedRideType: rideType || "Both Options Available",
+        options
+    });
 
-            return cabOption;
-        });
-
-        res.json({
-            success: true,
-            mapsInfo: {
-                pickup: pickupAddress || "Coordinates Provided",
-                drop: dropAddress || "Coordinates Provided",
-                distanceKm,
-                coordinates: {
-                    from: { lat: pickupLat, lng: pickupLng },
-                    to: { lat: dropLat, lng: dropLng }
-                }
-            },
-            selectedRideType: rideType || "Both Options Available",
-            options
-        });
-
-    } catch (error) {
-        res.status(500).json({ success: false, message: "Server error", error: error.message });
-    }
+} catch (error) {
+    res.status(500).json({ success: false, message: "Server error", error: error.message });
+}
 };
 
 // 2. Create Booking (User/Agent)
@@ -148,7 +151,8 @@ exports.createBooking = async (req, res) => {
             rideType, carCategoryId, seatsBooked,
             pickupAddress, pickupLat, pickupLng,
             dropAddress, dropLat, dropLng,
-            distanceKm, pickupDate, pickupTime
+            distanceKm, pickupDate, pickupTime,
+            selectedSeats // NEW: If coming from shared flow
         } = req.body;
 
         // Validate basic inputs (Simplified for example)
@@ -188,8 +192,9 @@ exports.createBooking = async (req, res) => {
             pickup: { address: pickupAddress, latitude: pickupLat, longitude: pickupLng },
             drop: { address: dropAddress, latitude: dropLat, longitude: dropLng },
             estimatedDistanceKm: distanceKm,
-            pickupDate,
-            pickupTime,
+            pickupDate: pickupDate || new Date(),
+            pickupTime: pickupTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            selectedSeats: selectedSeats || [], // Track chosen spots
             fareEstimate,
             tripData: { startOtp }
         };
@@ -198,13 +203,13 @@ exports.createBooking = async (req, res) => {
         if (req.user && req.user.role === "user") {
             bookingData.user = req.user.id;
         }
-        
+
         // If Agent is making the booking (Calculate their commission!)
         if (req.user && req.user.role === "agent") {
             bookingData.agent = req.user.id;
-            
+
             // Example logic: Agent gets a flat 5% commission of the fare
-            const commission = Math.round(fareEstimate * 0.05); 
+            const commission = Math.round(fareEstimate * 0.05);
             bookingData.agentCommission = commission;
         }
 
@@ -219,14 +224,14 @@ exports.createBooking = async (req, res) => {
             try {
                 // 1. Check current status: Booking abhi bhi pending hai?
                 const checkBooking = await Booking.findById(newBooking._id);
-                if (!checkBooking || checkBooking.bookingStatus !== "Pending") return; 
+                if (!checkBooking || checkBooking.bookingStatus !== "Pending") return;
 
                 if (timeElapsed >= maxTime) {
                     // 2. 2 Minute over! Expire the booking
                     checkBooking.bookingStatus = "Expired";
                     checkBooking.cancelReason = "No driver nearby accepted the request";
                     await checkBooking.save();
-                    
+
                     // Saari pending requests ko timeout kar do
                     await RideRequest.updateMany({ booking: newBooking._id, status: "Pending" }, { status: "Timeout" });
                     console.log(`Booking ${newBooking._id} expired after 2 mins matching attempts.`);
@@ -238,7 +243,7 @@ exports.createBooking = async (req, res) => {
 
                 // 4. Agle nearest driver ko dhundho
                 const matchResult = await tripController.autoMatchDriver(newBooking._id);
-                
+
                 if (matchResult.success) {
                     console.log(`[Waterfall] Request sent to Next Driver: ${matchResult.driverDetails.name}`);
                 } else {
@@ -254,8 +259,8 @@ exports.createBooking = async (req, res) => {
             }
         };
 
-        // Pehla attempt turant shuru karein (Agar Private ride hai)
-        if (rideType === "Private") {
+        // Pehla attempt turant shuru karein (Agar Private ride hai ya Shared with seats hai)
+        if (rideType === "Private" || (rideType === "Shared" && selectedSeats && selectedSeats.length > 0)) {
             attemptMatching();
         }
 
@@ -264,7 +269,7 @@ exports.createBooking = async (req, res) => {
             message: "Booking created. We are connecting you to the nearest drivers one by one.",
             bookingId: newBooking._id,
             fareEstimate,
-            startOtp 
+            startOtp
         });
 
     } catch (error) {
@@ -276,7 +281,7 @@ exports.createBooking = async (req, res) => {
 exports.getMyBookings = async (req, res) => {
     try {
         let filter = {};
-        
+
         if (req.user.role === "user") {
             filter.user = req.user.id;
         } else if (req.user.role === "agent") {
@@ -315,16 +320,16 @@ exports.cancelBooking = async (req, res) => {
 
         // Only allow cancellation if it hasn't started
         if (["Ongoing", "Completed", "Cancelled"].includes(booking.bookingStatus)) {
-            return res.status(400).json({ 
-                success: false, 
-                message: `Cannot cancel a booking that is currently ${booking.bookingStatus}` 
+            return res.status(400).json({
+                success: false,
+                message: `Cannot cancel a booking that is currently ${booking.bookingStatus}`
             });
         }
 
         booking.bookingStatus = "Cancelled";
         booking.cancelReason = reason || "No reason provided";
         booking.cancelledBy = req.user.role === "user" ? "User" : (req.user.role === "agent" ? "Agent" : "Admin");
-        
+
         await booking.save();
 
         res.json({

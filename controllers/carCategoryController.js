@@ -7,7 +7,7 @@ exports.createCarCategory = async (req, res) => {
 
         const image = req.file ? req.file.filename : null;
 
-        if (!name || !seatCapacity || !privateRatePerKm || !sharedRatePerSeatPerKm) {
+        if (!name || seatCapacity === undefined || privateRatePerKm === undefined || sharedRatePerSeatPerKm === undefined) {
             return res.status(400).json({
                 success: false,
                 message: "Please provide all required fields (name, seatCapacity, rates)"
