@@ -8,13 +8,18 @@ const {
     updateCar,
     deleteCar,
     getAvailableCars,
-    getBusyCars
+    getBusyCars,
+    adminGetAllCars // NEW: Admin view all fleets' cars
 } = require("../controllers/fleetCarController");
 
-const { auth, fleetOnly } = require("../middleware/auth");
+const { auth, fleetOnly, adminOnly } = require("../middleware/auth");
+const upload = require("../middleware/uploadAdminImage");
+
+// Admin: Get All Cars Across ALL Fleets (Admin Only)
+router.get("/admin/all", auth, adminOnly, adminGetAllCars);
 
 // Create Car (Fleet Only)
-router.post("/create", auth, fleetOnly, createCar);
+router.post("/create", auth, fleetOnly, upload.single("image"), createCar);
 
 // Get All Fleet Cars (Fleet Only)
 router.get("/all", auth, fleetOnly, getFleetCars);

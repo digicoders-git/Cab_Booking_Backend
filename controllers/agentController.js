@@ -4,9 +4,14 @@ const jwt = require("jsonwebtoken");
 // Create Agent (Admin Only)
 exports.registerAgent = async (req, res) => {
     try {
-        const { name, email, phone, password, commissionPercentage, address, city, state, pincode } = req.body;
+        const { 
+            name, email, phone, password, commissionPercentage, 
+            address, city, state, pincode,
+            aadhar, pan,
+            accountNumber, ifscCode, accountHolderName, bankName 
+        } = req.body;
 
-        const image = req.file ? req.file.filename : null;
+        const image = req.file ? req.file.filename : (req.body.image || null);
 
         // Check if agent already exists
         const agentExist = await Agent.findOne({ $or: [{ email }, { phone }] });
@@ -29,6 +34,13 @@ exports.registerAgent = async (req, res) => {
             city,
             state,
             pincode,
+            documents: { aadhar, pan },
+            bankDetails: {
+                accountNumber,
+                ifscCode,
+                accountHolderName,
+                bankName
+            },
             isActive: true,  // Admin creates, so directly active
             createdBy: req.user.id  // Admin who created
         });
@@ -333,6 +345,78 @@ exports.updateCommission = async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Error updating commission",
+            error: error.message
+        });
+    }
+};
+
+// Update Agent (Admin Only)
+exports.adminUpdateAgent = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { 
+            name, email, phone, password, commissionPercentage,
+            address, city, state, pincode, aadhar, pan,
+            accountNumber, ifscCode, accountHolderName, bankName
+        } = req.body;
+
+        const agent = await Agent.findById(id);
+
+        if (!agent) {
+            return res.status(404).json({
+                success: false,
+                message: "Agent not found"
+            });
+        }
+
+        // Update basic info
+        if (name) agent.name = name;
+        if (email) agent.email = email;
+        if (phone) agent.phone = phone;
+        if (password) agent.password = password;
+        if (address) agent.address = address;
+        if (city) agent.city = city;
+        if (state) agent.state = state;
+        if (pincode) agent.pincode = pincode;
+        if (commissionPercentage !== undefined) agent.commissionPercentage = commissionPercentage;
+
+        // Update image if provided
+        if (req.file) {
+            agent.image = req.file.filename;
+        } else if (req.body.image) {
+            agent.image = req.body.image;
+        }
+
+        // Update Documents (Aadhar / PAN)
+        if (aadhar || pan) {
+            agent.documents = {
+                aadhar: aadhar || agent.documents?.aadhar,
+                pan: pan || agent.documents?.pan
+            };
+        }
+
+        // Update Bank Details if any field provided
+        if (accountNumber || ifscCode || accountHolderName || bankName) {
+            agent.bankDetails = {
+                accountNumber: accountNumber || agent.bankDetails?.accountNumber,
+                ifscCode: ifscCode || agent.bankDetails?.ifscCode,
+                accountHolderName: accountHolderName || agent.bankDetails?.accountHolderName,
+                bankName: bankName || agent.bankDetails?.bankName
+            };
+        }
+
+        await agent.save();
+
+        res.json({
+            success: true,
+            message: "Agent updated successfully by Admin",
+            agent
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error updating agent",
             error: error.message
         });
     }

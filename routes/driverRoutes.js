@@ -18,7 +18,8 @@ const {
     getPendingDrivers,
     getApprovedDrivers,
     approveDriver,
-    rejectDriver
+    rejectDriver,
+    adminUpdateDriver
 } = require("../controllers/driverController");
 
 const { auth, adminOnly, driverOnly, fleetOnly } = require("../middleware/auth");
@@ -76,5 +77,8 @@ router.delete("/delete/:id", auth, adminOnly, deleteDriver);
 
 // Toggle Driver Status (Admin Only)
 router.put("/toggle-status/:id", auth, adminOnly, toggleDriverStatus);
+
+// Update Driver Manually (Admin Only)
+router.put("/update/:id", auth, adminOnly, upload.single("image"), adminUpdateDriver);
 
 module.exports = router;

@@ -309,11 +309,12 @@ exports.getCarAssignmentStatus = async (req, res) => {
     }
 };
 
-// Get All Assignments for Fleet (Fleet Only)
+// Get All ACTIVE Assignments for Fleet (Fleet Only)
 exports.getAllAssignments = async (req, res) => {
     try {
         const assignments = await FleetAssignment.find({
-            fleetId: req.user.id
+            fleetId: req.user.id,
+            isAssigned: true // ← Sirf active assignments dikhao
         })
             .populate("driverId", "name email phone")
             .populate("carId", "carNumber carModel carType");
@@ -328,6 +329,32 @@ exports.getAllAssignments = async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Error fetching assignments",
+            error: error.message
+        });
+    }
+};
+
+// Get All UNASSIGNED (PAST) Assignments for Fleet (Fleet Only)
+exports.getUnassignedHistory = async (req, res) => {
+    try {
+        const assignments = await FleetAssignment.find({
+            fleetId: req.user.id,
+            isAssigned: false // ← Sirf purani assignments (History)
+        })
+            .populate("driverId", "name email phone")
+            // .populate("carId") // ← Request ke hisaab se car object populate nahi kar rahe, sirf snapshot name/number dikhega
+            .sort({ unassignedAt: -1 });
+
+        res.json({
+            success: true,
+            count: assignments.length,
+            assignments
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching unassigned history",
             error: error.message
         });
     }
@@ -367,6 +394,32 @@ exports.getAssignmentHistory = async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Error fetching assignment history",
+            error: error.message
+        });
+    }
+};
+
+// ============================================================
+// Admin: Get All Assignments Across All Fleets (Admin Only)
+// ============================================================
+exports.adminGetAllAssignmentsGlobal = async (req, res) => {
+    try {
+        const assignments = await FleetAssignment.find()
+            .populate("fleetId", "name companyName")
+            .populate("driverId", "name phone email")
+            .populate("carId", "carNumber carModel carType")
+            .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            count: assignments.length,
+            assignments
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching global fleet assignments",
             error: error.message
         });
     }

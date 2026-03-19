@@ -6,6 +6,7 @@ const {
     getAllFareEstimates,
     createBooking,
     getMyBookings,
+    getAllBookings, // NEW: Admin view
     cancelBooking,
     getSingleBooking
 } = require("../controllers/bookingController");
@@ -24,6 +25,9 @@ router.post("/create", auth, createBooking);
 
 // 3. View Booking History (User/Agent)
 router.get("/my-bookings", auth, getMyBookings);
+
+// 3b. View All Bookings (Admin Only)
+router.get("/all", auth, adminOnly, getAllBookings);
 
 // 4. Cancel Booking (User/Agent/Admin)
 router.put("/cancel/:bookingId", auth, cancelBooking);

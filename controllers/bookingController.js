@@ -306,6 +306,26 @@ exports.getMyBookings = async (req, res) => {
     }
 };
 
+// 3b. Admin: Get All Bookings in System
+exports.getAllBookings = async (req, res) => {
+    try {
+        const bookings = await Booking.find()
+            .populate("carCategory", "name image")
+            .populate("assignedDriver", "name phone carDetails")
+            .populate("user", "name phone")
+            .populate("agent", "name phone")
+            .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            count: bookings.length,
+            bookings
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
 // 4. Cancel Booking
 exports.cancelBooking = async (req, res) => {
     try {

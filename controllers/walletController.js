@@ -155,3 +155,40 @@ exports.rejectWithdrawal = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
+
+// 5. Admin: Get All Transactions in System
+exports.getAllTransactions = async (req, res) => {
+    try {
+        const transactions = await Transaction.find()
+            .sort({ createdAt: -1 })
+            .limit(100);
+
+        res.json({
+            success: true,
+            count: transactions.length,
+            transactions
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// 6. Admin: Get all Pending Withdrawal Requests
+exports.getPendingPayouts = async (req, res) => {
+    try {
+        const pendingPayouts = await Transaction.find({ 
+            category: 'Withdrawal', 
+            status: 'Pending' 
+        })
+        .populate("user", "name phone email") // Dynamic populate based on userModel
+        .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            count: pendingPayouts.length,
+            payouts: pendingPayouts
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};

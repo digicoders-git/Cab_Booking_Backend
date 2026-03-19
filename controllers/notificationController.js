@@ -3,25 +3,36 @@ const Notification = require("../models/Notification");
 // 1. Create a Notification (Admin Only)
 exports.createNotification = async (req, res) => {
     try {
-        const { title, message, targetRoles } = req.body;
+        const { title, message, targetRoles, recipient, recipientModel } = req.body;
 
-        if (!title || !message || !targetRoles || !Array.isArray(targetRoles)) {
+        if (!title || !message) {
             return res.status(400).json({ 
                 success: false, 
-                message: "Please provide title, message, and targetRoles as an array" 
+                message: "Please provide both title and message" 
+            });
+        }
+
+        // Validate that either targetRoles exists OR a specific recipient is provided
+        if ((!targetRoles || !Array.isArray(targetRoles)) && !recipient) {
+            return res.status(400).json({
+                success: false,
+                message: "Please provide either targetRoles (array) or a specific recipient"
             });
         }
 
         const notification = await Notification.create({
             title,
             message,
-            targetRoles,
-            createdBy: req.user.id
+            targetRoles: targetRoles || [],
+            recipient: recipient || null,
+            recipientModel: recipientModel || null,
+            createdBy: req.user.id,
+            createdByModel: 'Admin'
         });
 
         res.status(201).json({
             success: true,
-            message: "Notification broadcasted successfully!",
+            message: "Notification sent successfully!",
             notification
         });
 

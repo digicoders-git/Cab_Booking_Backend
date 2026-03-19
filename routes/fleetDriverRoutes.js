@@ -8,11 +8,15 @@ const {
     deleteDriver,
     getPendingDrivers,
     getApprovedDrivers,
-    updateDriver
+    updateDriver,
+    adminGetAllDrivers // NEW: Admin view all fleets' drivers
 } = require("../controllers/fleetDriverController");
 
-const { auth, fleetOnly } = require("../middleware/auth");
+const { auth, fleetOnly, adminOnly } = require("../middleware/auth");
 const upload = require("../middleware/uploadAdminImage");
+
+// Admin: Get All Drivers Across ALL Fleets (Admin Only)
+router.get("/admin/all", auth, adminOnly, adminGetAllDrivers);
 
 // Create Driver (Fleet Only)
 router.post("/create", auth, fleetOnly, upload.single("image"), createDriver);

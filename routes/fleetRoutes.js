@@ -12,7 +12,8 @@ const {
     toggleFleetStatus,
     getFleetDashboard,
     updateWalletBalance,
-    getFleetPerformance
+    getFleetPerformance,
+    adminUpdateFleet
 } = require("../controllers/fleetController");
 
 const { auth, adminOnly, fleetOnly } = require("../middleware/auth");
@@ -47,6 +48,9 @@ router.put("/toggle-status/:id", auth, adminOnly, toggleFleetStatus);
 
 // Update Fleet Wallet Balance (Admin Only)
 router.put("/update-wallet/:id", auth, adminOnly, updateWalletBalance);
+
+// Update Fleet Manually (Admin Only)
+router.put("/update/:id", auth, adminOnly, upload.single("image"), adminUpdateFleet);
 
 // Get Single Fleet (Admin Only) - MUST BE LAST
 router.get("/:id", auth, adminOnly, getSingleFleet);

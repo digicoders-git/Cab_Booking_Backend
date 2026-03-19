@@ -273,3 +273,28 @@ exports.updateDriver = async (req, res) => {
         });
     }
 };
+
+// ============================================================
+// Admin: Get All Drivers Across All Fleets (Admin Only)
+// ============================================================
+exports.adminGetAllDrivers = async (req, res) => {
+    try {
+        const drivers = await FleetDriver.find()
+            .populate("fleetId", "name companyName")
+            .select("-password")
+            .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            count: drivers.length,
+            drivers
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching global fleet drivers",
+            error: error.message
+        });
+    }
+};

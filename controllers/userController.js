@@ -1,59 +1,10 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
-// Register User (Phone Based)
-exports.createUser = async (req, res) => {
-    try {
-        const { name, email, phone, password, otp } = req.body;
-
-        if (!phone || !otp) {
-            return res.status(400).json({ success: false, message: "Phone number and OTP are required" });
-        }
-
-        // Using a fixed OTP for registration testing
-        const FIX_OTP = "123456";
-
-        if (otp !== FIX_OTP) {
-            return res.status(400).json({ success: false, message: "Invalid OTP" });
-        }
-
-        const image = req.file ? req.file.filename : null;
-
-        let user = await User.findOne({ phone });
-
-        if (user) {
-            return res.status(400).json({
-                success: false,
-                message: "User with this phone number already exists"
-            });
-        }
-
-        user = await User.create({
-            name: name || "",
-            email: email || "",
-            phone,
-            password: password || "",
-            image
-        });
-
-        res.status(201).json({
-            success: true,
-            message: "User registered successfully. You can now login using OTP.",
-            user
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "User could not be created",
-            error: error.message
-        });
-    }
-};
-
-// Login User Using Phone and Fixed OTP
+// Login / Register User Using Phone and Fixed OTP (Combined API)
 exports.loginUser = async (req, res) => {
     try {
-        const { phone, otp } = req.body;
+        const { phone, otp, name, email } = req.body;
 
         if (!phone || !otp) {
             return res.status(400).json({ success: false, message: "Phone number and OTP are required" });
@@ -66,33 +17,44 @@ exports.loginUser = async (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid OTP" });
         }
 
-        const user = await User.findOne({ phone });
+        let user = await User.findOne({ phone });
+
+        let isNewUser = false;
 
         if (!user) {
-            return res.status(404).json({ success: false, message: "User not found. Please register first." });
+            // If user doesn't exist, register them (New Flow)
+            user = await User.create({
+                phone,
+                name: name || "",
+                email: email || "",
+                isActive: true
+            });
+            isNewUser = true;
         }
 
         if (!user.isActive) {
             return res.status(403).json({ success: false, message: "Your account has been deactivated by Admin." });
         }
 
-        // Generate Token
+        // Generate JWT Token
         const token = jwt.sign(
             { id: user._id, role: "user" },
             process.env.JWT_SECRET,
             { expiresIn: "7d" }
         );
 
-        res.status(200).json({
+        res.status(isNewUser ? 201 : 200).json({
             success: true,
-            message: "Login successful",
+            message: isNewUser ? "Registration and Login successful" : "Login successful",
             token,
-            user
+            user,
+            isNewUser
         });
+
     } catch (error) {
         res.status(500).json({
             success: false,
-            message: "Login failed",
+            message: "Authentication failed",
             error: error.message
         });
     }

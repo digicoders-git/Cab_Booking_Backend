@@ -1,6 +1,8 @@
 const Fleet = require("../models/Fleet");
 const FleetCar = require("../models/FleetCar");
 const FleetDriver = require("../models/FleetDriver");
+const FleetAssignment = require("../models/FleetAssignment");
+const Transaction = require("../models/Transaction");
 const jwt = require("jsonwebtoken");
 
 // Create Fleet (Admin Only)
@@ -8,7 +10,8 @@ exports.createFleet = async (req, res) => {
     try {
         const { 
             name, email, phone, password, companyName, gstNumber, panNumber,
-            address, city, state, pincode 
+            address, city, state, pincode, commissionPercentage,
+            accountNumber, ifscCode, accountHolderName, bankName
         } = req.body;
 
         const image = req.file ? req.file.filename : null;
@@ -36,6 +39,13 @@ exports.createFleet = async (req, res) => {
             city,
             state,
             pincode,
+            commissionPercentage: commissionPercentage || 10,
+            bankDetails: {
+                accountNumber,
+                ifscCode,
+                accountHolderName,
+                bankName
+            },
             isActive: true,
             createdBy: req.user.id
         });
@@ -315,7 +325,7 @@ exports.toggleFleetStatus = async (req, res) => {
 // Get Fleet Dashboard Stats
 exports.getFleetDashboard = async (req, res) => {
     try {
-        const fleet = await Fleet.findById(req.user.id);
+        const fleet = await Fleet.findById(req.user.id).select("-password -__v");
 
         if (!fleet) {
             return res.status(404).json({
@@ -324,16 +334,46 @@ exports.getFleetDashboard = async (req, res) => {
             });
         }
 
-        // Real-time calculation: Count actual cars and drivers from their collections
-        const carCount = await FleetCar.countDocuments({ fleetId: req.user.id });
-        const driverCount = await FleetDriver.countDocuments({ fleetId: req.user.id });
+        // 1. Car Stats
+        const totalCars = await FleetCar.countDocuments({ fleetId: req.user.id });
+        const availableCars = await FleetCar.countDocuments({ fleetId: req.user.id, isAvailable: true, isActive: true });
+        const busyCars = await FleetCar.countDocuments({ fleetId: req.user.id, isBusy: true });
+
+        // 2. Driver Stats
+        const totalDrivers = await FleetDriver.countDocuments({ fleetId: req.user.id });
+        const activeDrivers = await FleetDriver.countDocuments({ fleetId: req.user.id, isApproved: true });
+        const pendingDrivers = await FleetDriver.countDocuments({ fleetId: req.user.id, isApproved: false, isRejected: false });
+
+        // 3. Recent 5 Assignments
+        const recentAssignments = await FleetAssignment.find({ fleetId: req.user.id })
+            .populate("driverId", "name phone")
+            .populate("carId", "carNumber carModel")
+            .sort({ createdAt: -1 })
+            .limit(5);
+
+        // 4. Recent 5 Wallet Transactions
+        const recentTransactions = await Transaction.find({ user: req.user.id, userModel: "Fleet" })
+            .sort({ createdAt: -1 })
+            .limit(5);
 
         const dashboardData = {
-            totalCars: carCount,        // Actual count from Database
-            totalDrivers: driverCount,  // Actual count from Database
-            totalEarnings: fleet.totalEarnings,
-            walletBalance: fleet.walletBalance,
-            activeStatus: fleet.isActive
+            profile: fleet,
+            stats: {
+                cars: {
+                    total: totalCars,
+                    available: availableCars,
+                    busy: busyCars
+                },
+                drivers: {
+                    total: totalDrivers,
+                    active: activeDrivers,
+                    pending: pendingDrivers
+                }
+            },
+            recentActivity: {
+                assignments: recentAssignments,
+                transactions: recentTransactions
+            }
         };
 
         res.json({
@@ -371,6 +411,8 @@ exports.updateWalletBalance = async (req, res) => {
             });
         }
 
+        const Transaction = require("../models/Transaction");
+
         if (type === 'credit') {
             fleet.walletBalance += amount;
         } else if (type === 'debit') {
@@ -384,6 +426,17 @@ exports.updateWalletBalance = async (req, res) => {
         }
 
         await fleet.save();
+
+        // Create transaction record for audit
+        await Transaction.create({
+            user: fleet._id,
+            userModel: 'Fleet',
+            amount: amount,
+            type: type === 'credit' ? 'Credit' : 'Debit',
+            category: 'Admin Adjustment',
+            status: 'Completed',
+            description: `Admin manual ${type}`
+        });
 
         res.json({
             success: true,
@@ -400,10 +453,90 @@ exports.updateWalletBalance = async (req, res) => {
     }
 };
 
-// Get Fleet Performance Report
+// Get Fleet Performance Report (Real Data Driven)
 exports.getFleetPerformance = async (req, res) => {
     try {
-        const fleet = await Fleet.findById(req.user.id);
+        const fleetId = req.user.id;
+        const fleet = await Fleet.findById(fleetId);
+
+        if (!fleet) {
+            return res.status(404).json({ success: false, message: "Fleet not found" });
+        }
+
+        // 1. Car Wise Performance (Top 5 by Earnings)
+        const topCars = await FleetCar.find({ fleetId })
+            .sort({ totalEarnings: -1 })
+            .limit(5)
+            .select("carNumber carModel totalTrips totalEarnings");
+
+        // 2. Car Wise Performance (Bottom 5 by Trips - need more attention)
+        const leastUsedCars = await FleetCar.find({ fleetId })
+            .sort({ totalTrips: 1 })
+            .limit(5)
+            .select("carNumber carModel totalTrips totalEarnings");
+
+        // 3. Overall Stats
+        const totalCars = await FleetCar.countDocuments({ fleetId });
+        const busyCars = await FleetCar.countDocuments({ fleetId, isBusy: true });
+        
+        // Utilization calculation
+        const utilizationRate = totalCars > 0 ? (busyCars / totalCars) * 100 : 0;
+
+        // 4. Monthly Earnings Snapshot (Last 30 days transactions from wallet)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const recentTransactions = await Transaction.find({
+            user: fleetId,
+            userModel: 'Fleet',
+            type: 'Credit',
+            createdAt: { $gte: thirtyDaysAgo }
+        });
+
+        const monthlyEarnings = recentTransactions.reduce((acc, trans) => acc + trans.amount, 0);
+
+        const performanceReport = {
+            fleetStats: {
+                totalEarnings: fleet.totalEarnings,
+                walletBalance: fleet.walletBalance,
+                monthlyEarningsSnapshot: monthlyEarnings, // Real calculation from transactions
+                totalCars,
+                totalDrivers: await FleetDriver.countDocuments({ fleetId })
+            },
+            utilization: {
+                busyCarsCount: busyCars,
+                utilizationRate: Math.round(utilizationRate) + "%"
+            },
+            topPerformingCars: topCars,
+            needsAttentionCars: leastUsedCars, // Cars with 0 or very few trips
+            reportGeneratedAt: new Date()
+        };
+
+        res.json({
+            success: true,
+            report: performanceReport
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error generating performance report",
+            error: error.message
+        });
+    }
+};
+
+// Update Fleet (Admin Only)
+exports.adminUpdateFleet = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { 
+            name, email, phone, password, companyName, gstNumber, panNumber,
+            address, city, state, pincode, commissionPercentage,
+            accountNumber, ifscCode, accountHolderName, bankName
+        } = req.body;
+
+        const fleet = await Fleet.findById(id);
 
         if (!fleet) {
             return res.status(404).json({
@@ -412,26 +545,47 @@ exports.getFleetPerformance = async (req, res) => {
             });
         }
 
-        // Mock performance data - you can implement actual calculations
-        const performanceData = {
-            totalCars: fleet.totalCars,
-            totalDrivers: fleet.totalDrivers,
-            totalEarnings: fleet.totalEarnings,
-            monthlyEarnings: fleet.totalEarnings * 0.1, // Mock calculation
-            averageEarningsPerCar: fleet.totalCars > 0 ? fleet.totalEarnings / fleet.totalCars : 0,
-            activeDriversPercentage: fleet.totalDrivers > 0 ? 85 : 0, // Mock percentage
-            carUtilizationRate: fleet.totalCars > 0 ? 75 : 0 // Mock percentage
-        };
+        // Update basic info
+        if (name) fleet.name = name;
+        if (email) fleet.email = email;
+        if (phone) fleet.phone = phone;
+        if (password) fleet.password = password;
+        if (companyName) fleet.companyName = companyName;
+        if (gstNumber !== undefined) fleet.gstNumber = gstNumber;
+        if (panNumber !== undefined) fleet.panNumber = panNumber;
+        if (address) fleet.address = address;
+        if (city) fleet.city = city;
+        if (state) fleet.state = state;
+        if (pincode) fleet.pincode = pincode;
+        if (commissionPercentage !== undefined) fleet.commissionPercentage = commissionPercentage;
+
+        // Update image if provided
+        if (req.file) {
+            fleet.image = req.file.filename;
+        }
+
+        // Update Bank Details if any field provided
+        if (accountNumber || ifscCode || accountHolderName || bankName) {
+            fleet.bankDetails = {
+                accountNumber: accountNumber || fleet.bankDetails.accountNumber,
+                ifscCode: ifscCode || fleet.bankDetails.ifscCode,
+                accountHolderName: accountHolderName || fleet.bankDetails.accountHolderName,
+                bankName: bankName || fleet.bankDetails.bankName
+            };
+        }
+
+        await fleet.save();
 
         res.json({
             success: true,
-            performance: performanceData
+            message: "Fleet updated successfully by Admin",
+            fleet
         });
 
     } catch (error) {
         res.status(500).json({
             success: false,
-            message: "Error fetching performance",
+            message: "Error updating fleet",
             error: error.message
         });
     }

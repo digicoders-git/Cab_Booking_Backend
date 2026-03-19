@@ -6,16 +6,24 @@ const {
     unassignCarFromDriver,
     getCarAssignmentStatus,
     getAllAssignments,
-    getAssignmentHistory
+    getUnassignedHistory, // ← Naya function add kiya
+    getAssignmentHistory,
+    adminGetAllAssignmentsGlobal // NEW: Admin view all fleets' assignments
 } = require("../controllers/fleetAssignmentController");
 
-const { auth, fleetOnly } = require("../middleware/auth");
+const { auth, fleetOnly, adminOnly } = require("../middleware/auth");
+
+// Admin: Get All Assignments Across ALL Fleets (Admin Only)
+router.get("/admin/all", auth, adminOnly, adminGetAllAssignmentsGlobal);
 
 // Assign Car to Driver (Fleet Only)
 router.post("/assign", auth, fleetOnly, assignCarToDriver);
 
-// Get All Assignments for Fleet (Fleet Only)
+// Get All ACTIVE Assignments for Fleet (Fleet Only)
 router.get("/all", auth, fleetOnly, getAllAssignments);
+
+// Get All UNASSIGNED (PAST) Assignments for Fleet (Fleet Only)
+router.get("/unassigned", auth, fleetOnly, getUnassignedHistory);
 
 // Unassign Car from Driver (Fleet Only) - uses assignmentId
 router.put("/unassign/:assignmentId", auth, fleetOnly, unassignCarFromDriver);

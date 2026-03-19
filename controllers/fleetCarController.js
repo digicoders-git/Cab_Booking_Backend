@@ -7,8 +7,11 @@ exports.createCar = async (req, res) => {
     try {
         const {
             carNumber, carModel, carBrand, carType, seatCapacity, carColor,
-            manufacturingYear, insuranceExpiry, permitExpiry, pucExpiry
+            manufacturingYear, insuranceExpiry, permitExpiry, pucExpiry,
+            lastServiceDate, nextServiceDate
         } = req.body;
+
+        const image = req.file ? req.file.filename : null;
 
         if (!carNumber || !carModel || !carType) {
             return res.status(400).json({
@@ -42,12 +45,15 @@ exports.createCar = async (req, res) => {
             carModel,
             carBrand,
             carType,
+            image,
             seatCapacity: finalSeatCapacity,
             carColor,
             manufacturingYear,
             insuranceExpiry,
             permitExpiry,
             pucExpiry,
+            lastServiceDate,
+            nextServiceDate,
             fleetId: req.user.id,  // Fleet ID
             isActive: true,
             isAvailable: true
@@ -290,6 +296,31 @@ exports.getBusyCars = async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Error fetching busy cars",
+            error: error.message
+        });
+    }
+};
+
+// ============================================================
+// Admin: Get All Cars Across All Fleets (Admin Only)
+// ============================================================
+exports.adminGetAllCars = async (req, res) => {
+    try {
+        const cars = await FleetCar.find()
+            .populate("fleetId", "name companyName")
+            .populate("carType", "name")
+            .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            count: cars.length,
+            cars
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching global fleet cars",
             error: error.message
         });
     }

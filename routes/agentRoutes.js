@@ -10,7 +10,8 @@ const {
     getSingleAgent,
     deleteAgent,
     toggleAgentStatus,
-    updateCommission
+    updateCommission,
+    adminUpdateAgent
 } = require("../controllers/agentController");
 
 const { auth, adminOnly, agentOnly } = require("../middleware/auth");
@@ -39,6 +40,9 @@ router.put("/toggle-status/:id", auth, adminOnly, toggleAgentStatus);
 
 // Update Agent Commission (Admin Only)
 router.put("/update-commission/:id", auth, adminOnly, updateCommission);
+
+// Update Agent Manually (Admin Only)
+router.put("/update/:id", auth, adminOnly, upload.single("image"), adminUpdateAgent);
 
 // Get Single Agent (Admin Only)
 router.get("/:id", auth, adminOnly, getSingleAgent);

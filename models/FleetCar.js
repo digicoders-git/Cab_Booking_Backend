@@ -9,6 +9,11 @@ const fleetCarSchema = new mongoose.Schema({
     unique: true,
     uppercase: true
   },
+
+  image: {
+    type: String,
+    default: null
+  },
   
   carModel: {
     type: String,

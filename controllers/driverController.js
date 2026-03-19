@@ -10,6 +10,8 @@ exports.registerDriver = async (req, res) => {
             // Driver Details
             name, email, phone, password, licenseNumber, licenseExpiry, 
             address, city, state, pincode,
+            aadhar, pan,
+            accountNumber, ifscCode, accountHolderName, bankName,
             
             // Car Details (Optional for direct registration)
             carNumber, carModel, carBrand, carType, seatCapacity, carColor, 
@@ -68,6 +70,17 @@ exports.registerDriver = async (req, res) => {
             city,
             state,
             pincode,
+            documents: {
+                license: licenseNumber,
+                aadhar,
+                pan
+            },
+            bankDetails: {
+                accountNumber,
+                ifscCode,
+                accountHolderName,
+                bankName
+            },
             carDetails,  // Car details included
             isActive: false,  // Inactive until admin approves
             isApproved: false,  // Pending approval
@@ -687,6 +700,91 @@ exports.rejectDriver = async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Error rejecting driver",
+            error: error.message
+        });
+    }
+};
+
+// Update Driver Manually (Admin Only)
+exports.adminUpdateDriver = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { 
+            name, email, phone, password, licenseNumber, licenseExpiry, 
+            address, city, state, pincode,
+            carNumber, carModel, carBrand, carType, seatCapacity, carColor,
+            manufacturingYear, insuranceExpiry, permitExpiry, pucExpiry,
+            accountNumber, ifscCode, accountHolderName, bankName
+        } = req.body;
+
+        const driver = await Driver.findById(id);
+
+        if (!driver) {
+            return res.status(404).json({
+                success: false,
+                message: "Driver not found"
+            });
+        }
+
+        // Update basic info
+        if (name) driver.name = name;
+        if (email) driver.email = email;
+        if (phone) driver.phone = phone;
+        if (licenseNumber) driver.licenseNumber = licenseNumber;
+        if (licenseExpiry) driver.licenseExpiry = licenseExpiry;
+        if (address) driver.address = address;
+        if (city) driver.city = city;
+        if (state) driver.state = state;
+        if (pincode) driver.pincode = pincode;
+
+        if (password) {
+            const hashedPassword = await bcrypt.hash(password, 10);
+            driver.password = hashedPassword;
+        }
+
+        // Update image if provided
+        if (req.file) {
+            driver.image = req.file.filename;
+        }
+
+        // Update Car Details
+        if (carNumber || carModel || carBrand || carType) {
+            driver.carDetails = {
+                carNumber: carNumber || driver.carDetails?.carNumber,
+                carModel: carModel || driver.carDetails?.carModel,
+                carBrand: carBrand || driver.carDetails?.carBrand,
+                carType: carType || driver.carDetails?.carType,
+                seatCapacity: seatCapacity || driver.carDetails?.seatCapacity || 4,
+                carColor: carColor || driver.carDetails?.carColor,
+                manufacturingYear: manufacturingYear || driver.carDetails?.manufacturingYear,
+                insuranceExpiry: insuranceExpiry || driver.carDetails?.insuranceExpiry,
+                permitExpiry: permitExpiry || driver.carDetails?.permitExpiry,
+                pucExpiry: pucExpiry || driver.carDetails?.pucExpiry
+            };
+        }
+
+        // Update Bank Details
+        if (accountNumber || ifscCode || accountHolderName || bankName) {
+            driver.bankDetails = {
+                accountNumber: accountNumber || driver.bankDetails?.accountNumber,
+                ifscCode: ifscCode || driver.bankDetails?.ifscCode,
+                accountHolderName: accountHolderName || driver.bankDetails?.accountHolderName,
+                bankName: bankName || driver.bankDetails?.bankName
+            };
+        }
+
+        await driver.save();
+
+        res.json({
+            success: true,
+            message: "Driver updated successfully by Admin",
+            driver
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error updating driver",
             error: error.message
         });
     }
