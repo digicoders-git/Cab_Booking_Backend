@@ -11,6 +11,7 @@ const {
     deleteAgent,
     toggleAgentStatus,
     updateCommission,
+    getAgentDashboard, // Naya function add kiya
     adminUpdateAgent
 } = require("../controllers/agentController");
 
@@ -25,6 +26,9 @@ router.post("/login", loginAgent);
 
 // Agent Profile (Protected - Agent Only)
 router.get("/profile", auth, agentOnly, getAgentProfile);
+
+// Agent Dashboard (Protected - Agent Only)
+router.get("/dashboard", auth, agentOnly, getAgentDashboard);
 
 // Update Agent Profile (Protected - Agent Only)
 router.put("/profile-update", auth, agentOnly, upload.single("image"), updateAgentProfile);

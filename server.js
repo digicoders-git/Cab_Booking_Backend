@@ -15,6 +15,7 @@ const bookingRoutes = require("./routes/bookingRoutes"); // NEW: Booking Engine
 const tripRoutes = require("./routes/tripRoutes"); // NEW: Trip Assignment & Execution
 const notificationRoutes = require("./routes/notificationRoutes"); // NEW: Notification System
 const walletRoutes = require("./routes/walletRoutes"); // NEW: Earning & Payout System
+const supportRoutes = require("./routes/supportRoutes"); // NEW: Support System for all panels
 
 const app = express();
 
@@ -42,6 +43,7 @@ app.use("/api/bookings", bookingRoutes); // NEW
 app.use("/api/trips", tripRoutes); // NEW: Auto-Match & Driver Trip Actions
 app.use("/api/notifications", notificationRoutes); // NEW: App Notifications
 app.use("/api/wallet", walletRoutes); // NEW: Earning & Payout Management
+app.use("/api/support", supportRoutes); // NEW: Support System
 
 
 const PORT = process.env.PORT || 5000;

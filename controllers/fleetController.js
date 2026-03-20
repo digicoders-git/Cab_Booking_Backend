@@ -590,3 +590,37 @@ exports.adminUpdateFleet = async (req, res) => {
         });
     }
 };
+
+// Get All Completed Rides for Fleet (Detailed Report)
+exports.getFleetCompletedRides = async (req, res) => {
+    try {
+        const fleetId = req.user.id;
+        const Booking = require("../models/Booking");
+
+        // 1. Get all drivers belonging to this fleet
+        const fleetDrivers = await FleetDriver.find({ fleetId }).select("driverId");
+        const driverIds = fleetDrivers.map(fd => fd.driverId);
+
+        // 2. Find all completed bookings for these drivers
+        const completedBookings = await Booking.find({
+            assignedDriver: { $in: driverIds },
+            bookingStatus: "Completed"
+        })
+        .populate("assignedDriver", "name phone")
+        .populate("carCategory", "name")
+        .sort({ updatedAt: -1 });
+
+        res.json({
+            success: true,
+            count: completedBookings.length,
+            completedRides: completedBookings
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching completed rides report",
+            error: error.message
+        });
+    }
+};

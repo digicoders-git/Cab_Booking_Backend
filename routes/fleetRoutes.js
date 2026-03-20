@@ -13,6 +13,7 @@ const {
     getFleetDashboard,
     updateWalletBalance,
     getFleetPerformance,
+    getFleetCompletedRides,
     adminUpdateFleet
 } = require("../controllers/fleetController");
 
@@ -36,6 +37,9 @@ router.get("/dashboard", auth, fleetOnly, getFleetDashboard);
 
 // Fleet Performance Report (Protected - Fleet Only)
 router.get("/performance", auth, fleetOnly, getFleetPerformance);
+
+// Fleet Completed Rides Report (Protected - Fleet Only)
+router.get("/completed-rides", auth, fleetOnly, getFleetCompletedRides);
 
 // Get All Fleets (Admin Only)
 router.get("/all", auth, adminOnly, getAllFleets);

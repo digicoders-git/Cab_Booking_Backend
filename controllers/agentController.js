@@ -146,6 +146,70 @@ exports.getAgentProfile = async (req, res) => {
     }
 };
 
+// Get Agent Dashboard Stats
+exports.getAgentDashboard = async (req, res) => {
+    try {
+        const Booking = require("../models/Booking");
+        const agent = await Agent.findById(req.user.id);
+
+        if (!agent) {
+            return res.status(404).json({ success: false, message: "Agent not found" });
+        }
+
+        // Fetch counts for all categories
+        const [
+            totalBookings,
+            pendingBookings,
+            acceptedBookings,
+            ongoingBookings,
+            completedBookings,
+            cancelledBookings,
+            expiredBookings
+        ] = await Promise.all([
+            Booking.countDocuments({ agent: req.user.id }),
+            Booking.countDocuments({ agent: req.user.id, bookingStatus: "Pending" }),
+            Booking.countDocuments({ agent: req.user.id, bookingStatus: "Accepted" }),
+            Booking.countDocuments({ agent: req.user.id, bookingStatus: "Ongoing" }),
+            Booking.countDocuments({ agent: req.user.id, bookingStatus: "Completed" }),
+            Booking.countDocuments({ agent: req.user.id, bookingStatus: "Cancelled" }),
+            Booking.countDocuments({ agent: req.user.id, bookingStatus: "Expired" })
+        ]);
+        
+        // Count active bookings (Pending or Accepted or Ongoing)
+        const activeBookings = pendingBookings + acceptedBookings + ongoingBookings;
+
+        // Recent 5 Bookings for the dashboard
+        const recentBookings = await Booking.find({ agent: req.user.id })
+            .select("passengerDetails pickup drop fareEstimate bookingStatus createdAt")
+            .sort({ createdAt: -1 })
+            .limit(5);
+
+        res.json({
+            success: true,
+            dashboard: {
+                totalBookings,
+                activeBookings,
+                pendingBookings,
+                ongoingBookings,
+                completedBookings,
+                cancelledBookings,
+                expiredBookings,
+                totalEarnings: agent.totalEarnings || 0,
+                walletBalance: agent.walletBalance || 0,
+                commissionPercentage: agent.commissionPercentage,
+                recentBookings
+            }
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching agent dashboard",
+            error: error.message
+        });
+    }
+};
+
 // Update Agent Profile (Including Documents)
 exports.updateAgentProfile = async (req, res) => {
     try {
