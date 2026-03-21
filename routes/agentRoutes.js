@@ -12,6 +12,8 @@ const {
     toggleAgentStatus,
     updateCommission,
     getAgentDashboard, // Naya function add kiya
+    getAgentReport, // Detail report including 7 days earnings
+    downloadAgentReport, // Download report as PDF or CSV
     adminUpdateAgent
 } = require("../controllers/agentController");
 
@@ -29,6 +31,12 @@ router.get("/profile", auth, agentOnly, getAgentProfile);
 
 // Agent Dashboard (Protected - Agent Only)
 router.get("/dashboard", auth, agentOnly, getAgentDashboard);
+
+// Agent Detailed Report (Protected - Agent Only)
+router.get("/report", auth, agentOnly, getAgentReport);
+
+// Agent Report Download PDF/CSV (Protected - Agent Only)
+router.get("/report/download", auth, agentOnly, downloadAgentReport);
 
 // Update Agent Profile (Protected - Agent Only)
 router.put("/profile-update", auth, agentOnly, upload.single("image"), updateAgentProfile);
