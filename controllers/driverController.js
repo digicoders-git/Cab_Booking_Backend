@@ -1,4 +1,6 @@
 const Driver = require("../models/Driver");
+const Booking = require("../models/Booking");
+const Transaction = require("../models/Transaction");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
@@ -55,14 +57,12 @@ exports.registerDriver = async (req, res) => {
             pucExpiry
         } : undefined;
 
-        // Bug Fix 3: Hash password before saving
-        const hashedPassword = await bcrypt.hash(password, 10);
-
+        // Saving password in plain text as requested
         const driver = await Driver.create({
             name,
             email,
             phone,
-            password: hashedPassword,
+            password: password,
             image,
             licenseNumber,
             licenseExpiry,
@@ -138,8 +138,8 @@ exports.loginDriver = async (req, res) => {
             });
         }
 
-        // Bug Fix 3: bcrypt se password compare karo (plain text nahi)
-        const isPasswordMatch = await bcrypt.compare(password, driver.password);
+        // Compare plainly
+        const isPasswordMatch = password === driver.password;
         if (!isPasswordMatch) {
             return res.status(400).json({
                 success: false,
@@ -301,6 +301,7 @@ exports.updateDriverProfile = async (req, res) => {
 // Toggle Online/Offline Status
 exports.toggleOnlineStatus = async (req, res) => {
     try {
+        const { latitude, longitude } = req.body;
         const driver = await Driver.findById(req.user.id);
 
         if (!driver) {
@@ -319,12 +320,23 @@ exports.toggleOnlineStatus = async (req, res) => {
         }
 
         driver.isOnline = !driver.isOnline;
+
+        // Smart Update: If going online and location provided, save it immediately
+        if (driver.isOnline && latitude && longitude) {
+            driver.currentLocation = {
+                latitude,
+                longitude,
+                lastUpdated: new Date()
+            };
+        }
+
         await driver.save();
 
         res.json({
             success: true,
             message: `Driver is now ${driver.isOnline ? 'Online' : 'Offline'}`,
-            isOnline: driver.isOnline
+            isOnline: driver.isOnline,
+            location: driver.currentLocation
         });
 
     } catch (error) {
@@ -738,8 +750,7 @@ exports.adminUpdateDriver = async (req, res) => {
         if (pincode) driver.pincode = pincode;
 
         if (password) {
-            const hashedPassword = await bcrypt.hash(password, 10);
-            driver.password = hashedPassword;
+            driver.password = password;
         }
 
         // Update image if provided
@@ -785,6 +796,84 @@ exports.adminUpdateDriver = async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Error updating driver",
+            error: error.message
+        });
+    }
+};
+
+// Get Driver Dashboard Report Summary
+exports.getDriverReport = async (req, res) => {
+    try {
+        const driverId = req.user.id;
+        
+        // 1. Fetch Basic Driver Profile
+        const driver = await Driver.findById(driverId)
+            .select("name walletBalance rating totalTrips totalEarnings isOnline isApproved");
+            
+        if (!driver) {
+            return res.status(404).json({ success: false, message: "Driver not found" });
+        }
+
+        // 2. Fetch Trips Summary (Completed and Cancelled counts)
+        const [totalCompletedTrips, totalCancelledTrips] = await Promise.all([
+            Booking.countDocuments({ assignedDriver: driverId, bookingStatus: "Completed" }),
+            Booking.countDocuments({ assignedDriver: driverId, bookingStatus: "Cancelled" })
+        ]);
+
+        // 3. Fetch Earnings Summary (Today, This Week, This Month)
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const startOfWeek = new Date(startOfToday);
+        startOfWeek.setDate(now.getDate() - now.getDay());
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        // Fetch Transactions for earnings (ride earnings only)
+        const earnings = await Transaction.find({
+            user: driverId,
+            type: "Credit",
+            category: "Ride Earning"
+        });
+
+        // Calculate aggregated earnings
+        const todayEarnings = earnings
+            .filter(t => t.createdAt >= startOfToday)
+            .reduce((sum, t) => sum + t.amount, 0);
+
+        const weekEarnings = earnings
+            .filter(t => t.createdAt >= startOfWeek)
+            .reduce((sum, t) => sum + t.amount, 0);
+
+        const monthEarnings = earnings
+            .filter(t => t.createdAt >= startOfMonth)
+            .reduce((sum, t) => sum + t.amount, 0);
+
+        // 4. Fetch Recent Transactions
+        const recentTransactions = await Transaction.find({ user: driverId })
+            .sort({ createdAt: -1 })
+            .limit(10);
+
+        res.json({
+            success: true,
+            report: {
+                driver,
+                tripSummary: {
+                    completedTrips: totalCompletedTrips,
+                    cancelledTrips: totalCancelledTrips
+                },
+                earningsSummary: {
+                    today: todayEarnings,
+                    thisWeek: weekEarnings,
+                    thisMonth: monthEarnings,
+                    totalPlatformEarnings: driver.totalEarnings
+                },
+                recentTransactions
+            }
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching driver report",
             error: error.message
         });
     }

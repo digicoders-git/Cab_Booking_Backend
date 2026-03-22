@@ -19,7 +19,8 @@ const {
     getApprovedDrivers,
     approveDriver,
     rejectDriver,
-    adminUpdateDriver
+    adminUpdateDriver,
+    getDriverReport
 } = require("../controllers/driverController");
 
 const { auth, adminOnly, driverOnly, fleetOnly } = require("../middleware/auth");
@@ -62,6 +63,9 @@ router.get("/location/:id", auth, getDriverLocation);
 
 // Get All Drivers Location - Live Tracking (Admin/Fleet) - MUST BE BEFORE /:id
 router.get("/locations/all", auth, getAllDriversLocation);
+
+// Get Driver Dashboard Report Summary (Protected - Driver Only) - MUST BE BEFORE /:id
+router.get("/report", auth, driverOnly, getDriverReport);
 
 // Get Single Driver (Admin/Fleet) - MUST BE LAST
 router.get("/:id", auth, getSingleDriver);

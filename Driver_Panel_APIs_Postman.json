@@ -1,0 +1,511 @@
+{
+  "info": {
+    "name": "DRIVER APP COMPLETE APIs - CapBokkin",
+    "description": "Yeh sari 16 APIs Driver Mobile App / Panel mein use hongi.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000/api",
+      "type": "string"
+    },
+    {
+      "key": "driver_token",
+      "value": "YOUR_JWT_TOKEN",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Auth & Profile (6 APIs)",
+      "item": [
+        {
+          "name": "Register Driver",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "value": "Raju Driver",
+                  "type": "text"
+                },
+                {
+                  "key": "email",
+                  "value": "raju@gmail.com",
+                  "type": "text"
+                },
+                {
+                  "key": "phone",
+                  "value": "9876543210",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "password123",
+                  "type": "text"
+                },
+                {
+                  "key": "licenseNumber",
+                  "value": "DL-12345",
+                  "type": "text"
+                },
+                {
+                  "key": "carNumber",
+                  "value": "UP16CX1234",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/drivers/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "drivers",
+                "register"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Login Driver",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"raju@gmail.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/drivers/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "drivers",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/drivers/profile",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "drivers",
+                "profile"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "carNumber",
+                  "value": "DL-1C-AA-1111",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/drivers/profile-update",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "drivers",
+                "profile-update"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Toggle Online Status (Duty)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 28.5272,\n  \"longitude\": 77.0688\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/drivers/toggle-online",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "drivers",
+                "toggle-online"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update GPS Location (Live Tracking)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"latitude\": 28.52738,\n    \"longitude\": 77.06899\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/drivers/update-location",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "drivers",
+                "update-location"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Trips & Rides Engine (5 APIs)",
+      "item": [
+        {
+          "name": "Get Pending Ride Requests",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/trips/requests/pending",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "trips",
+                "requests",
+                "pending"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Respond to Ride Request (Accept/Reject)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"accept\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/trips/requests/:requestId/respond",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "trips",
+                "requests",
+                ":requestId",
+                "respond"
+              ],
+              "variable": [
+                {
+                  "key": "requestId",
+                  "value": "REQUEST_ID_HERE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Start Trip (With OTP)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otp\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/trips/execute/:bookingId/start",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "trips",
+                "execute",
+                ":bookingId",
+                "start"
+              ],
+              "variable": [
+                {
+                  "key": "bookingId",
+                  "value": "BOOKING_ID_HERE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "End Trip (Finish Ride)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/trips/execute/:bookingId/end",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "trips",
+                "execute",
+                ":bookingId",
+                "end"
+              ],
+              "variable": [
+                {
+                  "key": "bookingId",
+                  "value": "BOOKING_ID_HERE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "My Trips History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/trips/driver/my-trips",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "trips",
+                "driver",
+                "my-trips"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Wallet & Earnings (2 APIs)",
+      "item": [
+        {
+          "name": "Get My Wallet Balance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/wallet/my-wallet",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "wallet",
+                "my-wallet"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Withdraw Money (To Bank)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 500\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/wallet/withdraw",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "wallet",
+                "withdraw"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Support & Notifications (3 APIs)",
+      "item": [
+        {
+          "name": "Get My Notifications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/my-notifications",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "notifications",
+                "my-notifications"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Support Ticket (Help)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"App Not Working\",\n  \"description\": \"I am stuck on map screen\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/support/create",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "support",
+                "create"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get My Support Tickets History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driver_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/support/my-tickets",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "support",
+                "my-tickets"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

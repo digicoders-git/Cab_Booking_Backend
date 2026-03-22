@@ -286,6 +286,8 @@ exports.getAgentDashboard = async (req, res) => {
         res.json({
             success: true,
             dashboard: {
+                name: agent.name,
+                image: agent.image || "",
                 totalBookings,
                 activeBookings,
                 pendingBookings,

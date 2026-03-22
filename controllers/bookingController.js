@@ -3,6 +3,22 @@ const CarCategory = require("../models/CarCategory");
 const User = require("../models/User");
 const RideRequest = require("../models/RideRequest");
 const tripController = require("./tripController");
+const Driver = require("../models/Driver");
+
+// Haversine helper to calculate distance between coordinates
+function deg2rad(deg) { return deg * (Math.PI / 180); }
+
+function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return Infinity;
+    const R = 6371; // Earth radius in km
+    const dLat = deg2rad(lat2 - lat1);
+    const dLon = deg2rad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + 
+              Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
 
 // 1. Estimate Fare
 exports.estimateFare = async (req, res) => {
@@ -75,6 +91,14 @@ exports.getAllFareEstimates = async (req, res) => {
     const categories = await CarCategory.find({ isActive: true });
     const seats = seatsBooked || 1;
 
+    // Fetch all currently active, online drivers to calculate real ETA
+    const availableDrivers = await Driver.find({
+        isOnline: true,
+        isActive: true,
+        isAvailable: true,
+        isApproved: true
+    }).select("currentLocation carDetails.carType");
+
     // Normalize rideType to handle lowercase/uppercase (shaired, SHARED, etc.)
     const normalizedRideType = rideType ? rideType.toLowerCase() : null;
 
@@ -82,8 +106,41 @@ exports.getAllFareEstimates = async (req, res) => {
         const privateFare = category.baseFare + (category.privateRatePerKm * distanceKm);
         const sharedFare = category.baseFare + (category.sharedRatePerSeatPerKm * distanceKm * seats);
 
-        // Dynamic Time Calculation based on Category Speed
-        const arrivalMins = Math.floor(Math.random() * (5 - 2 + 1)) + 2;
+        // --- REAL ETA CALCULATION LOGIC ---
+        let arrivalMins = 0;
+        let minDriverDist = Infinity;
+
+        // Find drivers specifically driving this Category of car
+        const categoryDrivers = availableDrivers.filter(d => 
+            d.carDetails && d.carDetails.carType && d.carDetails.carType.toString() === category._id.toString()
+        );
+
+        // Find the absolute nearest driver's distance to the pickup location
+        if (categoryDrivers.length > 0 && pickupLat && pickupLng) {
+            categoryDrivers.forEach(driver => {
+                if (driver.currentLocation && driver.currentLocation.latitude && driver.currentLocation.longitude) {
+                    const distToPickup = getDistanceFromLatLonInKm(
+                        pickupLat, pickupLng, 
+                        driver.currentLocation.latitude, driver.currentLocation.longitude
+                    );
+                    if (distToPickup < minDriverDist) {
+                        minDriverDist = distToPickup;
+                    }
+                }
+            });
+        }
+
+        // Calculate time based on nearest driver distance (assume driver approaches at an avg city speed of 20 km/h)
+        if (minDriverDist !== Infinity) {
+            const approachingSpeedKmH = 20; 
+            arrivalMins = Math.round((minDriverDist / approachingSpeedKmH) * 60);
+            if (arrivalMins < 1) arrivalMins = 1; // Minimum 1 min
+        } else {
+            // Fallback: No drivers available in this category right now
+            // We show a higher default value indicating scarcity, e.g. 15-20 mins
+            arrivalMins = Math.floor(Math.random() * (20 - 15 + 1)) + 15; 
+        }
+        // --- END REAL ETA LOGIC ---
 
         const speed = category.avgSpeedKmH || 25;
         const travelTimeMins = Math.round((distanceKm / speed) * 60);
