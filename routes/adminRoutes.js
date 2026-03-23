@@ -7,7 +7,8 @@ const {
     updateProfile,
     loginAdmin,
     getDashboardStats,
-    getSystemReport
+    getSystemReport,
+    getLiveDriversTracking
 } = require("../controllers/adminController")
 const { registerAgent } = require("../controllers/agentController")
 const { createFleet } = require("../controllers/fleetController")
@@ -24,6 +25,7 @@ router.put("/profile-update", auth, adminOnly, upload.single("image"), updatePro
 // Admin Dashboard & Reports
 router.get("/dashboard-stats", auth, adminOnly, getDashboardStats)
 router.get("/full-report", auth, adminOnly, getSystemReport)
+router.get("/live-tracking", auth, adminOnly, getLiveDriversTracking)
 
 // Admin creates Agent / Fleet
 router.post("/create-agent", auth, adminOnly, upload.single("image"), registerAgent)

@@ -695,7 +695,7 @@ exports.updateAgentProfile = async (req, res) => {
 // Get All Agents (Admin Only)
 exports.getAllAgents = async (req, res) => {
     try {
-        const agents = await Agent.find().select("-password").populate("createdBy", "name email");
+        const agents = await Agent.find().populate("createdBy", "name email");
 
         res.json({
             success: true,
@@ -715,7 +715,7 @@ exports.getAllAgents = async (req, res) => {
 // Get Single Agent (Admin Only)
 exports.getSingleAgent = async (req, res) => {
     try {
-        const agent = await Agent.findById(req.params.id).select("-password").populate("createdBy", "name email");
+        const agent = await Agent.findById(req.params.id).populate("createdBy", "name email");
 
         if (!agent) {
             return res.status(404).json({

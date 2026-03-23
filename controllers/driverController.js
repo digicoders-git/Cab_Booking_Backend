@@ -20,7 +20,11 @@ exports.registerDriver = async (req, res) => {
             manufacturingYear, insuranceExpiry, permitExpiry, pucExpiry
         } = req.body;
 
-        const image = req.file ? req.file.filename : null;
+        const image = req.files?.image ? req.files.image[0].filename : null;
+        const rcImage        = req.files?.rcImage        ? req.files.rcImage[0].filename        : null;
+        const insuranceImage = req.files?.insuranceImage ? req.files.insuranceImage[0].filename : null;
+        const permitImage    = req.files?.permitImage    ? req.files.permitImage[0].filename    : null;
+        const pucImage       = req.files?.pucImage       ? req.files.pucImage[0].filename       : null;
 
         // Check if driver already exists
         const driverExist = await Driver.findOne({ $or: [{ email }, { phone }] });
@@ -54,7 +58,13 @@ exports.registerDriver = async (req, res) => {
             manufacturingYear,
             insuranceExpiry,
             permitExpiry,
-            pucExpiry
+            pucExpiry,
+            carDocuments: {
+                rc:        rcImage,
+                insurance: insuranceImage,
+                permit:    permitImage,
+                puc:       pucImage
+            }
         } : undefined;
 
         // Saving password in plain text as requested
@@ -232,8 +242,8 @@ exports.updateDriverProfile = async (req, res) => {
             updateData.password = password;
         }
 
-        if (req.file) {
-            updateData.image = req.file.filename;
+        if (req.files?.image) {
+            updateData.image = req.files.image[0].filename;
         }
 
         if (accountNumber || ifscCode || accountHolderName || bankName) {
@@ -253,29 +263,33 @@ exports.updateDriverProfile = async (req, res) => {
             };
         }
 
-        // Update Car Details
+        // Update Car Details (text fields)
         if (carNumber || carModel || carBrand || carType) {
-            updateData.carDetails = {
-                carNumber,
-                carModel,
-                carBrand,
-                carType,
-                seatCapacity: seatCapacity || 4,
-                carColor,
-                manufacturingYear,
-                insuranceExpiry,
-                permitExpiry,
-                pucExpiry,
-                lastServiceDate,
-                nextServiceDate,
-                carDocuments: {
-                    rc: rcDocument || undefined,
-                    insurance: insuranceDocument || undefined,
-                    permit: permitDocument || undefined,
-                    puc: pucDocument || undefined
-                }
-            };
+            updateData["carDetails.carNumber"]         = carNumber;
+            updateData["carDetails.carModel"]          = carModel;
+            updateData["carDetails.carBrand"]          = carBrand;
+            updateData["carDetails.carType"]           = carType;
+            updateData["carDetails.seatCapacity"]      = seatCapacity || 4;
+            updateData["carDetails.carColor"]          = carColor;
+            updateData["carDetails.manufacturingYear"] = manufacturingYear;
+            updateData["carDetails.insuranceExpiry"]   = insuranceExpiry;
+            updateData["carDetails.permitExpiry"]      = permitExpiry;
+            updateData["carDetails.pucExpiry"]         = pucExpiry;
+            updateData["carDetails.lastServiceDate"]   = lastServiceDate;
+            updateData["carDetails.nextServiceDate"]   = nextServiceDate;
         }
+
+        // Update Car Documents — works even if ONLY files are uploaded (no text fields needed)
+        if (req.files?.rcImage)        updateData["carDetails.carDocuments.rc"]        = req.files.rcImage[0].filename;
+        if (req.files?.insuranceImage) updateData["carDetails.carDocuments.insurance"] = req.files.insuranceImage[0].filename;
+        if (req.files?.permitImage)    updateData["carDetails.carDocuments.permit"]    = req.files.permitImage[0].filename;
+        if (req.files?.pucImage)       updateData["carDetails.carDocuments.puc"]       = req.files.pucImage[0].filename;
+
+        // Fallback: text-based document paths (if sent as strings, not files)
+        if (!req.files?.rcImage        && rcDocument)        updateData["carDetails.carDocuments.rc"]        = rcDocument;
+        if (!req.files?.insuranceImage && insuranceDocument) updateData["carDetails.carDocuments.insurance"] = insuranceDocument;
+        if (!req.files?.permitImage    && permitDocument)    updateData["carDetails.carDocuments.permit"]    = permitDocument;
+        if (!req.files?.pucImage       && pucDocument)       updateData["carDetails.carDocuments.puc"]       = pucDocument;
 
         const driver = await Driver.findByIdAndUpdate(
             req.user.id,

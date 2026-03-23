@@ -14,6 +14,26 @@ const fleetCarSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+
+  // Car Document Photos
+  carDocuments: {
+    rcImage: {
+      type: String,
+      default: null
+    },
+    insuranceImage: {
+      type: String,
+      default: null
+    },
+    permitImage: {
+      type: String,
+      default: null
+    },
+    pucImage: {
+      type: String,
+      default: null
+    }
+  },
   
   carModel: {
     type: String,

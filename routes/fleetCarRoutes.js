@@ -13,13 +13,13 @@ const {
 } = require("../controllers/fleetCarController");
 
 const { auth, fleetOnly, adminOnly } = require("../middleware/auth");
-const upload = require("../middleware/uploadAdminImage");
+const uploadCarDocs = require("../middleware/uploadCarDocs");
 
 // Admin: Get All Cars Across ALL Fleets (Admin Only)
 router.get("/admin/all", auth, adminOnly, adminGetAllCars);
 
 // Create Car (Fleet Only)
-router.post("/create", auth, fleetOnly, upload.single("image"), createCar);
+router.post("/create", auth, fleetOnly, uploadCarDocs, createCar);
 
 // Get All Fleet Cars (Fleet Only)
 router.get("/all", auth, fleetOnly, getFleetCars);
@@ -34,7 +34,7 @@ router.get("/busy", auth, fleetOnly, getBusyCars);
 router.get("/:carId", auth, fleetOnly, getFleetCar);
 
 // Update Car by ID (Fleet Only)
-router.put("/:carId", auth, fleetOnly, updateCar);
+router.put("/:carId", auth, fleetOnly, uploadCarDocs, updateCar);
 
 // Delete Car by ID (Fleet Only)
 router.delete("/:carId", auth, fleetOnly, deleteCar);

@@ -133,7 +133,8 @@ exports.getDashboardStats = async (req, res) => {
                 drivers: {
                     total: await Driver.countDocuments(),
                     approved: await Driver.countDocuments({ isApproved: true }),
-                    pending: await Driver.countDocuments({ isApproved: false, isRejected: false })
+                    pending: await Driver.countDocuments({ isApproved: false, isRejected: false }),
+                    online: await Driver.countDocuments({ isApproved: true, isOnline: true }) // Matches Tracking API
                 },
                 agents: await Agent.countDocuments(),
                 fleets: await Fleet.countDocuments(),
@@ -230,6 +231,142 @@ exports.getSystemReport = async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Error generating report",
+            error: error.message
+        });
+    }
+}
+
+// NEW: Real-time Drivers Tracking for Admin Map
+exports.getLiveDriversTracking = async (req, res) => {
+    try {
+        // 1. Fetch ALL approved drivers
+        const drivers = await Driver.find({ isApproved: true })
+            .select("name phone isOnline isAvailable image currentRideType availableSeats currentHeading currentLocation carDetails")
+            .populate({
+                path: "seatMap.bookingId",
+                select: "pickup drop rideType bookingStatus passengerDetails carCategory"
+            });
+
+        // 2. Fetch all car categories for manual mapping (more robust)
+        const CarCategory = require("../models/CarCategory");
+        const allCategories = await CarCategory.find().select("name image _id");
+        const categoryMap = {};
+        allCategories.forEach(cat => {
+            categoryMap[cat._id.toString()] = {
+                name: cat.name,
+                image: cat.image
+            };
+        });
+
+        const trackingData = await Promise.all(drivers.map(async driver => {
+            let activityStatus = "Offline"; // Default if not online
+            
+            if (driver.isOnline) {
+                if (driver.isAvailable) {
+                    activityStatus = "Idle"; // Online but no ride
+                } else {
+                    activityStatus = driver.currentRideType === "Shared" ? "On Shared Ride" : "On Private Ride";
+                }
+            }
+
+            // Get Category ID, Name and Image
+            const rawCatId = driver.carDetails?.carType ? driver.carDetails.carType.toString() : "N/A";
+            const catData = categoryMap[rawCatId] || { name: "Unknown Category", image: null };
+
+            // 3. Construct Ongoing Trip Details
+            let ongoingTrip = null;
+            if (driver.isOnline && !driver.isAvailable) {
+                // Try to get from seatMap first
+                let activeBookings = driver.seatMap
+                    .filter(s => s.isBooked && s.bookingId)
+                    .map(s => s.bookingId);
+                
+                // If found in seatMap
+                if (activeBookings.length > 0) {
+                    ongoingTrip = {
+                        type: driver.currentRideType,
+                        pickup: {
+                            address: activeBookings[0].pickup?.address || "Fetching...",
+                            latitude: activeBookings[0].pickup?.latitude || null,
+                            longitude: activeBookings[0].pickup?.longitude || null
+                        },
+                        drop: {
+                            address: activeBookings[0].drop?.address || "Fetching...",
+                            latitude: activeBookings[0].drop?.latitude || null,
+                            longitude: activeBookings[0].drop?.longitude || null
+                        },
+                        passengers: activeBookings.length,
+                        currentPosition: driver.currentLocation // Live Progress
+                    };
+                } else {
+                    // DEEP SEARCH FALLBACK: Query the Booking model directly for this driver
+                    const Booking = require("../models/Booking");
+                    // We also need to search by status 'Ongoing'
+                    const directBooking = await Booking.findOne({ 
+                        assignedDriver: driver._id, 
+                        bookingStatus: "Ongoing" 
+                    });
+
+                    if (directBooking) {
+                        ongoingTrip = {
+                            type: driver.currentRideType,
+                            pickup: {
+                                address: directBooking.pickup.address,
+                                latitude: directBooking.pickup.latitude,
+                                longitude: directBooking.pickup.longitude
+                            },
+                            drop: {
+                                address: directBooking.drop.address,
+                                latitude: directBooking.drop.latitude,
+                                longitude: directBooking.drop.longitude
+                            },
+                            passengers: directBooking.seatsBooked || 1,
+                            currentPosition: driver.currentLocation
+                        };
+                    } else {
+                        // Very last fallback if nothing found at all
+                        ongoingTrip = {
+                            type: driver.currentRideType,
+                            pickup: { address: "Active Ride In Progress", latitude: null, longitude: null },
+                            drop: { address: "Locating on Map...", latitude: null, longitude: null },
+                            passengers: "N/A",
+                            currentPosition: driver.currentLocation
+                        };
+                    }
+                }
+            }
+
+            return {
+                driverId: driver._id,
+                name: driver.name,
+                phone: driver.phone,
+                image: driver.image,
+                carInfo: {
+                    carNumber: driver.carDetails?.carNumber || "N/A",
+                    carModel: driver.carDetails?.carModel || "N/A",
+                    carCategoryName: catData.name, // "Sedan", "SUV", etc.
+                    carCategoryId: rawCatId, 
+                    carCategoryImage: catData.image 
+                },
+                location: driver.currentLocation, 
+                heading: driver.currentHeading, 
+                status: activityStatus,
+                rideType: driver.currentRideType,
+                availableSeats: driver.availableSeats,
+                currentTrip: ongoingTrip 
+            };
+        }));
+
+        res.json({
+            success: true,
+            count: trackingData.length,
+            drivers: trackingData
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching live tracking data",
             error: error.message
         });
     }

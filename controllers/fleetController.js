@@ -128,7 +128,7 @@ exports.loginFleet = async (req, res) => {
 // Get Fleet Profile
 exports.getFleetProfile = async (req, res) => {
     try {
-        const fleet = await Fleet.findById(req.user.id).select("-password");
+        const fleet = await Fleet.findById(req.user.id);
 
         if (!fleet) {
             return res.status(404).json({
@@ -203,7 +203,7 @@ exports.updateFleetProfile = async (req, res) => {
             req.user.id,
             updateData,
             { new: true }
-        ).select("-password");
+        ).select("password");
 
         res.json({
             success: true,
@@ -223,7 +223,7 @@ exports.updateFleetProfile = async (req, res) => {
 // Get All Fleets (Admin Only)
 exports.getAllFleets = async (req, res) => {
     try {
-        const fleets = await Fleet.find().select("-password").populate("createdBy", "name email");
+        const fleets = await Fleet.find().populate("createdBy", "name email");
 
         res.json({
             success: true,
@@ -243,7 +243,7 @@ exports.getAllFleets = async (req, res) => {
 // Get Single Fleet (Admin Only)
 exports.getSingleFleet = async (req, res) => {
     try {
-        const fleet = await Fleet.findById(req.params.id).select("-password").populate("createdBy", "name email");
+        const fleet = await Fleet.findById(req.params.id).populate("createdBy", "name email");
 
         if (!fleet) {
             return res.status(404).json({

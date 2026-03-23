@@ -11,7 +11,13 @@ exports.createCar = async (req, res) => {
             lastServiceDate, nextServiceDate
         } = req.body;
 
-        const image = req.file ? req.file.filename : null;
+        // req.files is an object of arrays from multer .fields()
+        const files = req.files || {};
+        const image         = files.image         ? files.image[0].filename         : null;
+        const rcImage       = files.rcImage       ? files.rcImage[0].filename       : null;
+        const insuranceImage= files.insuranceImage? files.insuranceImage[0].filename: null;
+        const permitImage   = files.permitImage   ? files.permitImage[0].filename   : null;
+        const pucImage      = files.pucImage      ? files.pucImage[0].filename      : null;
 
         if (!carNumber || !carModel || !carType) {
             return res.status(400).json({
@@ -46,6 +52,7 @@ exports.createCar = async (req, res) => {
             carBrand,
             carType,
             image,
+            carDocuments: { rcImage, insuranceImage, permitImage, pucImage },
             seatCapacity: finalSeatCapacity,
             carColor,
             manufacturingYear,
@@ -163,21 +170,32 @@ exports.updateCar = async (req, res) => {
             });
         }
 
+        // Build update object
+        const updateData = {
+            carModel,
+            carBrand,
+            carType,
+            seatCapacity,
+            carColor,
+            manufacturingYear,
+            insuranceExpiry,
+            permitExpiry,
+            pucExpiry,
+            lastServiceDate,
+            nextServiceDate
+        };
+
+        // Handle uploaded files — only update if newly uploaded
+        const files = req.files || {};
+        if (files.image)          updateData.image = files.image[0].filename;
+        if (files.rcImage)        updateData["carDocuments.rcImage"]        = files.rcImage[0].filename;
+        if (files.insuranceImage) updateData["carDocuments.insuranceImage"] = files.insuranceImage[0].filename;
+        if (files.permitImage)    updateData["carDocuments.permitImage"]    = files.permitImage[0].filename;
+        if (files.pucImage)       updateData["carDocuments.pucImage"]       = files.pucImage[0].filename;
+
         const updatedCar = await FleetCar.findByIdAndUpdate(
             carId,
-            {
-                carModel,
-                carBrand,
-                carType,
-                seatCapacity,
-                carColor,
-                manufacturingYear,
-                insuranceExpiry,
-                permitExpiry,
-                pucExpiry,
-                lastServiceDate,
-                nextServiceDate
-            },
+            updateData,
             { new: true }
         );
 

@@ -24,10 +24,10 @@ const {
 } = require("../controllers/driverController");
 
 const { auth, adminOnly, driverOnly, fleetOnly } = require("../middleware/auth");
-const upload = require("../middleware/uploadAdminImage");
+const uploadCarDocs = require("../middleware/uploadCarDocs");
 
 // Driver Registration (Open - Anyone can register)
-router.post("/register", upload.single("image"), registerDriver);
+router.post("/register", uploadCarDocs, registerDriver);
 
 // Driver Login
 router.post("/login", loginDriver);
@@ -37,7 +37,7 @@ router.get("/profile", auth, driverOnly, getDriverProfile);
 
 // Update Driver Profile (Protected - Driver Only)
 // Includes: Basic Info, Address, Bank Details, Documents, License
-router.put("/profile-update", auth, driverOnly, upload.single("image"), updateDriverProfile);
+router.put("/profile-update", auth, driverOnly, uploadCarDocs, updateDriverProfile);
 
 // Toggle Online/Offline Status (Protected - Driver Only)
 router.put("/toggle-online", auth, driverOnly, toggleOnlineStatus);
@@ -83,6 +83,6 @@ router.delete("/delete/:id", auth, adminOnly, deleteDriver);
 router.put("/toggle-status/:id", auth, adminOnly, toggleDriverStatus);
 
 // Update Driver Manually (Admin Only)
-router.put("/update/:id", auth, adminOnly, upload.single("image"), adminUpdateDriver);
+router.put("/update/:id", auth, adminOnly, uploadCarDocs, adminUpdateDriver);
 
 module.exports = router;

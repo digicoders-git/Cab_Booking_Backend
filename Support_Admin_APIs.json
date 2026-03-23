@@ -1,0 +1,99 @@
+{
+    "Support_APIs": {
+        "Project": "CapBokkin",
+        "Base_URL": "/api/support",
+        "Authorization": "Bearer YOUR_TOKEN",
+        "APIs": [
+            {
+                "name": "1. Create Support Ticket (All Panels)",
+                "method": "POST",
+                "url": "/create",
+                "description": "User, Driver, Agent ya Fleet apne kisi masle ke liye ticket create kar sakta hai.",
+                "request_body": {
+                    "subject": "Payment Delay Issue",
+                    "message": "Bhai, mera pichla payment abhi tak wallet mein show nahi ho raha. Check karke batao.",
+                    "priority": "High"
+                },
+                "response_example": {
+                    "success": true,
+                    "message": "Support request submitted successfully",
+                    "ticket": {
+                        "_id": "60c72b2f9b1d8b001c8e4d1a",
+                        "user": "USER_ID",
+                        "subject": "Payment Delay Issue",
+                        "status": "Pending",
+                        "priority": "High",
+                        "createdAt": "2026-03-23T10:00:00Z"
+                    }
+                }
+            },
+            {
+                "name": "2. Get My Tickets History (All Panels)",
+                "method": "GET",
+                "url": "/my-tickets",
+                "description": "User ya Driver ne pehle kaun-kaun si tickets banayi hain, uska history dekhne ke liye.",
+                "request_body": "None",
+                "response_example": {
+                    "success": true,
+                    "count": 5,
+                    "tickets": [
+                        {
+                            "_id": "60c72b2f9b1d8b001c8e4d1a",
+                            "subject": "Payment Delay Issue",
+                            "status": "Pending",
+                            "message": "...",
+                            "reply": null
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "3. Admin View: All Tickets (Admin Only)",
+                "method": "GET",
+                "url": "/admin/all",
+                "description": "Admin dashboard pe saari active aur closed tickets dekh sakta hai.",
+                "request_body": "None",
+                "response_example": {
+                    "success": true,
+                    "count": 50,
+                    "tickets": [
+                        {
+                            "_id": "60c72b2f9b1d8b001c8e4d1a",
+                            "user": {
+                                "name": "Ravi Driver",
+                                "role": "Driver"
+                            },
+                            "subject": "Payment Issue",
+                            "status": "Pending",
+                            "priority": "High",
+                            "createdAt": "2026-03-23T10:00:00Z"
+                        }
+                    ]
+                }
+            },
+            {
+                "name": "4. Admin View: Reply & Update Ticket (Admin Only)",
+                "method": "PUT",
+                "url": "/admin/reply/:id",
+                "description": "Admin kisi ticket ke liye jawaab (reply) bhejta hai aur usay resolve (close) karta hai.",
+                "params": {
+                    "id": "Ticket_ID"
+                },
+                "request_body": {
+                    "reply": "Problem solved! Wallet balance check please.",
+                    "status": "Resolved"
+                },
+                "response_example": {
+                    "success": true,
+                    "message": "Reply sent successfully and ticket status updated",
+                    "ticket": {
+                        "_id": "60c72b2f9b1d8b001c8e4d1a",
+                        "status": "Resolved",
+                        "reply": "Problem solved! Wallet balance check please.",
+                        "repliedAt": "2026-03-23T11:00:00Z"
+                    }
+                }
+            }
+        ]
+    }
+}
