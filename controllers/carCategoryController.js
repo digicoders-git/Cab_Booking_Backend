@@ -14,6 +14,15 @@ exports.createCarCategory = async (req, res) => {
             });
         }
 
+        let parsedSeatLayout = seatLayout || [];
+        if (typeof seatLayout === "string") {
+            try {
+                parsedSeatLayout = JSON.parse(seatLayout);
+            } catch (e) {
+                // If not valid JSON, treat it as a single element or keep it as is
+            }
+        }
+
         const exactExist = await CarCategory.findOne({ name: name.trim() });
         if (exactExist) {
             return res.status(400).json({
@@ -28,7 +37,7 @@ exports.createCarCategory = async (req, res) => {
             privateRatePerKm,
             sharedRatePerSeatPerKm,
             baseFare,
-            seatLayout: seatLayout || [],
+            seatLayout: parsedSeatLayout,
             avgSpeedKmH: avgSpeedKmH || 25,
             image,
             createdBy: req.user.id
@@ -109,7 +118,19 @@ exports.updateCarCategory = async (req, res) => {
         if (sharedRatePerSeatPerKm) category.sharedRatePerSeatPerKm = sharedRatePerSeatPerKm;
         if (baseFare !== undefined) category.baseFare = baseFare;
         if (isActive !== undefined) category.isActive = isActive;
-        if (seatLayout) category.seatLayout = seatLayout;
+
+        if (seatLayout) {
+            if (typeof seatLayout === "string") {
+                try {
+                    category.seatLayout = JSON.parse(seatLayout);
+                } catch (e) {
+                    category.seatLayout = seatLayout;
+                }
+            } else {
+                category.seatLayout = seatLayout;
+            }
+        }
+        
         if (avgSpeedKmH !== undefined) category.avgSpeedKmH = avgSpeedKmH;
         
         if (req.file) {

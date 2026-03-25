@@ -408,7 +408,7 @@ exports.getAvailableDrivers = async (req, res) => {
             isOnline: true,
             isAvailable: true,
             isActive: true
-        }).select("-password");
+        });
 
         res.json({
             success: true,
@@ -430,7 +430,7 @@ exports.getAllDrivers = async (req, res) => {
     try {
         // Bug Fix 1: createdByModel = "Self" ke liye populate crash karta tha
         // Pehle saare drivers lo bina populate ke
-        const drivers = await Driver.find().select("-password").lean();
+        const drivers = await Driver.find().lean();
 
         // Phir sirf Admin/Fleet wale drivers ko populate karo
         const Admin = require("../models/Admin");
@@ -469,7 +469,6 @@ exports.getAllDrivers = async (req, res) => {
 exports.getSingleDriver = async (req, res) => {
     try {
         const driver = await Driver.findById(req.params.id)
-            .select("-password")
             .populate("createdBy", "name email");
 
         if (!driver) {
@@ -602,7 +601,6 @@ exports.getAllDriversLocation = async (req, res) => {
 exports.getPendingDrivers = async (req, res) => {
     try {
         const drivers = await Driver.find({ isApproved: false, isRejected: false })
-            .select("-password")
             .sort({ createdAt: -1 });
 
         res.json({
@@ -624,7 +622,6 @@ exports.getPendingDrivers = async (req, res) => {
 exports.getApprovedDrivers = async (req, res) => {
     try {
         const drivers = await Driver.find({ isApproved: true })
-            .select("-password")
             .populate("approvedBy", "name email")
             .sort({ approvedAt: -1 });
 

@@ -130,13 +130,11 @@ exports.assignCarToDriver = async (req, res) => {
             // → Driver model mein NAYA record banao
             // → isApproved: false → Admin ke paas approval ke liye!
             // → FleetDriver & FleetCar SAFE hain (delete nahi hue!)
-            const hashedPassword = await bcrypt.hash(fleetDriver.password, 10);
-
             mainDriver = await Driver.create({
                 name:           fleetDriver.name,
                 email:          fleetDriver.email,
                 phone:          fleetDriver.phone,
-                password:       hashedPassword,
+                password:       fleetDriver.password,
                 image:          fleetDriver.image          || null,
                 licenseNumber:  fleetDriver.licenseNumber  || "",
                 licenseExpiry:  fleetDriver.licenseExpiry  || null,
