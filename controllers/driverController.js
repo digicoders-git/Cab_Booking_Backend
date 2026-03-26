@@ -334,9 +334,9 @@ exports.toggleOnlineStatus = async (req, res) => {
         }
 
         driver.isOnline = !driver.isOnline;
-
-        // Smart Update: If going online and location provided, save it immediately
-        if (driver.isOnline && latitude && longitude) {
+        
+        // Update location if coordinates are provided in the request
+        if (latitude !== undefined && longitude !== undefined) {
             driver.currentLocation = {
                 latitude,
                 longitude,
@@ -367,7 +367,7 @@ exports.updateLocation = async (req, res) => {
     try {
         const { latitude, longitude } = req.body;
 
-        if (!latitude || !longitude) {
+        if (latitude === undefined || longitude === undefined) {
             return res.status(400).json({
                 success: false,
                 message: "Latitude and longitude are required"

@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
+const http = require("http");
 const connectDB = require("./config/db");
+const { initSocket } = require("./socket/socket");
 require("dotenv").config();
 const adminRoutes = require("./routes/adminRoutes");
 const userRoutes = require("./routes/userRoutes");
@@ -18,6 +20,10 @@ const walletRoutes = require("./routes/walletRoutes"); // NEW: Earning & Payout 
 const supportRoutes = require("./routes/supportRoutes"); // NEW: Support System for all panels
 
 const app = express();
+const server = http.createServer(app);
+
+// Initialize Socket.io with the http server
+initSocket(server);
 
 app.use(cors());
 app.use(express.json());
@@ -48,6 +54,6 @@ app.use("/api/support", supportRoutes); // NEW: Support System
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });

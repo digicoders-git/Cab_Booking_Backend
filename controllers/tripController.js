@@ -6,6 +6,7 @@ const Agent = require("../models/Agent");
 const Admin = require("../models/Admin");
 const Fleet = require("../models/Fleet");
 const Notification = require("../models/Notification");
+const { getIO } = require("../socket/socket");
 
 // Haversine formula to get distance between two points in km
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
@@ -250,6 +251,22 @@ exports.respondToRequest = async (req, res) => {
                     createdBy: driverId,
                     createdByModel: 'Driver'
                 });
+            }
+
+            // Real-time Update to AGENT (If booking belongs to an agent)
+            if (booking.agent) {
+                try {
+                    const io = getIO();
+                    io.to(`agent_${booking.agent.toString()}`).emit("booking_update", {
+                        bookingId: booking._id,
+                        status: "Accepted",
+                        driverName: driver.name,
+                        driverPhone: driver.phone
+                    });
+                    console.log(`Agent ${booking.agent} notified via Socket`);
+                } catch (err) {
+                    console.error("Agent Socket Notification Error:", err.message);
+                }
             }
 
             // ============================================
