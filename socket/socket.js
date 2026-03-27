@@ -22,6 +22,8 @@ const initSocket = (server) => {
         // 1. Join Room (For Driver/Admin/User/Agent)
         socket.on("join_room", (data) => {
             const { userId, role } = data; // role: 'driver', 'admin', 'user', 'agent'
+            socket.userId = userId; // Store userId for cleanup on disconnect
+            socket.role = role;     // Store role for cleanup on disconnect
             socket.join(userId);
             if (role === 'admin') socket.join('admin_room');
             if (role === 'agent') socket.join(`agent_${userId}`);
@@ -100,8 +102,18 @@ const initSocket = (server) => {
             }
         });
 
-        socket.on("disconnect", () => {
-            console.log("User Disconnected", socket.id);
+        socket.on("disconnect", async () => {
+            console.log(`User Disconnected: ${socket.id} (ID: ${socket.userId}, Role: ${socket.role})`);
+
+            // FAIL-SAFE: If a driver disconnects (tab close, logout, network loss), mark them offline
+            if (socket.role === 'driver' && socket.userId) {
+                try {
+                    await Driver.findByIdAndUpdate(socket.userId, { isOnline: false });
+                    console.log(`💾 Driver ${socket.userId} automatically marked OFFLINE on disconnect ✅`);
+                } catch (error) {
+                    console.error("Disconnect Cleanup Error:", error.message);
+                }
+            }
         });
     });
 
