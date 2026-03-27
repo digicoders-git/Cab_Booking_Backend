@@ -4,6 +4,7 @@ const Booking = require("../models/Booking");
 
 
 let io;
+const lastDBUpdate = {}; // Optimized: Throttling ke liye driver update time tracking
 
 const initSocket = (server) => {
     io = new Server(server, {
@@ -47,28 +48,24 @@ const initSocket = (server) => {
             }
         });
 
-        // 2. Driver Update Location (Live Stream)
+        // 2. Driver Update Location (Live Stream Optimization)
         socket.on("update_location", async (data) => {
             const { driverId, latitude, longitude, heading } = data;
 
             try {
-                // Update in Database (Non-blocking)
-                await Driver.findByIdAndUpdate(driverId, {
-                    currentLocation: { latitude, longitude, lastUpdated: new Date() },
-                    currentHeading: heading
-                });
-
+                // --- STEP 1: FAST BROADCAST (Bina DB touch kiye) ---
                 const updatePayload = {
                     driverId,
                     latitude,
                     longitude,
-                    heading
+                    heading,
+                    timestamp: new Date()
                 };
 
-                // Broadcast to Admins
+                // Broadcast to Admins instantly
                 io.to('admin_room').emit("driver_location_update", updatePayload);
 
-                // Broadcast to Agent if current trip is an Agent booking
+                // Broadcast to Agent/User if current trip is active
                 const activeBooking = await Booking.findOne({
                     assignedDriver: driverId,
                     bookingStatus: { $in: ["Accepted", "Ongoing"] }
@@ -81,6 +78,21 @@ const initSocket = (server) => {
                     if (activeBooking.user) {
                         io.to(activeBooking.user.toString()).emit("driver_location_update", updatePayload);
                     }
+                }
+
+                // --- STEP 2: SMART DB UPDATE (Har 2 Minute mein ek baar) ---
+                const now = Date.now();
+                const lastUpdate = lastDBUpdate[driverId] || 0;
+
+                // 2 minutes = 120,000 milliseconds
+                if (now - lastUpdate > 120000) {
+                    await Driver.findByIdAndUpdate(driverId, {
+                        currentLocation: { latitude, longitude, lastUpdated: new Date() },
+                        currentHeading: heading
+                    });
+                    
+                    lastDBUpdate[driverId] = now; // Aakhri update time save kar liya
+                    console.log(`💾 Driver ${driverId} location saved to DB (Throttled)`);
                 }
 
             } catch (error) {

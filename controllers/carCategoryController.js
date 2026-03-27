@@ -57,6 +57,7 @@ exports.createCarCategory = async (req, res) => {
         });
     }
 };
+// hhi
 
 // 2. Get All Active Categories (Public / App Users / Drivers / Fleets)
 exports.getAllActiveCategories = async (req, res) => {
@@ -130,9 +131,9 @@ exports.updateCarCategory = async (req, res) => {
                 category.seatLayout = seatLayout;
             }
         }
-        
+
         if (avgSpeedKmH !== undefined) category.avgSpeedKmH = avgSpeedKmH;
-        
+
         if (req.file) {
             category.image = req.file.filename;
         }
