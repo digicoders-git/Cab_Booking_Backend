@@ -68,18 +68,24 @@ const initSocket = (server) => {
                 io.to('admin_room').emit("driver_location_update", updatePayload);
 
                 // Broadcast to Agent/User if current trip is active
-                const activeBooking = await Booking.findOne({
+                const activeBookings = await Booking.find({
                     assignedDriver: driverId,
                     bookingStatus: { $in: ["Accepted", "Ongoing"] }
                 }).select("agent user");
 
-                if (activeBooking) {
-                    if (activeBooking.agent) {
-                        io.to(`agent_${activeBooking.agent.toString()}`).emit("driver_location_update", updatePayload);
-                    }
-                    if (activeBooking.user) {
-                        io.to(activeBooking.user.toString()).emit("driver_location_update", updatePayload);
-                    }
+                console.log(`📍 Location update from Driver ${driverId} - Found ${activeBookings.length} active bookings`);
+
+                if (activeBookings && activeBookings.length > 0) {
+                    activeBookings.forEach(booking => {
+                        if (booking.agent) {
+                            console.log(`📢 Emitting to Agent Room: agent_${booking.agent.toString()}`);
+                            io.to(`agent_${booking.agent.toString()}`).emit("driver_location_update", updatePayload);
+                        }
+                        if (booking.user) {
+                            console.log(`📢 Emitting to User Room: ${booking.user.toString()}`);
+                            io.to(booking.user.toString()).emit("driver_location_update", updatePayload);
+                        }
+                    });
                 }
 
                 // --- STEP 2: SMART DB UPDATE (Har 2 Minute mein ek baar) ---
