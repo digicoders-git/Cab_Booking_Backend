@@ -87,10 +87,17 @@ exports.autoMatchDriver = async (bookingId) => {
         };
 
         if (booking.rideType === "Private") {
-            driverQuery.currentRideType = null;
+            // FIX: Be robust against primitive null or string "null"
+            driverQuery.$or = [
+                { currentRideType: null },
+                { currentRideType: "null" },
+                { currentRideType: "" }
+            ];
         } else if (booking.rideType === "Shared") {
             driverQuery.$or = [
                 { currentRideType: null },
+                { currentRideType: "null" },
+                { currentRideType: "" },
                 { currentRideType: "Shared", availableSeats: { $gte: booking.seatsBooked } }
             ];
         }
@@ -171,6 +178,23 @@ exports.autoMatchDriver = async (bookingId) => {
             createdByModel: booking.user ? 'User' : 'Agent'
         });
 
+        // 🎯 LIVE NOTIFICATION: Tell Driver about the New Request!
+        try {
+            const io = getIO();
+            io.to(nearestDriver._id.toString()).emit("new_ride_request", {
+                bookingId: booking._id,
+                requestId: newRequest._id,
+                pickup: booking.pickup.address,
+                drop: booking.drop.address,
+                distance: booking.estimatedDistanceKm,
+                rideType: booking.rideType,
+                fare: booking.fareEstimate
+            });
+            console.log(`Driver ${nearestDriver.name} notified via Socket about New Request! 🟢`);
+        } catch (err) {
+            console.error("Socket error (autoMatchDriver):", err.message);
+        }
+
         return {
             success: true,
             message: "Request sent to nearest driver",
@@ -237,7 +261,15 @@ exports.respondToRequest = async (req, res) => {
             booking.assignedDriver = driverId;
             
             const driver = await Driver.findById(driverId).populate("carDetails.carType");
-            booking.assignedCar = null; // Normally set to FleetCar id if fleet
+            booking.assignedCar = null;
+
+            // NEW: Set Initial Driver Location on Booking for Real-time mismatch fix
+            booking.driverLocation = {
+                latitude: driver.currentLocation.latitude,
+                longitude: driver.currentLocation.longitude,
+                heading: driver.currentHeading || 0,
+                lastUpdated: new Date()
+            };
 
             await booking.save();
 
@@ -261,9 +293,14 @@ exports.respondToRequest = async (req, res) => {
                         bookingId: booking._id,
                         status: "Accepted",
                         driverName: driver.name,
-                        driverPhone: driver.phone
+                        driverPhone: driver.phone,
+                        driverId: driver._id.toString(), // FIX: Agent map tracking ke liye driver._id bheja
+                        driverLocation: {               // FIX: Initial driver location bhi bhejo takki map turant dikhaye
+                            latitude: driver.currentLocation?.latitude || null,
+                            longitude: driver.currentLocation?.longitude || null,
+                        }
                     });
-                    console.log(`Agent ${booking.agent} notified via Socket`);
+                    console.log(`Agent ${booking.agent} notified via Socket (with driverId + location) ✅`);
                 } catch (err) {
                     console.error("Agent Socket Notification Error:", err.message);
                 }
@@ -354,6 +391,27 @@ exports.startTrip = async (req, res) => {
         booking.bookingStatus = "Ongoing";
         booking.tripData.startedAt = new Date();
         await booking.save();
+
+        // REAL-TIME UPDATE TO AGENT & USER
+        try {
+            const io = getIO();
+            if (booking.agent) {
+                io.to(`agent_${booking.agent.toString()}`).emit("booking_update", {
+                    bookingId: booking._id,
+                    status: "Ongoing"
+                });
+                console.log(`Agent ${booking.agent} notified via Socket (Trip Started)`);
+            }
+            if (booking.user) {
+                io.to(booking.user.toString()).emit("booking_update", {
+                    bookingId: booking._id,
+                    status: "Ongoing"
+                });
+                console.log(`User ${booking.user} notified via Socket (Trip Started)`);
+            }
+        } catch (err) {
+            console.error("Socket Notification Error (startTrip):", err.message);
+        }
 
         res.json({ success: true, message: "Trip Started Successfully!", booking });
 
@@ -561,6 +619,29 @@ exports.endTrip = async (req, res) => {
         driver.totalTrips += 1;
         // In actual Phase 4, driver earning splits happen here!
         await driver.save();
+
+        // REAL-TIME UPDATE TO AGENT & USER
+        try {
+            const io = getIO();
+            if (booking.agent) {
+                io.to(`agent_${booking.agent.toString()}`).emit("booking_update", {
+                    bookingId: booking._id,
+                    status: "Completed",
+                    finalFare: booking.actualFare
+                });
+                console.log(`Agent ${booking.agent} notified via Socket (Trip Completed)`);
+            }
+            if (booking.user) {
+                io.to(booking.user.toString()).emit("booking_update", {
+                    bookingId: booking._id,
+                    status: "Completed",
+                    finalFare: booking.actualFare
+                });
+                console.log(`User ${booking.user} notified via Socket (Trip Completed)`);
+            }
+        } catch (err) {
+            console.error("Socket Notification Error (endTrip):", err.message);
+        }
 
         res.json({ success: true, message: "Trip Ended! Passenger can make payment now.", finalFare: booking.actualFare });
 

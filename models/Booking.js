@@ -126,6 +126,13 @@ const bookingSchema = new mongoose.Schema({
   },
 
   // Live Trip Data
+  driverLocation: {
+    latitude: { type: Number, default: null },
+    longitude: { type: Number, default: null },
+    heading: { type: Number, default: null },
+    lastUpdated: { type: Date, default: null }
+  },
+
   tripData: {
     startedAt: { type: Date, default: null },
     endedAt: { type: Date, default: null },

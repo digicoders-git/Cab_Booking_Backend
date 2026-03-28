@@ -4,6 +4,7 @@ const User = require("../models/User");
 const RideRequest = require("../models/RideRequest");
 const tripController = require("./tripController");
 const Driver = require("../models/Driver");
+const { getIO } = require("../socket/socket");
 
 // Haversine helper to calculate distance between coordinates
 function deg2rad(deg) { return deg * (Math.PI / 180); }
@@ -291,6 +292,29 @@ exports.createBooking = async (req, res) => {
 
                     // Saari pending requests ko timeout kar do
                     await RideRequest.updateMany({ booking: newBooking._id, status: "Pending" }, { status: "Timeout" });
+
+                    // 🎯 LIVE NOTIFICATION: Tell Agent/User that booking is Expired
+                    try {
+                        const io = getIO();
+                        if (checkBooking.agent) {
+                            io.to(`agent_${checkBooking.agent.toString()}`).emit("booking_update", {
+                                bookingId: checkBooking._id,
+                                status: "Expired",
+                                message: "No driver accepted the request within the time limit."
+                            });
+                            console.log(`Agent ${checkBooking.agent} notified via Socket: Booking Expired ✅`);
+                        }
+                        if (checkBooking.user) {
+                            io.to(checkBooking.user.toString()).emit("booking_update", {
+                                bookingId: checkBooking._id,
+                                status: "Expired",
+                                message: "No driver accepted the request within the time limit."
+                            });
+                        }
+                    } catch (err) {
+                        console.error("Socket Error on Expire:", err.message);
+                    }
+
                     console.log(`Booking ${newBooking._id} expired after 2 mins matching attempts.`);
                     return;
                 }
@@ -349,7 +373,7 @@ exports.getMyBookings = async (req, res) => {
 
         const bookings = await Booking.find(filter)
             .populate("carCategory", "name image")
-            .populate("assignedDriver", "name phone carDetails")
+            .populate("assignedDriver", "_id name phone carDetails")
             .sort({ createdAt: -1 });
 
         res.json({
@@ -368,7 +392,7 @@ exports.getAllBookings = async (req, res) => {
     try {
         const bookings = await Booking.find()
             .populate("carCategory", "name image")
-            .populate("assignedDriver", "name phone carDetails")
+            .populate("assignedDriver", "_id name phone carDetails")
             .populate("user", "name phone")
             .populate("agent", "name phone")
             .sort({ createdAt: -1 });
@@ -409,6 +433,63 @@ exports.cancelBooking = async (req, res) => {
 
         await booking.save();
 
+        // 🟢 FIX: Reset Driver Availability
+        if (booking.assignedDriver) {
+            try {
+                const driver = await Driver.findById(booking.assignedDriver);
+                if (driver) {
+                    // Give seats back if it was shared?
+                    // For now, if single ride, car is free.
+                    // 🔄 FULL RESET (So driver is visible for new bookings!)
+                    driver.isAvailable = true;
+                    driver.currentRideType = null;
+                    driver.availableSeats = 0;
+                    driver.currentHeading = null;
+                    
+                    // Reset shared seats if any
+                    if (driver.seatMap && driver.seatMap.length > 0) {
+                        driver.seatMap.forEach(s => { 
+                            if (s.bookingId && s.bookingId.toString() === booking._id.toString()) {
+                                s.isBooked = false;
+                                s.bookingId = null;
+                            }
+                        });
+                    }
+
+                    await driver.save();
+                    console.log(`Driver ${driver._id} is now FULLY RESET after cancellation ✅`);
+
+                    // 🎯 Live Notification to Driver
+                    const io = getIO();
+                    io.to(driver._id.toString()).emit("booking_update", {
+                        bookingId: booking._id,
+                        status: "Cancelled",
+                        message: `Trip cancelled by ${booking.cancelledBy}`
+                    });
+                    console.log(`Driver notified via Socket about cancellation.`);
+                }
+            } catch (err) {
+                console.error("Driver Reset/Notify Error on Cancel:", err.message);
+            }
+        }
+
+        // Live Notification to Agent/User (if someone else cancelled)
+        try {
+            const io = getIO();
+            if (booking.agent) {
+                io.to(`agent_${booking.agent.toString()}`).emit("booking_update", {
+                    bookingId: booking._id,
+                    status: "Cancelled"
+                });
+            }
+            if (booking.user) {
+                io.to(booking.user.toString()).emit("booking_update", {
+                    bookingId: booking._id,
+                    status: "Cancelled"
+                });
+            }
+        } catch (err) {}
+
         res.json({
             success: true,
             message: "Booking cancelled successfully",
@@ -426,7 +507,7 @@ exports.getSingleBooking = async (req, res) => {
         const { bookingId } = req.params;
         const booking = await Booking.findById(bookingId)
             .populate("carCategory", "name image")
-            .populate("assignedDriver", "name phone carDetails")
+            .populate("assignedDriver", "_id name phone carDetails")
             .populate("user", "name phone");
 
         if (!booking) {

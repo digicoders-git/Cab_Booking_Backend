@@ -94,10 +94,26 @@ const initSocket = (server) => {
 
                 // 2 minutes = 120,000 milliseconds
                 if (now - lastUpdate > 120000) {
+                    // Update Driver Current State
                     await Driver.findByIdAndUpdate(driverId, {
                         currentLocation: { latitude, longitude, lastUpdated: new Date() },
                         currentHeading: heading
                     });
+
+                    // NEW: Update active bookings with new location for persistence
+                    await Booking.updateMany(
+                        { assignedDriver: driverId, bookingStatus: { $in: ["Accepted", "Ongoing"] } },
+                        { 
+                            $set: { 
+                                driverLocation: { 
+                                    latitude, 
+                                    longitude, 
+                                    heading, 
+                                    lastUpdated: new Date() 
+                                } 
+                            } 
+                        }
+                    );
                     
                     lastDBUpdate[driverId] = now; // Aakhri update time save kar liya
                     console.log(`💾 Driver ${driverId} location saved to DB (Throttled)`);
