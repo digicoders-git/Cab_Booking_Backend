@@ -9,6 +9,7 @@ const {
     getPendingDrivers,
     getApprovedDrivers,
     updateDriver,
+    getFleetDriversLive, // NEW
     adminGetAllDrivers // NEW: Admin view all fleets' drivers
 } = require("../controllers/fleetDriverController");
 
@@ -23,6 +24,9 @@ router.post("/create", auth, fleetOnly, upload.single("image"), createDriver);
 
 // Get All Fleet Drivers (Fleet Only)
 router.get("/all", auth, fleetOnly, getFleetDrivers);
+
+// New: Live Monitor API for fleet-only drivers (Fleet Only)
+router.get("/live", auth, fleetOnly, getFleetDriversLive);
 
 // Get Pending Drivers (Fleet Only) - MUST BE BEFORE /:driverId
 router.get("/pending", auth, fleetOnly, getPendingDrivers);

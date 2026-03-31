@@ -33,7 +33,7 @@ function calculateHeading(lat1, lon1, lat2, lon2) {
     const dLon = deg2rad(lon2 - lon1);
     const y = Math.sin(dLon) * Math.cos(deg2rad(lat2));
     const x = Math.cos(deg2rad(lat1)) * Math.sin(deg2rad(lat2)) -
-              Math.sin(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.cos(dLon);
+        Math.sin(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.cos(dLon);
     let brng = Math.atan2(y, x);
     brng = brng * (180 / Math.PI);
     brng = (brng + 360) % 360;
@@ -112,14 +112,15 @@ exports.autoMatchDriver = async (bookingId) => {
         );
 
         let nearestDriver = null;
-        let minDistance = 10; 
+        let minDistance = 50; // Increased search radius
 
         for (const driver of availableDrivers) {
             if (excludedDriverIds.includes(driver._id.toString())) continue;
 
             if (booking.rideType === "Shared") {
                 if (driver.currentHeading !== null) {
-                    if (!isHeadingSimilar(driver.currentHeading, newBookingHeading, 45)) continue;
+                    // Increased tolerance from 45 to 60 for real-world road curvature
+                    if (!isHeadingSimilar(driver.currentHeading, newBookingHeading, 60)) continue;
                 }
 
                 // INITIALIZE SEAT MAP (If new driver) - NEW Logic
@@ -259,7 +260,7 @@ exports.respondToRequest = async (req, res) => {
             // Lock the booking
             booking.bookingStatus = "Accepted";
             booking.assignedDriver = driverId;
-            
+
             const driver = await Driver.findById(driverId).populate("carDetails.carType");
             booking.assignedCar = null;
 
@@ -298,6 +299,7 @@ exports.respondToRequest = async (req, res) => {
                         driverLocation: {               // FIX: Initial driver location bhi bhejo takki map turant dikhaye
                             latitude: driver.currentLocation?.latitude || null,
                             longitude: driver.currentLocation?.longitude || null,
+                            heading: driver.currentHeading || 0
                         }
                     });
                     console.log(`Agent ${booking.agent} notified via Socket (with driverId + location) ✅`);
@@ -309,7 +311,7 @@ exports.respondToRequest = async (req, res) => {
             // ============================================
             // SHARED RIDE VS PRIVATE RIDE CORE LOGIC
             // ============================================
-            
+
             if (booking.rideType === "Private") {
                 // Completely locked. Driver becomes busy.
                 driver.currentRideType = "Private";
@@ -319,11 +321,11 @@ exports.respondToRequest = async (req, res) => {
             } else if (booking.rideType === "Shared") {
                 // If car was completely empty, setup capacity first
                 const capacity = driver.carDetails?.carType?.seatCapacity || 4;
-                
+
                 if (driver.currentRideType !== "Shared") {
                     driver.currentRideType = "Shared";
                     driver.availableSeats = capacity;
-                    
+
                     // Set heading based on first passenger's route!
                     driver.currentHeading = calculateHeading(
                         booking.pickup.latitude, booking.pickup.longitude,
@@ -428,9 +430,9 @@ exports.endTrip = async (req, res) => {
         const driverId = req.user.id;
 
         if (!paymentMethod || !['Cash', 'Online'].includes(paymentMethod)) {
-            return res.status(400).json({ 
-                success: false, 
-                message: "Please choose payment method (Cash or Online) to end trip" 
+            return res.status(400).json({
+                success: false,
+                message: "Please choose payment method (Cash or Online) to end trip"
             });
         }
 
@@ -444,7 +446,7 @@ exports.endTrip = async (req, res) => {
         // Setup completion
         booking.bookingStatus = "Completed";
         booking.tripData.endedAt = new Date();
-        
+
         // Finalize fare and payment method
         booking.actualFare = booking.fareEstimate;
         booking.paymentMethod = paymentMethod;
@@ -459,7 +461,7 @@ exports.endTrip = async (req, res) => {
         // ===============================================
 
         const totalFare = booking.actualFare;
-        
+
         // 1. Calculate Agent Commission (if booking by Agent)
         let agentCut = 0;
         if (booking.agent) {
@@ -483,7 +485,7 @@ exports.endTrip = async (req, res) => {
 
         // 2. Calculate Admin Commission (DYNAMIC)
         let adminPercentage = 10; // Fallback
-        
+
         let admin = await Admin.findOne();
         if (admin) {
             adminPercentage = admin.defaultCommission || 10;
@@ -497,13 +499,13 @@ exports.endTrip = async (req, res) => {
             }
         }
 
-        const adminCut = Math.round(totalFare * (adminPercentage / 100)); 
-        
+        const adminCut = Math.round(totalFare * (adminPercentage / 100));
+
         if (admin) {
             admin.walletBalance = (admin.walletBalance || 0) + adminCut;
             admin.totalEarnings = (admin.totalEarnings || 0) + adminCut;
             await admin.save();
-            
+
             await Transaction.create({
                 user: admin._id, userModel: 'Admin', amount: adminCut, type: 'Credit',
                 category: 'Commission', status: 'Completed', relatedBooking: booking._id,
@@ -524,7 +526,7 @@ exports.endTrip = async (req, res) => {
                 if (isCash) {
                     // Driver kept the cash, so Fleet owes the commission to Admin/Agent
                     fleet.walletBalance -= commissionTotal;
-                    
+
                     await Transaction.create({
                         user: fleet._id, userModel: 'Fleet', amount: commissionTotal, type: 'Debit',
                         category: 'Commission', status: 'Completed', relatedBooking: booking._id,
@@ -534,7 +536,7 @@ exports.endTrip = async (req, res) => {
                     // Online: Admin has the money, so credit the profit to Fleet
                     fleet.walletBalance += driverProfit;
                     fleet.totalEarnings += driverProfit;
-                    
+
                     await Transaction.create({
                         user: fleet._id, userModel: 'Fleet', amount: driverProfit, type: 'Credit',
                         category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
@@ -569,15 +571,15 @@ exports.endTrip = async (req, res) => {
 
         // 4. Update Driver Stats & Check Debt Limit (Suspension)
         driver.totalTrips += 1;
-        
+
         // Safety Check: If account goes too far into negative, suspend!
         if (driver.walletBalance < (driver.debtLimit || -500)) {
             driver.isActive = false;
             driver.isOnline = false;
         }
-        
+
         await driver.save();
-        
+
         // Logic for Shared/Private released
         if (booking.rideType === "Private") {
             driver.isAvailable = true;
@@ -599,9 +601,9 @@ exports.endTrip = async (req, res) => {
 
             // Give seats back to driver since passenger stepped out!
             driver.availableSeats += booking.seatsBooked;
-            
+
             const capacity = driver.carDetails?.carType?.seatCapacity || 4;
-            
+
             if (driver.availableSeats >= capacity) {
                 // Car is completely empty again
                 driver.isAvailable = true;
@@ -612,7 +614,7 @@ exports.endTrip = async (req, res) => {
                 driver.seatMap.forEach(s => { s.isBooked = false; s.bookingId = null; });
             } else {
                 // Car still has other shared passengers dropping later, but now we have some room to take new ones!
-                driver.isAvailable = true; 
+                driver.isAvailable = true;
             }
         }
 

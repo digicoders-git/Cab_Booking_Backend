@@ -20,13 +20,31 @@ const initSocket = (server) => {
         console.log(`User Connected: ${socket.id}`);
 
         // 1. Join Room (For Driver/Admin/User/Agent)
-        socket.on("join_room", (data) => {
-            const { userId, role } = data; // role: 'driver', 'admin', 'user', 'agent'
+        socket.on("join_room", async (data) => {
+            const { userId, role } = data; // role: 'driver', 'admin', 'user', 'agent', 'fleet'
             socket.userId = userId; // Store userId for cleanup on disconnect
             socket.role = role;     // Store role for cleanup on disconnect
             socket.join(userId);
+
             if (role === 'admin') socket.join('admin_room');
             if (role === 'agent') socket.join(`agent_${userId}`);
+            
+            // --- NEW: Fleet Owner joining their specific fleet room ---
+            if (role === 'fleet') socket.join(`fleet_${userId}`);
+
+            // --- NEW: Driver fetching their Fleet ID for location streaming ---
+            if (role === 'driver') {
+                try {
+                    const driver = await Driver.findById(userId).select("createdBy createdByModel");
+                    if (driver && driver.createdByModel === "Fleet" && driver.createdBy) {
+                        socket.fleetId = driver.createdBy.toString();
+                        console.log(`Driver ${userId} linked to Fleet: ${socket.fleetId}`);
+                    }
+                } catch (err) {
+                    console.error("Error fetching driver fleet info:", err.message);
+                }
+            }
+
             console.log(`User ${userId} with role ${role} joined room`);
         });
 
@@ -67,6 +85,11 @@ const initSocket = (server) => {
                 // Broadcast to Admins instantly
                 io.to('admin_room').emit("driver_location_update", updatePayload);
 
+                // --- NEW: Broadcast to Fleet Owner (if driver belongs to a fleet) ---
+                if (socket.fleetId) {
+                    io.to(`fleet_${socket.fleetId}`).emit("driver_location_update", updatePayload);
+                }
+
                 // Broadcast to Agent/User if current trip is active
                 const activeBookings = await Booking.find({
                     assignedDriver: driverId,
@@ -97,7 +120,7 @@ const initSocket = (server) => {
                     // Update Driver Current State
                     await Driver.findByIdAndUpdate(driverId, {
                         currentLocation: { latitude, longitude, lastUpdated: new Date() },
-                        currentHeading: heading
+                        currentHeading: heading || 0
                     });
 
                     // NEW: Update active bookings with new location for persistence
@@ -108,7 +131,7 @@ const initSocket = (server) => {
                                 driverLocation: { 
                                     latitude, 
                                     longitude, 
-                                    heading, 
+                                    heading: heading || 0, 
                                     lastUpdated: new Date() 
                                 } 
                             } 
@@ -118,7 +141,6 @@ const initSocket = (server) => {
                     lastDBUpdate[driverId] = now; // Aakhri update time save kar liya
                     console.log(`💾 Driver ${driverId} location saved to DB (Throttled)`);
                 }
-
             } catch (error) {
                 console.error("Socket Update Error:", error.message);
             }

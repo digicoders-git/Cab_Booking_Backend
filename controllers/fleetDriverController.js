@@ -1,5 +1,7 @@
 const FleetDriver = require("../models/FleetDriver");
 const Fleet = require("../models/Fleet");
+const FleetAssignment = require("../models/FleetAssignment");
+const FleetCar = require("../models/FleetCar");
 
 // Fleet Creates Driver (Fleet Only)
 exports.createDriver = async (req, res) => {
@@ -62,13 +64,40 @@ exports.createDriver = async (req, res) => {
 // Fleet Get All Drivers (Fleet Only)
 exports.getFleetDrivers = async (req, res) => {
     try {
-        const drivers = await FleetDriver.find({ fleetId: req.user.id })
-            .select("-password");
+        const drivers = await FleetDriver.find({ fleetId: req.user.id }).lean();
+
+        // Attach category info to each driver
+        const driversWithInfo = await Promise.all(drivers.map(async (driver) => {
+            const assignment = await FleetAssignment.findOne({ driverId: driver._id, isAssigned: true })
+                .populate({
+                    path: 'carId',
+                    populate: { path: 'carType' }
+                });
+
+            if (assignment && assignment.carId && assignment.carId.carType) {
+                return {
+                    ...driver,
+                    carCategory: {
+                        _id: assignment.carId.carType._id,
+                        name: assignment.carId.carType.name || assignment.carId.carType.categoryName,
+                        image: assignment.carId.carType.image || assignment.carId.carType.categoryImage,
+                        basePrice: assignment.carId.carType.basePrice || assignment.carId.carType.price,
+                        pricePerKm: assignment.carId.carType.pricePerKm
+                    },
+                    carInfo: {
+                        carNumber: assignment.carNumber,
+                        carModel: assignment.carModel,
+                        carBrand: assignment.carId.carBrand
+                    }
+                };
+            }
+            return driver;
+        }));
 
         res.json({
             success: true,
-            count: drivers.length,
-            drivers
+            count: driversWithInfo.length,
+            drivers: driversWithInfo
         });
 
     } catch (error) {
@@ -80,11 +109,30 @@ exports.getFleetDrivers = async (req, res) => {
     }
 };
 
+// ============================================================
+// NEW API: Fleet LIVE Monitor (Directly from Main Driver Model)
+// ============================================================
+exports.getFleetDriversLive = async (req, res) => {
+    try {
+        const Driver = require("../models/Driver");
+        const drivers = await Driver.find({ createdBy: req.user.id, createdByModel: "Fleet" })
+            .populate("carDetails.carType", "name image")
+            .sort({ isOnline: -1, updatedAt: -1 }).lean();
+
+        res.json({
+            success: true,
+            count: drivers.length,
+            drivers: drivers.map(d => ({ ...d, activeRideType: d.currentRideType || "Idle" }))
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error fetching live data", error: error.message });
+    }
+};
+
 // Fleet Get Single Driver (Fleet Only)
 exports.getFleetDriver = async (req, res) => {
     try {
-        const driver = await FleetDriver.findById(req.params.driverId)
-            .select("-password");
+        const driver = await FleetDriver.findById(req.params.driverId);
 
         if (!driver) {
             return res.status(404).json({
@@ -165,13 +213,36 @@ exports.getPendingDrivers = async (req, res) => {
             isApproved: false,
             isRejected: false
         })
-            .select("-password")
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Attach category info to each driver
+        const driversWithInfo = await Promise.all(drivers.map(async (driver) => {
+            const assignment = await FleetAssignment.findOne({ driverId: driver._id, isAssigned: true })
+                .populate({
+                    path: 'carId',
+                    populate: { path: 'carType' }
+                });
+
+            if (assignment && assignment.carId && assignment.carId.carType) {
+                return {
+                    ...driver,
+                    carCategory: {
+                        _id: assignment.carId.carType._id,
+                        name: assignment.carId.carType.name || assignment.carId.carType.categoryName,
+                        image: assignment.carId.carType.image || assignment.carId.carType.categoryImage,
+                        basePrice: assignment.carId.carType.basePrice || assignment.carId.carType.price,
+                        pricePerKm: assignment.carId.carType.pricePerKm
+                    }
+                };
+            }
+            return driver;
+        }));
 
         res.json({
             success: true,
-            count: drivers.length,
-            drivers
+            count: driversWithInfo.length,
+            drivers: driversWithInfo
         });
 
     } catch (error) {
@@ -190,13 +261,36 @@ exports.getApprovedDrivers = async (req, res) => {
             fleetId: req.user.id,
             isApproved: true
         })
-            .select("-password")
-            .sort({ approvedAt: -1 });
+            .sort({ approvedAt: -1 })
+            .lean();
+
+        // Attach category info to each driver
+        const driversWithInfo = await Promise.all(drivers.map(async (driver) => {
+            const assignment = await FleetAssignment.findOne({ driverId: driver._id, isAssigned: true })
+                .populate({
+                    path: 'carId',
+                    populate: { path: 'carType' }
+                });
+
+            if (assignment && assignment.carId && assignment.carId.carType) {
+                return {
+                    ...driver,
+                    carCategory: {
+                        _id: assignment.carId.carType._id,
+                        name: assignment.carId.carType.name || assignment.carId.carType.categoryName,
+                        image: assignment.carId.carType.image || assignment.carId.carType.categoryImage,
+                        basePrice: assignment.carId.carType.basePrice || assignment.carId.carType.price,
+                        pricePerKm: assignment.carId.carType.pricePerKm
+                    }
+                };
+            }
+            return driver;
+        }));
 
         res.json({
             success: true,
-            count: drivers.length,
-            drivers
+            count: driversWithInfo.length,
+            drivers: driversWithInfo
         });
 
     } catch (error) {
@@ -257,7 +351,7 @@ exports.updateDriver = async (req, res) => {
             req.params.driverId,
             updateData,
             { new: true }
-        ).select("-password");
+        );
 
         res.json({
             success: true,
@@ -281,13 +375,36 @@ exports.adminGetAllDrivers = async (req, res) => {
     try {
         const drivers = await FleetDriver.find()
             .populate("fleetId", "name companyName")
-            .select("-password")
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Attach category info to each driver
+        const driversWithInfo = await Promise.all(drivers.map(async (driver) => {
+            const assignment = await FleetAssignment.findOne({ driverId: driver._id, isAssigned: true })
+                .populate({
+                    path: 'carId',
+                    populate: { path: 'carType' }
+                });
+
+            if (assignment && assignment.carId && assignment.carId.carType) {
+                return {
+                    ...driver,
+                    carCategory: {
+                        _id: assignment.carId.carType._id,
+                        name: assignment.carId.carType.name || assignment.carId.carType.categoryName,
+                        image: assignment.carId.carType.image || assignment.carId.carType.categoryImage,
+                        basePrice: assignment.carId.carType.basePrice || assignment.carId.carType.price,
+                        pricePerKm: assignment.carId.carType.pricePerKm
+                    }
+                };
+            }
+            return driver;
+        }));
 
         res.json({
             success: true,
-            count: drivers.length,
-            drivers
+            count: driversWithInfo.length,
+            drivers: driversWithInfo
         });
 
     } catch (error) {
