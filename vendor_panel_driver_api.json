@@ -1,0 +1,88 @@
+{
+  "project": "CapBokkin - Vendor Panel Driver Management APIs",
+  "baseUrl": "http://localhost:5000",
+  "authType": "Bearer Token (Vendor)",
+  "driverAPIs": [
+    {
+      "name": "Register New Driver",
+      "method": "POST",
+      "path": "/api/vendors/create-driver",
+      "description": "Vendor registers a new driver with car details.",
+      "requestHeaders": {
+        "Authorization": "Bearer {{VENDOR_TOKEN}}",
+        "Content-Type": "application/json"
+      },
+      "requestBody": {
+        "name": "Suresh Driver",
+        "email": "suresh@driver.com",
+        "phone": "9911223344",
+        "password": "driverpassword",
+        "licenseNumber": "MH-12-PUNE-001",
+        "address": "Pune Market Area",
+        "carNumber": "MH-12-AB-1234",
+        "carModel": "Swift Dzire",
+        "carBrand": "Maruti",
+        "carType": "SEDAN_ID_HERE"
+      }
+    },
+    {
+      "name": "Get My Drivers List",
+      "method": "GET",
+      "path": "/api/vendors/my/drivers",
+      "description": "List of all drivers created by this Vendor with their online/approval status.",
+      "requestHeaders": {
+        "Authorization": "Bearer {{VENDOR_TOKEN}}"
+      },
+      "responseSample": {
+        "success": true,
+        "count": 1,
+        "drivers": [
+          {
+            "_id": "DRIVER_ID_HERE",
+            "name": "Suresh Driver",
+            "isApproved": false,
+            "isActive": false,
+            "isOnline": false,
+            "carDetails": {
+              "carNumber": "MH-12-AB-1234",
+              "carModel": "Swift Dzire"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Get Specific Driver Profile",
+      "method": "GET",
+      "path": "/api/vendors/driver/:id",
+      "description": "Get detailed info of a single driver by his ID.",
+      "requestHeaders": {
+        "Authorization": "Bearer {{VENDOR_TOKEN}}"
+      }
+    },
+    {
+      "name": "Update Driver Information",
+      "method": "PUT",
+      "path": "/api/vendors/update-driver/:id",
+      "description": "Update name, phone, or car details of a driver.",
+      "requestHeaders": {
+        "Authorization": "Bearer {{VENDOR_TOKEN}}",
+        "Content-Type": "application/json"
+      },
+      "requestBody": {
+        "name": "Suresh Updated Name",
+        "phone": "9911001100",
+        "carNumber": "MH-12-XY-9999"
+      }
+    },
+    {
+      "name": "Delete Driver",
+      "method": "DELETE",
+      "path": "/api/vendors/delete-driver/:id",
+      "description": "Permanently removes a driver from the system.",
+      "requestHeaders": {
+        "Authorization": "Bearer {{VENDOR_TOKEN}}"
+      }
+    }
+  ]
+}

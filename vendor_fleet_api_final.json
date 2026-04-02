@@ -1,0 +1,66 @@
+{
+  "project": "CapBokkin - Vendor-Fleet Management System",
+  "baseUrl": "http://localhost:5000",
+  "authType": "Bearer Token (Vendor)",
+  "fleetAPIs": [
+    {
+      "id": 1,
+      "name": "Register New Fleet Account",
+      "method": "POST",
+      "path": "/api/vendors/create-fleet",
+      "description": "Vendor registers a new fleet (multi-car owner) with bank and business details.",
+      "requestBody": {
+        "name": "Amit Fleet Owner",
+        "email": "amit@fleet.com",
+        "phone": "9800112233",
+        "password": "fleetpassword123",
+        "companyName": "Amit Tours",
+        "address": "Baner, Pune",
+        "city": "Pune",
+        "accountNumber": "501000123456",
+        "ifscCode": "HDFC000123",
+        "bankName": "HDFC Bank"
+      }
+    },
+    {
+      "id": 2,
+      "name": "Get My Fleets List",
+      "method": "GET",
+      "path": "/api/vendors/my/fleets",
+      "description": "Displays all fleets created by this Vendor."
+    },
+    {
+      "id": 3,
+      "name": "Get Fleet Details",
+      "method": "GET",
+      "path": "/api/vendors/fleet/:id",
+      "description": "View full details and stats of a specific fleet account."
+    },
+    {
+      "id": 4,
+      "name": "Update Fleet Information",
+      "method": "PUT",
+      "path": "/api/vendors/update-fleet/:id",
+      "body": {
+          "companyName": "Updated Travels",
+          "phone": "9922883344",
+          "city": "Mumbai"
+      },
+      "description": "Admin can update fleet owner's business or contact details."
+    },
+    {
+      "id": 5,
+      "name": "Toggle Fleet Status (Active/Block)",
+      "method": "PATCH",
+      "path": "/api/vendors/toggle-fleet/:id",
+      "description": "Suspend or Activate a specific fleet account."
+    },
+    {
+      "id": 6,
+      "name": "Delete Fleet Account",
+      "method": "DELETE",
+      "path": "/api/vendors/delete-fleet/:id",
+      "description": "Permanently remove a fleet account from the system."
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "project": "CapBokkin - Vendor-Driver Management System",
+  "baseUrl": "http://localhost:5000",
+  "authType": "Bearer Token (Vendor)",
+  "driverAPIs": [
+    {
+      "name": "1. Fetch Active Car Categories (For Dropdown)",
+      "method": "GET",
+      "path": "/api/car-categories/active",
+      "description": "Fetch all categories (Bike, Auto, Sedan) to show IDs in Driver Registration form."
+    },
+    {
+      "name": "2. Register New Driver (Full Specs)",
+      "method": "POST",
+      "path": "/api/vendors/create-driver",
+      "payloadType": "multipart/form-data",
+      "fields": {
+        "Basic": ["name", "email", "phone", "password", "image (FILE)"],
+        "License": ["licenseNumber", "licenseExpiry"],
+        "Car": ["carNumber", "carModel", "carBrand", "carType (ID)", "carColor", "manufacturingYear"],
+        "Documents": ["rcImage (FILE)", "insuranceImage (FILE)", "permitImage (FILE)", "pucImage (FILE)"],
+        "Bank": ["accountNumber", "ifscCode", "bankName", "accountHolderName"],
+        "Address": ["address", "city", "state", "pincode"]
+      },
+      "description": "Automatically sets createdBy: VendorID and createdByModel: Vendor."
+    },
+    {
+      "name": "3. List My Drivers",
+      "method": "GET",
+      "path": "/api/vendors/my/drivers",
+      "description": "List of all drivers created by this Vendor with status."
+    },
+    {
+      "name": "4. Get Driver Details",
+      "method": "GET",
+      "path": "/api/vendors/driver/:id",
+      "description": "Full detailed profile of a specific driver."
+    },
+    {
+      "name": "5. Update Driver Information",
+      "method": "PUT",
+      "path": "/api/vendors/update-driver/:id",
+      "description": "Update specific fields of a driver."
+    },
+    {
+      "name": "6. Delete Driver",
+      "method": "DELETE",
+      "path": "/api/vendors/delete-driver/:id",
+      "description": "Permanently remove a driver from the vendor's team."
+    }
+  ]
+}

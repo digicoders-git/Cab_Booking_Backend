@@ -1,0 +1,96 @@
+{
+  "project": "CapBokkin - Master Vendor System API Collection",
+  "version": "1.1.0",
+  "baseUrl": "http://localhost:5000",
+  "authType": "Bearer Token (Vendor)",
+  "vendorAPIs": {
+    "Authentication": [
+      {
+        "name": "Vendor Login",
+        "method": "POST",
+        "path": "/api/vendors/login",
+        "payload": { "email": "vendor@test.com", "password": "password123" },
+        "description": "Returns JWT token and basic profile."
+      }
+    ],
+    "ProfileManagement": [
+      {
+        "name": "Get My Profile",
+        "method": "GET",
+        "path": "/api/vendors/profile/me",
+        "description": "Fetch current vendor's full profile including bank and address."
+      },
+      {
+        "name": "Self-Profile Update",
+        "method": "PUT",
+        "path": "/api/vendors/profile/self-update",
+        "payloadType": "multipart/form-data",
+        "fields": ["name", "email", "phone", "password", "image (FILE)", "address", "city", "state", "pincode", "accountNumber", "ifscCode", "bankName", "accountHolderName"],
+        "description": "Update own profile photo, contact, address, and bank details."
+      }
+    ],
+    "Dashboard": [
+      {
+        "name": "Vendor Dashboard Stats",
+        "method": "GET",
+        "path": "/api/vendors/dashboard/stats",
+        "description": "Get counts for active drivers, fleets, and current wallet balance with last 5 transactions."
+      }
+    ],
+    "DriverManager": [
+      {
+        "name": "Register New Driver",
+        "method": "POST",
+        "path": "/api/vendors/create-driver",
+        "payloadType": "multipart/form-data",
+        "fields": {
+          "Basic": ["name", "email", "phone", "password", "image (FILE)"],
+          "Car": ["carNumber", "carModel", "carBrand", "carType (ID)", "carColor", "manufacturingYear"],
+          "Files": ["rcImage (FILE)", "insuranceImage (FILE)", "permitImage (FILE)", "pucImage (FILE)"],
+          "Bank": ["accountNumber", "ifscCode", "bankName", "accountHolderName"],
+          "Address": ["address", "city", "state", "pincode"]
+        }
+      },
+      {
+        "name": "List All My Drivers",
+        "method": "GET",
+        "path": "/api/vendors/my/drivers"
+      },
+      {
+        "name": "View/Edit Driver Info",
+        "method": "PUT",
+        "path": "/api/vendors/update-driver/:id",
+        "payloadType": "multipart/form-data",
+        "description": "Full-fledged edit for driver info and documents."
+      },
+      { "name": "Get Single Driver Details", "method": "GET", "path": "/api/vendors/driver/:id" },
+      { "name": "Toggle Driver Status", "method": "PATCH", "path": "/api/vendors/toggle-driver/:id" },
+      { "name": "Delete Driver", "method": "DELETE", "path": "/api/vendors/delete-driver/:id" }
+    ],
+    "FleetManager": [
+      {
+        "name": "Create Fleet",
+        "method": "POST",
+        "path": "/api/vendors/create-fleet",
+        "payloadType": "multipart/form-data",
+        "fields": ["name", "email", "phone", "password", "companyName", "gstNumber", "panNumber", "image (FILE)", "gstCertificate (FILE)", "panCard (FILE)", "businessLicense (FILE)"]
+      },
+      { "name": "List My Fleets", "method": "GET", "path": "/api/vendors/my/fleets" },
+      { "name": "Update Fleet Info/Docs", "method": "PUT", "path": "/api/vendors/update-fleet/:id", "payloadType": "multipart/form-data" },
+      { "name": "Toggle Fleet Status", "method": "PATCH", "path": "/api/vendors/toggle-fleet/:id" }
+    ],
+    "WalletAndEarnings": [
+      {
+        "name": "Request Withdrawal",
+        "method": "POST",
+        "path": "/api/vendors/wallet/withdraw",
+        "payload": { "amount": 1000, "note": "Weekly payout" }
+      },
+      {
+        "name": "View Withdrawal History",
+        "method": "GET",
+        "path": "/api/vendors/wallet/withdrawals"
+      }
+    ]
+  }
+}

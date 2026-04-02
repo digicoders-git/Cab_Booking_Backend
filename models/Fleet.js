@@ -122,7 +122,13 @@ const fleetSchema = new mongoose.Schema({
   
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Admin"
+    refPath: "createdByModel" // Dynamic reference
+  },
+  
+  createdByModel: {
+    type: String,
+    enum: ["Admin", "Vendor"],
+    default: "Admin"
   }
 }, { timestamps: true });
 

@@ -28,20 +28,26 @@ const initSocket = (server) => {
 
             if (role === 'admin') socket.join('admin_room');
             if (role === 'agent') socket.join(`agent_${userId}`);
+            if (role === 'vendor') socket.join(`vendor_${userId}`); // NEW: Vendor specific room
             
             // --- NEW: Fleet Owner joining their specific fleet room ---
             if (role === 'fleet') socket.join(`fleet_${userId}`);
 
-            // --- NEW: Driver fetching their Fleet ID for location streaming ---
+            // --- NEW: Driver fetching their Fleet/Vendor ID for location streaming ---
             if (role === 'driver') {
                 try {
                     const driver = await Driver.findById(userId).select("createdBy createdByModel");
-                    if (driver && driver.createdByModel === "Fleet" && driver.createdBy) {
-                        socket.fleetId = driver.createdBy.toString();
-                        console.log(`Driver ${userId} linked to Fleet: ${socket.fleetId}`);
+                    if (driver && driver.createdBy) {
+                        if (driver.createdByModel === "Fleet") {
+                            socket.fleetId = driver.createdBy.toString();
+                            console.log(`Driver ${userId} linked to Fleet: ${socket.fleetId}`);
+                        } else if (driver.createdByModel === "Vendor") {
+                            socket.vendorId = driver.createdBy.toString();
+                            console.log(`Driver ${userId} linked to Vendor: ${socket.vendorId}`);
+                        }
                     }
                 } catch (err) {
-                    console.error("Error fetching driver fleet info:", err.message);
+                    console.error("Error fetching driver parent info:", err.message);
                 }
             }
 
@@ -88,6 +94,11 @@ const initSocket = (server) => {
                 // --- NEW: Broadcast to Fleet Owner (if driver belongs to a fleet) ---
                 if (socket.fleetId) {
                     io.to(`fleet_${socket.fleetId}`).emit("driver_location_update", updatePayload);
+                }
+
+                // --- NEW: Broadcast to Vendor (if driver belongs to a vendor) ---
+                if (socket.vendorId) {
+                    io.to(`vendor_${socket.vendorId}`).emit("driver_location_update", updatePayload);
                 }
 
                 // Broadcast to Agent/User if current trip is active

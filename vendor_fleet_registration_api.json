@@ -1,0 +1,39 @@
+{
+  "project": "CapBokkin - Vendor Fleet Registration Docs",
+  "endpoint": "/api/vendors/create-fleet",
+  "method": "POST",
+  "contentType": "multipart/form-data",
+  "auth": "Bearer <VENDOR_TOKEN>",
+  "parameters": {
+    "profile": {
+      "name": "Text",
+      "email": "Text (Unique)",
+      "phone": "Text (Unique)",
+      "password": "Text",
+      "image": "File (Main Profile Photo)"
+    },
+    "businessDetails": {
+      "companyName": "Text",
+      "gstNumber": "Text",
+      "panNumber": "Text"
+    },
+    "documents": {
+      "gstCertificate": "File (GST)",
+      "panCard": "File (PAN)",
+      "businessLicense": "File (License)"
+    },
+    "address": {
+      "address": "Text",
+      "city": "Text",
+      "state": "Text",
+      "pincode": "Text"
+    },
+    "bankDetails": {
+      "accountNumber": "Text",
+      "ifscCode": "Text",
+      "bankName": "Text",
+      "accountHolderName": "Text"
+    }
+  },
+  "backendNote": "Automatically links with Vendor using JWT. Sets createdByModel: 'Vendor'."
+}

@@ -9,7 +9,7 @@ const supportSchema = new mongoose.Schema({
     senderModel: {
         type: String,
         required: true,
-        enum: ['User', 'Agent', 'Driver', 'Fleet']
+        enum: ['User', 'Agent', 'Driver', 'Fleet', 'Vendor']
     },
     subject: {
         type: String,

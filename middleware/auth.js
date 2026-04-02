@@ -99,11 +99,25 @@ const fleetOnly = (req, res, next) => {
 
 }
 
+const vendorOnly = (req, res, next) => {
+
+    if (req.user.role !== "vendor") {
+        return res.status(403).json({
+            success: false,
+            message: "Access not Defined"
+        })
+    }
+
+    next()
+
+}
+
 module.exports = {
     auth,
     adminOnly,
     userOnly,
     driverOnly,
     agentOnly,
-    fleetOnly
+    fleetOnly,
+    vendorOnly
 };

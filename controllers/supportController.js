@@ -17,6 +17,7 @@ exports.createSupportRequest = async (req, res) => {
         else if (role === "agent") senderModel = "Agent";
         else if (role === "driver") senderModel = "Driver";
         else if (role === "fleet") senderModel = "Fleet";
+        else if (role === "vendor") senderModel = "Vendor";
         else {
             return res.status(403).json({ success: false, message: "Invalid role for support request" });
         }

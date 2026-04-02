@@ -1,0 +1,135 @@
+{
+  "info": {
+    "name": "CapBokkin User API Collection",
+    "description": "Complete API collection for User and Agent Booking Flow for CapBokkin Cab Booking System.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "User Login / Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"7068767516\",\n  \"otp\": \"123456\",\n  \"name\": \"Virendra\",\n  \"email\": \"virendra@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "login"]
+            },
+            "description": "Combine API for registration and login using phone and fixed OTP (123456)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bookings",
+      "item": [
+        {
+          "name": "Search Cabs (Get Fares for Category Options)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pickupLat\": 26.904,\n  \"pickupLng\": 80.944,\n  \"dropLat\": 26.917,\n  \"dropLng\": 80.954,\n  \"distanceKm\": 2.77\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/bookings/search-cabs",
+              "host": ["{{baseUrl}}"],
+              "path": ["bookings", "search-cabs"]
+            }
+          }
+        },
+        {
+          "name": "Create Booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"passengerName\": \"Vivek\",\n  \"passengerPhone\": \"7068767516\",\n  \"rideType\": \"Private\",\n  \"carCategoryId\": \"69cb8506c1a664029f4d40bb\",\n  \"pickupAddress\": \"Aliganj, Lucknow\",\n  \"pickupLat\": 26.9049,\n  \"pickupLng\": 80.9446,\n  \"dropAddress\": \"Jankipuram, Lucknow\",\n  \"dropLat\": 26.9170,\n  \"dropLng\": 80.9543,\n  \"distanceKm\": 2.77,\n  \"seatsBooked\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/bookings/create",
+              "host": ["{{baseUrl}}"],
+              "path": ["bookings", "create"]
+            }
+          }
+        },
+        {
+          "name": "Get My Bookings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/bookings/my-bookings",
+              "host": ["{{baseUrl}}"],
+              "path": ["bookings", "my-bookings"]
+            }
+          }
+        },
+        {
+          "name": "Cancel Booking",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Driver is too far\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/bookings/cancel/:bookingId",
+              "host": ["{{baseUrl}}"],
+              "path": ["bookings", "cancel", ":bookingId"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api"
+    },
+    {
+      "key": "token",
+      "value": "ENTER_YOUR_JWT_TOKEN_HERE"
+    }
+  ]
+}

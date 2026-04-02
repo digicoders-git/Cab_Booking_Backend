@@ -5,6 +5,7 @@ const Transaction = require("../models/Transaction");
 const Agent = require("../models/Agent");
 const Admin = require("../models/Admin");
 const Fleet = require("../models/Fleet");
+const Vendor = require("../models/Vendor");
 const Notification = require("../models/Notification");
 const { getIO } = require("../socket/socket");
 
@@ -515,10 +516,54 @@ exports.endTrip = async (req, res) => {
             console.log("CRITICAL: No Admin found in database for commission split!");
         }
 
-        // 3. Driver/Fleet Earning or Debt Calculation
+        // 3. ✅ CORRECT Vendor Commission Logic
+        // Vendor ko ADMIN KI KAMAI ka % milega — Driver/Agent BILKUL SAME RAHEGA!
+        // Example: Trip ₹1000, Admin cut = ₹100, Vendor % = 25%
+        //   → Vendor = ₹25  (25% of Admin's ₹100)
+        //   → Admin  = ₹75  (remaining after giving Vendor his share)
+        //   → Agent  = ₹50  (unchanged ✅)
+        //   → Driver = ₹850 (unchanged ✅)
+        let vendorCut = 0;
+        if (driver.createdByModel === "Vendor" && driver.createdBy) {
+            const vendor = await Vendor.findById(driver.createdBy);
+            if (vendor && admin) {
+                // Vendor cut = Admin ki kamai ka %
+                vendorCut = Math.round(adminCut * (vendor.commissionPercentage / 100));
+
+                // Admin ke wallet se vendorCut wapas kato (Admin pehle poora le chuka tha)
+                admin.walletBalance = (admin.walletBalance || 0) - vendorCut;
+                admin.totalEarnings = (admin.totalEarnings || 0) - vendorCut;
+                await admin.save();
+
+                // Admin debit transaction (Audit trail)
+                await Transaction.create({
+                    user: admin._id, userModel: 'Admin', amount: vendorCut, type: 'Debit',
+                    category: 'Vendor Commission', status: 'Completed', relatedBooking: booking._id,
+                    description: `Vendor '${vendor.name}' ko diya — ${vendor.commissionPercentage}% of Admin cut ₹${adminCut}`
+                });
+
+                // Vendor wallet credit karo
+                vendor.walletBalance = (vendor.walletBalance || 0) + vendorCut;
+                vendor.totalEarnings = (vendor.totalEarnings || 0) + vendorCut;
+                await vendor.save();
+
+                await Transaction.create({
+                    user: vendor._id, userModel: 'Vendor', amount: vendorCut, type: 'Credit',
+                    category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                    description: `Commission (${vendor.commissionPercentage}% of Admin cut ₹${adminCut}) — Trip ${booking._id}`
+                });
+
+                console.log(`✅ Vendor '${vendor.name}' ko ₹${vendorCut} mila (${vendor.commissionPercentage}% of Admin ₹${adminCut})`);
+                console.log(`✅ Admin actual earning: ₹${adminCut - vendorCut}`);
+            }
+        }
+
+        // 4. Driver/Fleet Earning or Debt Calculation
+        // ✅ commissionTotal = agentCut + adminCut ONLY
+        // Vendor cut Driver ke profit ko BILKUL affect nahi karta!
         const isCash = booking.paymentMethod === 'Cash';
-        const commissionTotal = agentCut + adminCut;
-        const driverProfit = totalFare - commissionTotal; // What driver actually kept in pocket (if cash) or gets (if online)
+        const commissionTotal = agentCut + adminCut; // Driver profit UNCHANGED ✅
+        const driverProfit = totalFare - commissionTotal; // Driver ka hissa same ✅
 
         if (driver.createdByModel === "Fleet") {
             const fleet = await Fleet.findById(driver.createdBy);

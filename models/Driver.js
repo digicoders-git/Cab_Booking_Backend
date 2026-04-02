@@ -251,7 +251,7 @@ const driverSchema = new mongoose.Schema({
   },
   createdByModel: {
     type: String,
-    enum: ["Admin", "Fleet", "Self"],
+    enum: ["Admin", "Fleet", "Self", "Vendor"],
     default: "Self"
   }
 }, { timestamps: true });

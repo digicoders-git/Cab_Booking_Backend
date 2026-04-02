@@ -1,0 +1,113 @@
+{
+  "project": "CapBokkin - Vendor Wallet & Billing System",
+  "version": "1.0.0",
+  "baseUrl": "http://localhost:5000",
+  "authType": "Bearer Token (Vendor)",
+  "vendorWalletAPIs": [
+    {
+      "id": "VW_001",
+      "name": "Get Vendor Wallet Dashboard",
+      "method": "GET",
+      "path": "/api/vendors/dashboard/stats",
+      "description": "Returns current wallet balance, total earnings, monthly earnings, and the latest 5 transaction history items.",
+      "responseExample": {
+        "success": true,
+        "dashboard": {
+          "walletBalance": 5250.75,
+          "totalEarnings": 34000.0,
+          "monthlyEarnings": 4500.0,
+          "recentTransactions": [
+            {
+              "type": "Credit",
+              "amount": 150.5,
+              "category": "Commission",
+              "description": "Commission for Trip #TR12345",
+              "status": "Completed",
+              "createdAt": "2024-04-01T12:30:00Z"
+            },
+            {
+              "type": "Debit",
+              "amount": 1000.0,
+              "category": "Withdrawal",
+              "description": "Weekly Payout Request",
+              "status": "Pending",
+              "createdAt": "2024-03-31T15:45:00Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "VW_002",
+      "name": "Post Withdrawal Request",
+      "method": "POST",
+      "path": "/api/vendors/wallet/withdraw",
+      "payload": {
+        "amount": 1500,
+        "note": "Payment for March week 4"
+      },
+      "conditions": [
+        "Amount must be greater than or equal to 100",
+        "Amount must not exceed the current wallet balance",
+        "Vendor must have valid bank details set in profile"
+      ],
+      "description": "Submit a request to Admin to withdraw money from the vendor wallet into their bank account.",
+      "successResponse": {
+        "success": true,
+        "message": "Withdrawal request Admin ko bhej di gayi hai!",
+        "withdrawal": {
+          "_id": "660...",
+          "amount": 1500,
+          "status": "Pending",
+          "bankDetails": {
+            "accountNumber": "9182736451",
+            "bankName": "SBI"
+          }
+        }
+      }
+    },
+    {
+      "id": "VW_003",
+      "name": "Get Withdrawal History",
+      "method": "GET",
+      "path": "/api/vendors/wallet/withdrawals",
+      "description": "Fetches the full history of withdrawal requests made by the vendor with their current status (Pending/Approved/Rejected).",
+      "responseExample": {
+        "success": true,
+        "withdrawals": [
+          {
+            "_id": "660...",
+            "amount": 1500,
+            "status": "Pending",
+            "bankDetails": {
+              "accountNumber": "9182736451",
+              "bankName": "SBI"
+            },
+            "createdAt": "2024-04-01T11:00:00Z"
+          },
+          {
+            "_id": "65f...",
+            "amount": 2500,
+            "status": "Approved",
+            "bankDetails": {
+              "accountNumber": "9182736451",
+              "bankName": "SBI"
+            },
+            "createdAt": "2024-03-25T09:30:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "id": "VW_004",
+      "name": "View My Generic Wallet (Alternative)",
+      "method": "GET",
+      "path": "/api/wallet/my-wallet",
+      "description": "Access the profile-linked generic wallet for balance and a longer list of transactions.",
+      "responseFields": [
+        "balance",
+        "transactions"
+      ]
+    }
+  ]
+}

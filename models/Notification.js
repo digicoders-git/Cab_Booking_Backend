@@ -12,7 +12,7 @@ const notificationSchema = new mongoose.Schema({
   // Who should see this notification?
   targetRoles: [{
     type: String,
-    enum: ["all", "user", "driver", "agent", "fleet"],
+    enum: ["all", "user", "driver", "agent", "fleet", "vendor"],
     default: "all"
   }],
   // NEW: target a specific person instead of a role
@@ -23,7 +23,7 @@ const notificationSchema = new mongoose.Schema({
   },
   recipientModel: {
     type: String,
-    enum: ['User', 'Driver', 'Agent', 'Fleet', null],
+    enum: ['User', 'Driver', 'Agent', 'Fleet', 'Vendor', null],
     default: null
   },
   isActive: {

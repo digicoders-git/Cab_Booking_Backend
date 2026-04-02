@@ -1,0 +1,121 @@
+{
+  "project": "CapBokkin - Vendor Management (Admin Panel APIs)",
+  "baseUrl": "http://localhost:5000",
+  "authType": "Bearer Token (Admin)",
+  "apiEndpoints": [
+    {
+      "name": "Create New Vendor",
+      "method": "POST",
+      "path": "/api/vendors/create",
+      "description": "Admin creates a new vendor and sets commission % and area.",
+      "requestHeaders": {
+        "Authorization": "Bearer {{ADMIN_TOKEN}}",
+        "Content-Type": "application/json"
+      },
+      "requestBody": {
+        "name": "Rahul Sharma",
+        "email": "rahul@punevendor.com",
+        "phone": "9876543210",
+        "password": "vendor123",
+        "companyName": "Pune Rides Pvt Ltd",
+        "assignedArea": "Pune",
+        "commissionPercentage": 25,
+        "address": "Pune Market Area",
+        "bankDetails": {
+          "accountNumber": "1234567890",
+          "ifscCode": "HDFC000123",
+          "accountHolderName": "Rahul Sharma",
+          "bankName": "HDFC Bank"
+        }
+      }
+    },
+    {
+      "name": "Get All Vendors",
+      "method": "GET",
+      "path": "/api/vendors/all",
+      "description": "Fetch list of all vendors with stats and wallet balance.",
+      "requestHeaders": {
+        "Authorization": "Bearer {{ADMIN_TOKEN}}"
+      },
+      "responseSample": {
+        "success": true,
+        "count": 1,
+        "vendors": [
+          {
+            "_id": "69cc...",
+            "name": "Rahul Vendor",
+            "assignedArea": "Pune",
+            "commissionPercentage": 25,
+            "walletBalance": 0,
+            "isActive": true,
+            "totalDrivers": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Get Single Vendor Detail",
+      "method": "GET",
+      "path": "/api/vendors/:id",
+      "description": "View full details, bank info, and stats of one vendor.",
+      "requestHeaders": {
+        "Authorization": "Bearer {{ADMIN_TOKEN}}"
+      }
+    },
+    {
+      "name": "Update Vendor Information",
+      "method": "PUT",
+      "path": "/api/vendors/update/:id",
+      "description": "Update vendor profile, area, or bank info.",
+      "requestHeaders": {
+        "Authorization": "Bearer {{ADMIN_TOKEN}}",
+        "Content-Type": "application/json"
+      },
+      "requestBody": {
+        "name": "Updated Vendor Name",
+        "assignedArea": "Mumbai",
+        "commissionPercentage": 30
+      }
+    },
+    {
+      "name": "Assign/Change Commission % Only",
+      "method": "PATCH",
+      "path": "/api/vendors/commission/:id",
+      "description": "Admin can quickly change vendor's commission share.",
+      "requestHeaders": {
+        "Authorization": "Bearer {{ADMIN_TOKEN}}",
+        "Content-Type": "application/json"
+      },
+      "requestBody": {
+        "commissionPercentage": 20
+      }
+    },
+    {
+      "name": "Activate/Deactivate Vendor",
+      "method": "PATCH",
+      "path": "/api/vendors/toggle/:id",
+      "description": "Used to temporarily block a vendor.",
+      "requestHeaders": {
+        "Authorization": "Bearer {{ADMIN_TOKEN}}"
+      }
+    },
+    {
+      "name": "Delete Vendor",
+      "method": "DELETE",
+      "path": "/api/vendors/delete/:id",
+      "description": "Removes vendor permanently from system.",
+      "requestHeaders": {
+        "Authorization": "Bearer {{ADMIN_TOKEN}}"
+      }
+    },
+    {
+      "name": "View Vendor Commission History",
+      "method": "GET",
+      "path": "/api/wallet/transactions",
+      "description": "Admin can filter transactions by category 'Vendor Commission' to see payouts.",
+      "requestHeaders": {
+        "Authorization": "Bearer {{ADMIN_TOKEN}}"
+      }
+    }
+  ]
+}

@@ -18,8 +18,8 @@ router.post("/create", auth, adminOnly, upload.single("image"), createCarCategor
 // 2. Get All Active Categories (Public for Users/Drivers)
 router.get("/active", getAllActiveCategories); // No auth needed, anyone can see car categories & prices
 
-// 3. Get All Categories for Dashboard (Admin Only)
-router.get("/all", auth, adminOnly, getAllCategoriesAdmin);
+// 3. Get All Categories for Dashboard (Admin, Vendor, Fleet)
+router.get("/all", auth, getAllCategoriesAdmin);
 
 // 4. Update an existing Category (Admin Only)
 router.put("/update/:id", auth, adminOnly, upload.single("image"), updateCarCategory);
