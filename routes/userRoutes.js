@@ -5,6 +5,7 @@ const {
     loginUser,
     getAllUsers,
     getUserProfile,
+    updateUserProfile,
     deleteUser,
     toggleUserStatus
 } = require("../controllers/userController")
@@ -18,6 +19,7 @@ router.post("/login", loginUser)
 // Secure routes
 router.get("/all", auth, adminOnly, getAllUsers)
 router.get("/profile/:id", auth, getUserProfile)
+router.put("/update-profile/:id", auth, upload.single("image"), updateUserProfile)
 router.delete("/delete/:id", auth, adminOnly, deleteUser)
 router.put("/toggle-status/:id", auth, adminOnly, toggleUserStatus)
 

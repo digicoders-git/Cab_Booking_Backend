@@ -9,7 +9,7 @@ const transactionSchema = new mongoose.Schema({
     userModel: {
         type: String,
         required: true,
-        enum: ['Driver', 'Agent', 'Fleet', 'Admin']
+        enum: ['Driver', 'Agent', 'Fleet', 'Admin', 'Vendor']
     },
     amount: {
         type: Number,

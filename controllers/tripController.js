@@ -119,24 +119,31 @@ exports.autoMatchDriver = async (bookingId) => {
             if (excludedDriverIds.includes(driver._id.toString())) continue;
 
             if (booking.rideType === "Shared") {
-                if (driver.currentHeading !== null) {
-                    // Increased tolerance from 45 to 60 for real-world road curvature
+                // Direction check: Only if driver is ALREADY doing a shared ride
+                if (driver.currentRideType === "Shared" && driver.currentHeading !== null) {
+                    // Increased tolerance to 60 for real-world road curvature
                     if (!isHeadingSimilar(driver.currentHeading, newBookingHeading, 60)) continue;
                 }
 
-                // INITIALIZE SEAT MAP (If new driver) - NEW Logic
+                // INITIALIZE SEAT MAP (If new driver or empty map)
                 let finalSeatMap = driver.seatMap || [];
                 if (finalSeatMap.length === 0) {
                     const layout = driver.carDetails?.carType?.seatLayout;
                     if (layout && layout.length > 0) {
                         finalSeatMap = layout.map(s => ({ seatName: s, isBooked: false, bookingId: null }));
                         driver.seatMap = finalSeatMap;
-                        await driver.save();
+                        // Avoid multiple saves in loop for performance, but ensure UI/Matching has current state
                     }
                 }
 
-                // NEW: Specific Seat Availability Check
+                // Specific Seat Availability Check
                 if (booking.selectedSeats && booking.selectedSeats.length > 0) {
+                    if (finalSeatMap.length === 0) {
+                        // Category has no named seats, but user requested a named seat. 
+                        // Fallback: Skip if we can't fulfill the specific seat request.
+                        continue; 
+                    }
+                    
                     let allSeatsFree = true;
                     for (const sName of booking.selectedSeats) {
                         const seat = finalSeatMap.find(s => s.seatName === sName);
@@ -145,7 +152,7 @@ exports.autoMatchDriver = async (bookingId) => {
                             break;
                         }
                     }
-                    if (!allSeatsFree) continue; // Skip driver if their car doesn't have the chosen seats free
+                    if (!allSeatsFree) continue; 
                 }
             }
 
@@ -285,6 +292,28 @@ exports.respondToRequest = async (req, res) => {
                     createdBy: driverId,
                     createdByModel: 'Driver'
                 });
+            }
+
+            // Real-time Update to USER (If booking belongs to a user)
+            if (booking.user) {
+                try {
+                    const io = getIO();
+                    io.to(booking.user.toString()).emit("booking_update", {
+                        bookingId: booking._id,
+                        status: "Accepted",
+                        driverName: driver.name,
+                        driverPhone: driver.phone,
+                        driverId: driver._id.toString(),
+                        driverLocation: {
+                            latitude: driver.currentLocation?.latitude || null,
+                            longitude: driver.currentLocation?.longitude || null,
+                            heading: driver.currentHeading || 0
+                        }
+                    });
+                    console.log(`User ${booking.user} notified via Socket (Accepted) ✅`);
+                } catch (err) {
+                    console.error("User Socket Notification Error:", err.message);
+                }
             }
 
             // Real-time Update to AGENT (If booking belongs to an agent)
@@ -451,179 +480,12 @@ exports.endTrip = async (req, res) => {
         // Finalize fare and payment method
         booking.actualFare = booking.fareEstimate;
         booking.paymentMethod = paymentMethod;
-        booking.paymentStatus = "Completed"; // Since it's handled at destination
+        booking.paymentStatus = "Completed"; 
         await booking.save();
 
-        // Released the driver or add back empty seats
+        // 🟢 PRE-RELEASE DRIVER (Make driver available immediately)
         const driver = await Driver.findById(driverId).populate("carDetails.carType");
-
-        // ===============================================
-        // PHASE 4: MONEY SPLIT (The Financial Engine)
-        // ===============================================
-
-        const totalFare = booking.actualFare;
-
-        // 1. Calculate Agent Commission (if booking by Agent)
-        let agentCut = 0;
-        if (booking.agent) {
-            const agent = await Agent.findById(booking.agent);
-            if (agent) {
-                // We use the booking's pre-calculated commission
-                agentCut = booking.agentCommission || 0;
-                agent.walletBalance += agentCut;
-                agent.totalEarnings += agentCut;
-                agent.totalBookings += 1;
-                await agent.save();
-
-                // Record Agent Transaction
-                await Transaction.create({
-                    user: agent._id, userModel: 'Agent', amount: agentCut, type: 'Credit',
-                    category: 'Commission', status: 'Completed', relatedBooking: booking._id,
-                    description: `Commission for booking ${booking._id}`
-                });
-            }
-        }
-
-        // 2. Calculate Admin Commission (DYNAMIC)
-        let adminPercentage = 10; // Fallback
-
-        let admin = await Admin.findOne();
-        if (admin) {
-            adminPercentage = admin.defaultCommission || 10;
-        }
-
-        // If driver is from a Fleet, Admin might have a different deal with that Fleet!
-        if (driver.createdByModel === "Fleet") {
-            const fleet = await Fleet.findById(driver.createdBy);
-            if (fleet && fleet.commissionPercentage !== undefined) {
-                adminPercentage = fleet.commissionPercentage;
-            }
-        }
-
-        const adminCut = Math.round(totalFare * (adminPercentage / 100));
-
-        if (admin) {
-            admin.walletBalance = (admin.walletBalance || 0) + adminCut;
-            admin.totalEarnings = (admin.totalEarnings || 0) + adminCut;
-            await admin.save();
-
-            await Transaction.create({
-                user: admin._id, userModel: 'Admin', amount: adminCut, type: 'Credit',
-                category: 'Commission', status: 'Completed', relatedBooking: booking._id,
-                description: `Admin fee for trip ${booking._id}`
-            });
-        } else {
-            console.log("CRITICAL: No Admin found in database for commission split!");
-        }
-
-        // 3. ✅ CORRECT Vendor Commission Logic
-        // Vendor ko ADMIN KI KAMAI ka % milega — Driver/Agent BILKUL SAME RAHEGA!
-        // Example: Trip ₹1000, Admin cut = ₹100, Vendor % = 25%
-        //   → Vendor = ₹25  (25% of Admin's ₹100)
-        //   → Admin  = ₹75  (remaining after giving Vendor his share)
-        //   → Agent  = ₹50  (unchanged ✅)
-        //   → Driver = ₹850 (unchanged ✅)
-        let vendorCut = 0;
-        if (driver.createdByModel === "Vendor" && driver.createdBy) {
-            const vendor = await Vendor.findById(driver.createdBy);
-            if (vendor && admin) {
-                // Vendor cut = Admin ki kamai ka %
-                vendorCut = Math.round(adminCut * (vendor.commissionPercentage / 100));
-
-                // Admin ke wallet se vendorCut wapas kato (Admin pehle poora le chuka tha)
-                admin.walletBalance = (admin.walletBalance || 0) - vendorCut;
-                admin.totalEarnings = (admin.totalEarnings || 0) - vendorCut;
-                await admin.save();
-
-                // Admin debit transaction (Audit trail)
-                await Transaction.create({
-                    user: admin._id, userModel: 'Admin', amount: vendorCut, type: 'Debit',
-                    category: 'Vendor Commission', status: 'Completed', relatedBooking: booking._id,
-                    description: `Vendor '${vendor.name}' ko diya — ${vendor.commissionPercentage}% of Admin cut ₹${adminCut}`
-                });
-
-                // Vendor wallet credit karo
-                vendor.walletBalance = (vendor.walletBalance || 0) + vendorCut;
-                vendor.totalEarnings = (vendor.totalEarnings || 0) + vendorCut;
-                await vendor.save();
-
-                await Transaction.create({
-                    user: vendor._id, userModel: 'Vendor', amount: vendorCut, type: 'Credit',
-                    category: 'Commission', status: 'Completed', relatedBooking: booking._id,
-                    description: `Commission (${vendor.commissionPercentage}% of Admin cut ₹${adminCut}) — Trip ${booking._id}`
-                });
-
-                console.log(`✅ Vendor '${vendor.name}' ko ₹${vendorCut} mila (${vendor.commissionPercentage}% of Admin ₹${adminCut})`);
-                console.log(`✅ Admin actual earning: ₹${adminCut - vendorCut}`);
-            }
-        }
-
-        // 4. Driver/Fleet Earning or Debt Calculation
-        // ✅ commissionTotal = agentCut + adminCut ONLY
-        // Vendor cut Driver ke profit ko BILKUL affect nahi karta!
-        const isCash = booking.paymentMethod === 'Cash';
-        const commissionTotal = agentCut + adminCut; // Driver profit UNCHANGED ✅
-        const driverProfit = totalFare - commissionTotal; // Driver ka hissa same ✅
-
-        if (driver.createdByModel === "Fleet") {
-            const fleet = await Fleet.findById(driver.createdBy);
-            if (fleet) {
-                if (isCash) {
-                    // Driver kept the cash, so Fleet owes the commission to Admin/Agent
-                    fleet.walletBalance -= commissionTotal;
-
-                    await Transaction.create({
-                        user: fleet._id, userModel: 'Fleet', amount: commissionTotal, type: 'Debit',
-                        category: 'Commission', status: 'Completed', relatedBooking: booking._id,
-                        description: `Commission debt for Cash Trip ${booking._id}`
-                    });
-                } else {
-                    // Online: Admin has the money, so credit the profit to Fleet
-                    fleet.walletBalance += driverProfit;
-                    fleet.totalEarnings += driverProfit;
-
-                    await Transaction.create({
-                        user: fleet._id, userModel: 'Fleet', amount: driverProfit, type: 'Credit',
-                        category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
-                        description: `Earning from Fleet Driver ${driver.name}`
-                    });
-                }
-                await fleet.save();
-            }
-        } else {
-            // Independent Driver
-            if (isCash) {
-                // Driver kept the cash, subtract commission as debt
-                driver.walletBalance -= commissionTotal;
-
-                await Transaction.create({
-                    user: driver._id, userModel: 'Driver', amount: commissionTotal, type: 'Debit',
-                    category: 'Commission', status: 'Completed', relatedBooking: booking._id,
-                    description: `Commission debt for Cash Trip ${booking._id}`
-                });
-            } else {
-                // Online payout
-                driver.walletBalance += driverProfit;
-                driver.totalEarnings += driverProfit;
-
-                await Transaction.create({
-                    user: driver._id, userModel: 'Driver', amount: driverProfit, type: 'Credit',
-                    category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
-                    description: `Earning from completed trip ${booking._id}`
-                });
-            }
-        }
-
-        // 4. Update Driver Stats & Check Debt Limit (Suspension)
-        driver.totalTrips += 1;
-
-        // Safety Check: If account goes too far into negative, suspend!
-        if (driver.walletBalance < (driver.debtLimit || -500)) {
-            driver.isActive = false;
-            driver.isOnline = false;
-        }
-
-        await driver.save();
+        if (!driver) return res.status(404).json({ success: false, message: "Driver details not found" });
 
         // Logic for Shared/Private released
         if (booking.rideType === "Private") {
@@ -632,39 +494,160 @@ exports.endTrip = async (req, res) => {
             driver.availableSeats = 0;
             driver.currentHeading = null;
         } else if (booking.rideType === "Shared") {
-            // EXACT SEAT UNLOCKING:
+            // EXACT SEAT UNLOCKING
             if (booking.selectedSeats && booking.selectedSeats.length > 0) {
                 for (let seatName of booking.selectedSeats) {
-                    const seatEntry = driver.seatMap.find(s => s.seatName === seatName);
-                    // Match booking ID so user A doesnt delete user B's lock
+                    const seatEntry = (driver.seatMap || []).find(s => s.seatName === seatName);
                     if (seatEntry && seatEntry.bookingId && seatEntry.bookingId.toString() === booking._id.toString()) {
                         seatEntry.isBooked = false;
                         seatEntry.bookingId = null;
                     }
                 }
             }
-
-            // Give seats back to driver since passenger stepped out!
             driver.availableSeats += booking.seatsBooked;
-
             const capacity = driver.carDetails?.carType?.seatCapacity || 4;
 
             if (driver.availableSeats >= capacity) {
-                // Car is completely empty again
                 driver.isAvailable = true;
                 driver.currentRideType = null;
                 driver.availableSeats = 0;
                 driver.currentHeading = null;
-                // Double safety reset seatMap
-                driver.seatMap.forEach(s => { s.isBooked = false; s.bookingId = null; });
+                if(driver.seatMap) driver.seatMap.forEach(s => { s.isBooked = false; s.bookingId = null; });
             } else {
-                // Car still has other shared passengers dropping later, but now we have some room to take new ones!
-                driver.isAvailable = true;
+                driver.isAvailable = true; // Still has others, but can take new ones
             }
         }
 
+        // Stats update
         driver.totalTrips += 1;
-        // In actual Phase 4, driver earning splits happen here!
+
+        // ===============================================
+        // PHASE 4: MONEY SPLIT (The Financial Engine)
+        // Wrapped in TRY-CATCH so driver release isn't blocked by financial errors
+        // ===============================================
+        try {
+            const totalFare = booking.actualFare;
+            const isCash = booking.paymentMethod === 'Cash';
+
+            // 1. Calculate Agent Commission
+            let agentCut = 0;
+            if (booking.agent) {
+                const agent = await Agent.findById(booking.agent);
+                if (agent) {
+                    agentCut = booking.agentCommission || 0;
+                    agent.walletBalance += agentCut;
+                    agent.totalEarnings += agentCut;
+                    agent.totalBookings += 1;
+                    await agent.save();
+                    await Transaction.create({
+                        user: agent._id, userModel: 'Agent', amount: agentCut, type: 'Credit',
+                        category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                        description: `Commission for booking ${booking._id}`
+                    });
+                }
+            }
+
+            // 2. Calculate Admin Commission
+            let adminPercentage = 10;
+            let admin = await Admin.findOne();
+            if (admin) adminPercentage = admin.defaultCommission || 10;
+            if (driver.createdByModel === "Fleet") {
+                const fleet = await Fleet.findById(driver.createdBy);
+                if (fleet && fleet.commissionPercentage !== undefined) adminPercentage = fleet.commissionPercentage;
+            }
+            const adminCut = Math.round(totalFare * (adminPercentage / 100));
+
+            if (admin) {
+                admin.walletBalance = (admin.walletBalance || 0) + adminCut;
+                admin.totalEarnings = (admin.totalEarnings || 0) + adminCut;
+                await admin.save();
+                await Transaction.create({
+                    user: admin._id, userModel: 'Admin', amount: adminCut, type: 'Credit',
+                    category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                    description: `Admin fee for trip ${booking._id}`
+                });
+            }
+
+            // 3. Vendor Commission Logic
+            let vendorCut = 0;
+            if (driver.createdByModel === "Vendor" && driver.createdBy) {
+                const vendor = await Vendor.findById(driver.createdBy);
+                if (vendor && admin) {
+                    vendorCut = Math.round(adminCut * (vendor.commissionPercentage / 100));
+                    admin.walletBalance -= vendorCut;
+                    admin.totalEarnings -= vendorCut;
+                    await admin.save();
+                    await Transaction.create({
+                        user: admin._id, userModel: 'Admin', amount: vendorCut, type: 'Debit',
+                        category: 'Vendor Commission', status: 'Completed', relatedBooking: booking._id,
+                        description: `Vendor '${vendor.name}' fee paid`
+                    });
+                    vendor.walletBalance += vendorCut;
+                    vendor.totalEarnings += vendorCut;
+                    await vendor.save();
+                    await Transaction.create({
+                        user: vendor._id, userModel: 'Vendor', amount: vendorCut, type: 'Credit',
+                        category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                        description: `Commission earned from Trip ${booking._id}`
+                    });
+                }
+            }
+
+            // 4. Driver/Fleet Profit
+            const commissionTotal = agentCut + adminCut;
+            const driverProfit = totalFare - commissionTotal;
+
+            if (driver.createdByModel === "Fleet") {
+                const fleet = await Fleet.findById(driver.createdBy);
+                if (fleet) {
+                    if (isCash) {
+                        fleet.walletBalance -= commissionTotal;
+                        await Transaction.create({
+                            user: fleet._id, userModel: 'Fleet', amount: commissionTotal, type: 'Debit',
+                            category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                            description: `Commission debt for Cash Trip ${booking._id}`
+                        });
+                    } else {
+                        fleet.walletBalance += driverProfit;
+                        fleet.totalEarnings += driverProfit;
+                        await Transaction.create({
+                            user: fleet._id, userModel: 'Fleet', amount: driverProfit, type: 'Credit',
+                            category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
+                            description: `Earning from Fleet Driver ${driver.name}`
+                        });
+                    }
+                    await fleet.save();
+                }
+            } else {
+                if (isCash) {
+                    driver.walletBalance -= commissionTotal;
+                    await Transaction.create({
+                        user: driver._id, userModel: 'Driver', amount: commissionTotal, type: 'Debit',
+                        category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                        description: `Commission debt (Cash Trip)`
+                    });
+                } else {
+                    driver.walletBalance += driverProfit;
+                    driver.totalEarnings += driverProfit;
+                    await Transaction.create({
+                        user: driver._id, userModel: 'Driver', amount: driverProfit, type: 'Credit',
+                        category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
+                        description: `Trip earnings`
+                    });
+                }
+            }
+
+        } catch (finError) {
+            console.error("Financial Calculation Error (Trip Ended anyway):", finError.message);
+            // We don't throw here, so the driver.save() below still runs to free the driver.
+        }
+
+        // Final Safety Check & Save Driver
+        if (driver.walletBalance < (driver.debtLimit || -500)) {
+            driver.isActive = false;
+            driver.isOnline = false;
+        }
+
         await driver.save();
 
         // REAL-TIME UPDATE TO AGENT & USER
@@ -676,7 +659,6 @@ exports.endTrip = async (req, res) => {
                     status: "Completed",
                     finalFare: booking.actualFare
                 });
-                console.log(`Agent ${booking.agent} notified via Socket (Trip Completed)`);
             }
             if (booking.user) {
                 io.to(booking.user.toString()).emit("booking_update", {
@@ -684,13 +666,10 @@ exports.endTrip = async (req, res) => {
                     status: "Completed",
                     finalFare: booking.actualFare
                 });
-                console.log(`User ${booking.user} notified via Socket (Trip Completed)`);
             }
-        } catch (err) {
-            console.error("Socket Notification Error (endTrip):", err.message);
-        }
+        } catch (err) {}
 
-        res.json({ success: true, message: "Trip Ended! Passenger can make payment now.", finalFare: booking.actualFare });
+        res.json({ success: true, message: "Trip Ended successfully", finalFare: booking.actualFare });
 
     } catch (error) {
         res.status(500).json({ success: false, message: "Server error", error: error.message });

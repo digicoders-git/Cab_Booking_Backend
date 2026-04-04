@@ -151,6 +151,7 @@ exports.getAllFareEstimates = async (req, res) => {
         const dropTimeStr = dropTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
         let cabOption = {
+            _id: category._id, // Add this for frontend compatibility
             carCategoryId: category._id,
             name: category.name,
             image: category.image,
@@ -158,7 +159,13 @@ exports.getAllFareEstimates = async (req, res) => {
             arrivalMins: `${arrivalMins} mins away`,
             dropTime: `Drop ${dropTimeStr}`,
             description: category.name === "Auto" ? "Hassle-free Auto rides" : `Affordable ${category.name} rides`,
-            tag: category.name === "Bike" ? "FASTEST" : (category.name === "Premium" ? "PREMIUM" : null)
+            tag: category.name === "Bike" ? "FASTEST" : (category.name === "Premium" ? "PREMIUM" : null),
+            // NEW: Added nearby drivers locations for Map display (Uber/Rapido style)
+            nearbyDrivers: categoryDrivers.map(d => ({
+                id: d._id,
+                latitude: d.currentLocation.latitude,
+                longitude: d.currentLocation.longitude
+            })).slice(0, 10) // Limit to 10 for map performance
         };
 
         // Only show the specific fare user asked for
@@ -290,22 +297,18 @@ exports.createBooking = async (req, res) => {
                     checkBooking.cancelReason = "No driver nearby accepted the request";
                     await checkBooking.save();
 
-                    // Saari pending requests ko timeout kar do
-                    await RideRequest.updateMany({ booking: newBooking._id, status: "Pending" }, { status: "Timeout" });
-
-                    // 🎯 LIVE NOTIFICATION: Tell Agent/User that booking is Expired
+                    // 📢 Emit Socket Event for Expiration
                     try {
                         const io = getIO();
-                        if (checkBooking.agent) {
-                            io.to(`agent_${checkBooking.agent.toString()}`).emit("booking_update", {
+                        if (checkBooking.user) {
+                            io.to(checkBooking.user.toString()).emit("booking_update", {
                                 bookingId: checkBooking._id,
                                 status: "Expired",
                                 message: "No driver accepted the request within the time limit."
                             });
-                            console.log(`Agent ${checkBooking.agent} notified via Socket: Booking Expired ✅`);
                         }
-                        if (checkBooking.user) {
-                            io.to(checkBooking.user.toString()).emit("booking_update", {
+                        if (checkBooking.agent) {
+                            io.to(`agent_${checkBooking.agent.toString()}`).emit("booking_update", {
                                 bookingId: checkBooking._id,
                                 status: "Expired",
                                 message: "No driver accepted the request within the time limit."

@@ -152,3 +152,50 @@ exports.toggleUserStatus = async (req, res) => {
         });
     }
 };
+// 6. Update User Profile (Self Update)
+exports.updateUserProfile = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, email } = req.body;
+
+        const user = await User.findById(id);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
+
+        // Only allow user to update their own profile (or admin)
+        if (req.user.role !== "admin" && req.user.id !== id) {
+            return res.status(401).json({
+                success: false,
+                message: "You can only update your own profile"
+            });
+        }
+
+        if (name) user.name = name;
+        if (email) user.email = email;
+
+        // If a profile image was uploaded
+        if (req.file) {
+            user.image = req.file.filename;
+        }
+
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Profile updated successfully",
+            user
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error updating profile",
+            error: error.message
+        });
+    }
+};

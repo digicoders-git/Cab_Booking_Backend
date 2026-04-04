@@ -6,9 +6,9 @@ exports.createNotification = async (req, res) => {
         const { title, message, targetRoles, recipient, recipientModel } = req.body;
 
         if (!title || !message) {
-            return res.status(400).json({ 
-                success: false, 
-                message: "Please provide both title and message" 
+            return res.status(400).json({
+                success: false,
+                message: "Please provide both title and message"
             });
         }
 

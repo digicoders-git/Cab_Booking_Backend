@@ -105,19 +105,21 @@ const initSocket = (server) => {
                 const activeBookings = await Booking.find({
                     assignedDriver: driverId,
                     bookingStatus: { $in: ["Accepted", "Ongoing"] }
-                }).select("agent user");
-
-                console.log(`📍 Location update from Driver ${driverId} - Found ${activeBookings.length} active bookings`);
+                }).select("agent user _id"); // Select IDs properly
 
                 if (activeBookings && activeBookings.length > 0) {
                     activeBookings.forEach(booking => {
+                        const payloadWithBookingId = { ...updatePayload, bookingId: booking._id.toString() };
+                        
                         if (booking.agent) {
-                            console.log(`📢 Emitting to Agent Room: agent_${booking.agent.toString()}`);
-                            io.to(`agent_${booking.agent.toString()}`).emit("driver_location_update", updatePayload);
+                            const agentRoom = `agent_${booking.agent.toString()}`;
+                            io.to(agentRoom).emit("driver_location_update", payloadWithBookingId);
+                            console.log(`📢 Live Update -> Agent Room: ${agentRoom}`);
                         }
                         if (booking.user) {
-                            console.log(`📢 Emitting to User Room: ${booking.user.toString()}`);
-                            io.to(booking.user.toString()).emit("driver_location_update", updatePayload);
+                            const userRoom = booking.user.toString();
+                            io.to(userRoom).emit("driver_location_update", payloadWithBookingId);
+                            console.log(`📢 Live Update -> User Room: ${userRoom}`);
                         }
                     });
                 }
