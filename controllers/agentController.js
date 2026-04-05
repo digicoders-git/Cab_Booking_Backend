@@ -1,6 +1,7 @@
 const Agent = require("../models/Agent");
 const jwt = require("jsonwebtoken");
 const PDFDocument = require("pdfkit");
+const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness");
 const { Parser } = require("json2csv");
 
 // Create Agent (Admin Only)
@@ -9,20 +10,23 @@ exports.registerAgent = async (req, res) => {
         const { 
             name, email, phone, password, commissionPercentage, 
             address, city, state, pincode,
-            aadhar, pan,
             accountNumber, ifscCode, accountHolderName, bankName 
         } = req.body;
 
-        const image = req.file ? req.file.filename : (req.body.image || null);
+        const image = req.files?.image ? req.files.image[0].filename : null;
+        const aadhar = req.files?.aadhar ? req.files.aadhar[0].filename : null;
+        const pan = req.files?.pan ? req.files.pan[0].filename : null;
 
-        // Check if agent already exists
-        const agentExist = await Agent.findOne({ $or: [{ email }, { phone }] });
+        // Check if email already exists
+        const emailExist = await Agent.findOne({ email });
+        if (emailExist) {
+            return res.status(400).json({ success: false, message: "Email is already registered" });
+        }
 
-        if (agentExist) {
-            return res.status(400).json({
-                success: false,
-                message: "Agent with this email or phone already exists"
-            });
+        // Check if phone already exists
+        const phoneExist = await Agent.findOne({ phone });
+        if (phoneExist) {
+            return res.status(400).json({ success: false, message: "Phone number is already registered" });
         }
 
         const agent = await Agent.create({
@@ -43,8 +47,8 @@ exports.registerAgent = async (req, res) => {
                 accountHolderName,
                 bankName
             },
-            isActive: true,  // Admin creates, so directly active
-            createdBy: req.user.id  // Admin who created
+            isActive: true,
+            createdBy: req.user.id
         });
 
         res.status(201).json({
@@ -634,6 +638,21 @@ exports.downloadAgentReport = async (req, res) => {
 exports.updateAgentProfile = async (req, res) => {
     try {
         const { name, email, phone, password, address, city, state, pincode, accountNumber, ifscCode, accountHolderName, bankName, aadhar, pan } = req.body;
+        const id = req.user.id;
+        const agentRecord = await Agent.findById(id);
+        if (!agentRecord) return res.status(404).json({ success: false, message: "Agent not found" });
+
+        // Check global email uniqueness if changed
+        if (email && email !== agentRecord.email) {
+            const emailTakenBy = await isEmailTaken(email, id);
+            if (emailTakenBy) return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+        }
+
+        // Check global phone uniqueness if changed
+        if (phone && phone !== agentRecord.phone) {
+            const phoneTakenBy = await isPhoneTaken(phone, id);
+            if (phoneTakenBy) return res.status(400).json({ success: false, message: `Phone number is already registered as ${phoneTakenBy}` });
+        }
 
         const updateData = {
             name,
@@ -853,6 +872,18 @@ exports.adminUpdateAgent = async (req, res) => {
             });
         }
 
+        // Check global email uniqueness if changed
+        if (email && email !== agent.email) {
+            const emailTakenBy = await isEmailTaken(email, id);
+            if (emailTakenBy) return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+        }
+
+        // Check global phone uniqueness if changed
+        if (phone && phone !== agent.phone) {
+            const phoneTakenBy = await isPhoneTaken(phone, id);
+            if (phoneTakenBy) return res.status(400).json({ success: false, message: `Phone number is already registered as ${phoneTakenBy}` });
+        }
+
         // Update basic info
         if (name) agent.name = name;
         if (email) agent.email = email;
@@ -864,28 +895,24 @@ exports.adminUpdateAgent = async (req, res) => {
         if (pincode) agent.pincode = pincode;
         if (commissionPercentage !== undefined) agent.commissionPercentage = commissionPercentage;
 
-        // Update image if provided
-        if (req.file) {
-            agent.image = req.file.filename;
-        } else if (req.body.image) {
-            agent.image = req.body.image;
-        }
+        // Handle File Fields from upload.fields
+        if (req.files) {
+            if (req.files.image) agent.image = req.files.image[0].filename;
 
-        // Update Documents (Aadhar / PAN)
-        if (aadhar || pan) {
-            agent.documents = {
-                aadhar: aadhar || agent.documents?.aadhar,
-                pan: pan || agent.documents?.pan
-            };
+            if (req.files.aadhar || req.files.pan) {
+                if (!agent.documents) agent.documents = {};
+                if (req.files.aadhar) agent.documents.aadhar = req.files.aadhar[0].filename;
+                if (req.files.pan) agent.documents.pan = req.files.pan[0].filename;
+            }
         }
 
         // Update Bank Details if any field provided
         if (accountNumber || ifscCode || accountHolderName || bankName) {
             agent.bankDetails = {
-                accountNumber: accountNumber || agent.bankDetails?.accountNumber,
-                ifscCode: ifscCode || agent.bankDetails?.ifscCode,
-                accountHolderName: accountHolderName || agent.bankDetails?.accountHolderName,
-                bankName: bankName || agent.bankDetails?.bankName
+                accountNumber: accountNumber || agent.bankDetails?.accountNumber || "",
+                ifscCode: ifscCode || agent.bankDetails?.ifscCode || "",
+                accountHolderName: accountHolderName || agent.bankDetails?.accountHolderName || "",
+                bankName: bankName || agent.bankDetails?.bankName || ""
             };
         }
 

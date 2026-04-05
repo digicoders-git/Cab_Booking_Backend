@@ -4,6 +4,7 @@ const Fleet = require("../models/Fleet");
 const Transaction = require("../models/Transaction");
 const Booking = require("../models/Booking");
 const jwt = require("jsonwebtoken");
+const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness");
 
 // ============================================================
 // 1. Create Vendor (Admin Only)
@@ -24,14 +25,23 @@ exports.createVendor = async (req, res) => {
             });
         }
 
-        // Check duplicate
-        const vendorExist = await Vendor.findOne({ $or: [{ email }, { phone }] });
-        if (vendorExist) {
-            return res.status(400).json({
-                success: false,
-                message: "Is email ya phone se Vendor pehle se exist karta hai"
-            });
+        // Check global email uniqueness
+        const emailTakenBy = await isEmailTaken(email);
+        if (emailTakenBy) {
+            return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
         }
+
+        // Check global phone uniqueness
+        const phoneTakenBy = await isPhoneTaken(phone);
+        if (phoneTakenBy) {
+            return res.status(400).json({ success: false, message: `Phone number is already registered as ${phoneTakenBy}` });
+        }
+
+        // Handle documents from uploadProfile.fields if used, or fallback to single image
+        const image = req.files?.image ? req.files.image[0].filename : (req.file ? req.file.filename : null);
+        const aadhar = req.files?.aadhar ? req.files.aadhar[0].filename : null;
+        const pan = req.files?.pan ? req.files.pan[0].filename : null;
+        const gst = req.files?.gst ? req.files.gst[0].filename : null;
 
         const vendor = await Vendor.create({
             name,
@@ -40,7 +50,12 @@ exports.createVendor = async (req, res) => {
             password,
             companyName,
             assignedArea,
-            image: req.file ? req.file.filename : null, // Photo added here
+            image, // Photo
+            documents: {
+                aadhar,
+                pan,
+                gst
+            },
             commissionPercentage: commissionPercentage || 25, // Default 25%
             address, city, state, pincode,
             bankDetails: { accountNumber, ifscCode, accountHolderName, bankName },
@@ -399,7 +414,6 @@ exports.getMyFleets = async (req, res) => {
 exports.getAllVendors = async (req, res) => {
     try {
         const vendors = await Vendor.find()
-            .select("-password")
             .populate("createdBy", "name email")
             .sort({ createdAt: -1 });
 
@@ -416,7 +430,6 @@ exports.getAllVendors = async (req, res) => {
 exports.getSingleVendor = async (req, res) => {
     try {
         const vendor = await Vendor.findById(req.params.id)
-            .select("-password")
             .populate("createdBy", "name email");
 
         if (!vendor) {
@@ -447,10 +460,20 @@ exports.updateVendor = async (req, res) => {
             return res.status(404).json({ success: false, message: "Vendor nahi mila" });
         }
 
+        // Global Uniqueness Checks
+        if (email && email !== vendor.email) {
+            const emailTakenBy = await isEmailTaken(email, req.params.id);
+            if (emailTakenBy) return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+        }
+        if (phone && phone !== vendor.phone) {
+            const phoneTakenBy = await isPhoneTaken(phone, req.params.id);
+            if (phoneTakenBy) return res.status(400).json({ success: false, message: `Phone number is already registered as ${phoneTakenBy}` });
+        }
+
         if (name) vendor.name = name;
         if (email) vendor.email = email;
         if (phone) vendor.phone = phone;
-        if (password) vendor.password = password;
+        if (password) vendor.password = password; // Passowrd update capability
         if (companyName) vendor.companyName = companyName;
         if (assignedArea) vendor.assignedArea = assignedArea;
         if (commissionPercentage !== undefined) vendor.commissionPercentage = commissionPercentage;
@@ -458,14 +481,40 @@ exports.updateVendor = async (req, res) => {
         if (city) vendor.city = city;
         if (state) vendor.state = state;
         if (pincode) vendor.pincode = pincode;
-        if (req.file) vendor.image = req.file.filename;
+        
+        // Handle Files
+        if (req.files) {
+            if (req.files.image) vendor.image = req.files.image[0].filename;
+            
+            // Ensure documents object exists before assigning
+            if (!vendor.documents) {
+                vendor.documents = { aadhar: null, pan: null, gst: null };
+            }
+            
+            if (req.files.aadhar) {
+                vendor.documents.aadhar = req.files.aadhar[0].filename;
+                vendor.markModified('documents.aadhar');
+            }
+            if (req.files.pan) {
+                vendor.documents.pan = req.files.pan[0].filename;
+                vendor.markModified('documents.pan');
+            }
+            if (req.files.gst) {
+                vendor.documents.gst = req.files.gst[0].filename;
+                vendor.markModified('documents.gst');
+            }
+            
+            vendor.markModified('documents');
+        } else if (req.file) {
+            vendor.image = req.file.filename;
+        }
 
         if (accountNumber || ifscCode || accountHolderName || bankName) {
             vendor.bankDetails = {
-                accountNumber: accountNumber || vendor.bankDetails.accountNumber,
-                ifscCode: ifscCode || vendor.bankDetails.ifscCode,
-                accountHolderName: accountHolderName || vendor.bankDetails.accountHolderName,
-                bankName: bankName || vendor.bankDetails.bankName
+                accountNumber: accountNumber || (vendor.bankDetails ? vendor.bankDetails.accountNumber : ""),
+                ifscCode: ifscCode || (vendor.bankDetails ? vendor.bankDetails.ifscCode : ""),
+                accountHolderName: accountHolderName || (vendor.bankDetails ? vendor.bankDetails.accountHolderName : ""),
+                bankName: bankName || (vendor.bankDetails ? vendor.bankDetails.bankName : "")
             };
         }
 

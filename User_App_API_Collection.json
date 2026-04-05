@@ -1,0 +1,194 @@
+{
+  "info": {
+    "name": "CapBokkin User API Collection",
+    "description": "Complete collection for User App/Website functionality",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. User Account & Profile",
+      "item": [
+        {
+          "name": "User Login/Register (OTP)",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:5000/api/users/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"7068767516\",\n  \"otp\": \"123456\",\n  \"name\": \"Vivek\",\n  \"email\": \"vivek@example.com\"\n}",
+              "options": { "json": { "language": "json" } }
+            },
+            "description": "Fixed OTP: 123456 for testing."
+          }
+        },
+        {
+          "name": "Get User Profile",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": "http://localhost:5000/api/users/profile/:id",
+            "description": "Replace :id with User ID from login response"
+          }
+        },
+        {
+          "name": "Update User Profile",
+          "request": {
+            "method": "PUT",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": "http://localhost:5000/api/users/update-profile/:id",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "name", "value": "Vivek Updated", "type": "text" },
+                { "key": "email", "value": "newemail@test.com", "type": "text" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Fare Estimate & Searching",
+      "item": [
+        {
+          "name": "Quick Fare Estimate",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:5000/api/bookings/estimate-fare",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"carCategoryId\": \"69c6be...\",\n  \"distanceKm\": 12.5,\n  \"rideType\": \"Private\",\n  \"seatsBooked\": 1\n}",
+              "options": { "json": { "language": "json" } }
+            }
+          }
+        },
+        {
+          "name": "Search Cabs (Google Maps Flow)",
+          "request": {
+            "method": "POST",
+            "url": "http://localhost:5000/api/bookings/search-cabs",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"distanceKm\": 15,\n  \"rideType\": \"Both\",\n  \"pickupAddress\": \"Lucknow Airport\",\n  \"dropAddress\": \"Hazratganj\",\n  \"pickupLat\": 26.76,\n  \"pickupLng\": 80.88,\n  \"dropLat\": 26.84,\n  \"dropLng\": 80.94\n}",
+              "options": { "json": { "language": "json" } }
+            }
+          }
+        },
+        {
+          "name": "Get Active Car Categories",
+          "request": {
+            "method": "GET",
+            "url": "http://localhost:5000/api/car-categories/active"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Ride Booking Management",
+      "item": [
+        {
+          "name": "Create New Booking",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": "http://localhost:5000/api/bookings/create",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"passengerName\": \"Vivek\",\n  \"passengerPhone\": \"7068767516\",\n  \"rideType\": \"Private\",\n  \"carCategoryId\": \"65fb...\",\n  \"pickupAddress\": \"Airport\",\n  \"dropAddress\": \"Station\",\n  \"distanceKm\": 10,\n  \"pickupLat\": 26.7,\n  \"pickupLng\": 80.8,\n  \"dropLat\": 26.8,\n  \"dropLng\": 80.9\n}",
+              "options": { "json": { "language": "json" } }
+            }
+          }
+        },
+        {
+          "name": "My Bookings History",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": "http://localhost:5000/api/bookings/my-bookings"
+          }
+        },
+        {
+          "name": "Get Booking Details",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": "http://localhost:5000/api/bookings/:bookingId"
+          }
+        },
+        {
+          "name": "Cancel Booking",
+          "request": {
+            "method": "PUT",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": "http://localhost:5000/api/bookings/cancel/:bookingId",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Changed my mind\"\n}",
+              "options": { "json": { "language": "json" } }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Real-time Tracking",
+      "item": [
+        {
+          "name": "Track Driver Location",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": "http://localhost:5000/api/trips/track/:bookingId"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Notifications",
+      "item": [
+        {
+          "name": "Get My Notifications",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": "http://localhost:5000/api/notifications/my-notifications"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Support & Helpdesk",
+      "item": [
+        {
+          "name": "Create Support Ticket",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": "http://localhost:5000/api/support/create",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Ride Issue\",\n  \"message\": \"Driver was late\"\n}",
+              "options": { "json": { "language": "json" } }
+            }
+          }
+        },
+        {
+          "name": "My Support Tickets",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": "http://localhost:5000/api/support/my-tickets"
+          }
+        },
+        {
+          "name": "Support Summary Report",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{token}}" } ],
+            "url": "http://localhost:5000/api/support/report-summary"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -4,6 +4,7 @@ const FleetDriver = require("../models/FleetDriver");
 const FleetAssignment = require("../models/FleetAssignment");
 const Transaction = require("../models/Transaction");
 const jwt = require("jsonwebtoken");
+const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness");
 
 // Create Fleet (Admin Only)
 exports.createFleet = async (req, res) => {
@@ -14,16 +15,21 @@ exports.createFleet = async (req, res) => {
             accountNumber, ifscCode, accountHolderName, bankName
         } = req.body;
 
-        const image = req.file ? req.file.filename : null;
+        const image = req.files?.image ? req.files.image[0].filename : null;
+        const gstCertificate = req.files?.gstCertificate ? req.files.gstCertificate[0].filename : null;
+        const panCard = req.files?.panCard ? req.files.panCard[0].filename : null;
+        const businessLicense = req.files?.businessLicense ? req.files.businessLicense[0].filename : null;
 
-        // Check if fleet already exists
-        const fleetExist = await Fleet.findOne({ $or: [{ email }, { phone }] });
+        // Check global email uniqueness
+        const emailTakenBy = await isEmailTaken(email);
+        if (emailTakenBy) {
+            return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+        }
 
-        if (fleetExist) {
-            return res.status(400).json({
-                success: false,
-                message: "Fleet with this email or phone already exists"
-            });
+        // Check global phone uniqueness
+        const phoneTakenBy = await isPhoneTaken(phone);
+        if (phoneTakenBy) {
+            return res.status(400).json({ success: false, message: `Phone number is already registered as ${phoneTakenBy}` });
         }
 
         const fleet = await Fleet.create({
@@ -45,6 +51,11 @@ exports.createFleet = async (req, res) => {
                 ifscCode,
                 accountHolderName,
                 bankName
+            },
+            documents: {
+                gstCertificate,
+                panCard,
+                businessLicense
             },
             isActive: true,
             createdBy: req.user.id
@@ -160,6 +171,22 @@ exports.updateFleetProfile = async (req, res) => {
             accountNumber, ifscCode, accountHolderName, bankName,
             gstCertificate, panCard, businessLicense
         } = req.body;
+
+        const id = req.user.id;
+        const fleetRecord = await Fleet.findById(id);
+        if (!fleetRecord) return res.status(404).json({ success: false, message: "Fleet not found" });
+
+        // Check global email uniqueness if changed
+        if (email && email !== fleetRecord.email) {
+            const emailTakenBy = await isEmailTaken(email, id);
+            if (emailTakenBy) return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+        }
+
+        // Check global phone uniqueness if changed
+        if (phone && phone !== fleetRecord.phone) {
+            const phoneTakenBy = await isPhoneTaken(phone, id);
+            if (phoneTakenBy) return res.status(400).json({ success: false, message: `Phone number is already registered as ${phoneTakenBy}` });
+        }
 
         const updateData = {
             name,
@@ -545,6 +572,18 @@ exports.adminUpdateFleet = async (req, res) => {
             });
         }
 
+        // Check global email uniqueness if changed
+        if (email && email !== fleet.email) {
+            const emailTakenBy = await isEmailTaken(email, id);
+            if (emailTakenBy) return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+        }
+
+        // Check global phone uniqueness if changed
+        if (phone && phone !== fleet.phone) {
+            const phoneTakenBy = await isPhoneTaken(phone, id);
+            if (phoneTakenBy) return res.status(400).json({ success: false, message: `Phone number is already registered as ${phoneTakenBy}` });
+        }
+
         // Update basic info
         if (name) fleet.name = name;
         if (email) fleet.email = email;
@@ -559,18 +598,25 @@ exports.adminUpdateFleet = async (req, res) => {
         if (pincode) fleet.pincode = pincode;
         if (commissionPercentage !== undefined) fleet.commissionPercentage = commissionPercentage;
 
-        // Update image if provided
-        if (req.file) {
-            fleet.image = req.file.filename;
+        // Update image if provided from req.files fields
+        if (req.files) {
+            if (req.files.image) fleet.image = req.files.image[0].filename;
+            
+            if (req.files.gstCertificate || req.files.panCard || req.files.businessLicense) {
+                if (!fleet.documents) fleet.documents = {};
+                if (req.files.gstCertificate) fleet.documents.gstCertificate = req.files.gstCertificate[0].filename;
+                if (req.files.panCard) fleet.documents.panCard = req.files.panCard[0].filename;
+                if (req.files.businessLicense) fleet.documents.businessLicense = req.files.businessLicense[0].filename;
+            }
         }
 
         // Update Bank Details if any field provided
         if (accountNumber || ifscCode || accountHolderName || bankName) {
             fleet.bankDetails = {
-                accountNumber: accountNumber || fleet.bankDetails.accountNumber,
-                ifscCode: ifscCode || fleet.bankDetails.ifscCode,
-                accountHolderName: accountHolderName || fleet.bankDetails.accountHolderName,
-                bankName: bankName || fleet.bankDetails.bankName
+                accountNumber: accountNumber || fleet.bankDetails?.accountNumber || "",
+                ifscCode: ifscCode || fleet.bankDetails?.ifscCode || "",
+                accountHolderName: accountHolderName || fleet.bankDetails?.accountHolderName || "",
+                bankName: bankName || fleet.bankDetails?.bankName || ""
             };
         }
 

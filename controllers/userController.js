@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness");
 
 // Login / Register User Using Phone and Fixed OTP (Combined API)
 exports.loginUser = async (req, res) => {
@@ -22,6 +23,20 @@ exports.loginUser = async (req, res) => {
         let isNewUser = false;
 
         if (!user) {
+            // Check global phone uniqueness
+            const phoneTakenBy = await isPhoneTaken(phone);
+            if (phoneTakenBy) {
+                return res.status(400).json({ success: false, message: `Phone number is already registered as ${phoneTakenBy}` });
+            }
+
+            // Check global email uniqueness if provided
+            if (email) {
+                const emailTakenBy = await isEmailTaken(email);
+                if (emailTakenBy) {
+                    return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+                }
+            }
+
             // If user doesn't exist, register them (New Flow)
             user = await User.create({
                 phone,
@@ -176,7 +191,13 @@ exports.updateUserProfile = async (req, res) => {
         }
 
         if (name) user.name = name;
-        if (email) user.email = email;
+        if (email && email !== user.email) {
+            const emailTakenBy = await isEmailTaken(email, id);
+            if (emailTakenBy) {
+                return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+            }
+            user.email = email;
+        }
 
         // If a profile image was uploaded
         if (req.file) {

@@ -5,7 +5,8 @@ const {
     getMySupportRequests,
     getAllSupportRequests,
     replyToSupportRequest,
-    getSupportSummary
+    getSupportSummary,
+    deleteSupportRequest
 } = require("../controllers/supportController");
 const { auth, adminOnly } = require("../middleware/auth");
 
@@ -23,5 +24,8 @@ router.get("/admin/all", auth, adminOnly, getAllSupportRequests);
 
 // 4. Admin View: Reply & Update Ticket
 router.put("/admin/reply/:id", auth, adminOnly, replyToSupportRequest);
+
+// 5. Admin: Delete Ticket
+router.delete("/admin/delete/:id", auth, adminOnly, deleteSupportRequest);
 
 module.exports = router;

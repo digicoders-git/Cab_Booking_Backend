@@ -11,7 +11,12 @@ const uploadFleetDocs = require("../middleware/uploadFleetDocs");
 
 // Create Vendor (Admin set karta hai — name, area, commission%)
 const uploadProfile = require("../middleware/uploadAdminImage");
-router.post("/create", auth, adminOnly, uploadProfile.single("image"), vendorController.createVendor);
+router.post("/create", auth, adminOnly, uploadProfile.fields([
+    { name: "image", maxCount: 1 },
+    { name: "aadhar", maxCount: 1 },
+    { name: "pan", maxCount: 1 },
+    { name: "gst", maxCount: 1 }
+]), vendorController.createVendor);
 
 // Get All Vendors
 router.get("/all", auth, adminOnly, vendorController.getAllVendors);
@@ -20,7 +25,12 @@ router.get("/all", auth, adminOnly, vendorController.getAllVendors);
 router.get("/:id", auth, adminOnly, vendorController.getSingleVendor);
 
 // Update Vendor
-router.put("/update/:id", auth, adminOnly, vendorController.updateVendor);
+router.put("/update/:id", auth, adminOnly, uploadProfile.fields([
+    { name: "image", maxCount: 1 },
+    { name: "aadhar", maxCount: 1 },
+    { name: "pan", maxCount: 1 },
+    { name: "gst", maxCount: 1 }
+]), vendorController.updateVendor);
 
 // Update Commission % Only
 router.patch("/commission/:id", auth, adminOnly, vendorController.updateVendorCommission);

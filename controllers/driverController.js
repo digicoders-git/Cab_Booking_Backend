@@ -2,6 +2,7 @@ const Driver = require("../models/Driver");
 const Booking = require("../models/Booking");
 const Transaction = require("../models/Transaction");
 const jwt = require("jsonwebtoken");
+const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness");
 const bcrypt = require("bcryptjs");
 
 // Register Driver (Open Registration - Pending Admin Approval)
@@ -26,24 +27,31 @@ exports.registerDriver = async (req, res) => {
         const permitImage    = req.files?.permitImage    ? req.files.permitImage[0].filename    : null;
         const pucImage       = req.files?.pucImage       ? req.files.pucImage[0].filename       : null;
 
-        // Check if driver already exists
-        const driverExist = await Driver.findOne({ $or: [{ email }, { phone }] });
+        // Check global email uniqueness
+        const emailTakenBy = await isEmailTaken(email);
+        if (emailTakenBy) {
+            return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+        }
 
-        if (driverExist) {
-            return res.status(400).json({
-                success: false,
-                message: "Driver with this email or phone already exists"
-            });
+        // Check global phone uniqueness
+        const phoneTakenBy = await isPhoneTaken(phone);
+        if (phoneTakenBy) {
+            return res.status(400).json({ success: false, message: `Phone number is already registered as ${phoneTakenBy}` });
         }
 
         // Check if car number already exists (if provided)
         if (carNumber) {
             const carExist = await Driver.findOne({ "carDetails.carNumber": carNumber });
             if (carExist) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Car with this number is already registered"
-                });
+                return res.status(400).json({ success: false, message: "Car number is already registered" });
+            }
+        }
+
+        // Check if license number already exists
+        if (licenseNumber) {
+            const licenseExist = await Driver.findOne({ licenseNumber });
+            if (licenseExist) {
+                return res.status(400).json({ success: false, message: "License number is already registered" });
             }
         }
 
@@ -225,6 +233,22 @@ exports.updateDriverProfile = async (req, res) => {
             lastServiceDate, nextServiceDate,
             rcDocument, insuranceDocument, permitDocument, pucDocument
         } = req.body;
+
+        const id = req.user.id;
+        const driverRecord = await Driver.findById(id);
+        if (!driverRecord) return res.status(404).json({ success: false, message: "Driver not found" });
+
+        // Check global email uniqueness if changed
+        if (email && email !== driverRecord.email) {
+            const emailTakenBy = await isEmailTaken(email, id);
+            if (emailTakenBy) return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+        }
+
+        // Check global phone uniqueness if changed
+        if (phone && phone !== driverRecord.phone) {
+            const phoneTakenBy = await isPhoneTaken(phone, id);
+            if (phoneTakenBy) return res.status(400).json({ success: false, message: `Phone number is already registered as ${phoneTakenBy}` });
+        }
 
         const updateData = {
             name,
@@ -737,7 +761,9 @@ exports.adminUpdateDriver = async (req, res) => {
             address, city, state, pincode,
             carNumber, carModel, carBrand, carType, seatCapacity, carColor,
             manufacturingYear, insuranceExpiry, permitExpiry, pucExpiry,
-            accountNumber, ifscCode, accountHolderName, bankName
+            lastServiceDate, nextServiceDate, debtLimit,
+            accountNumber, ifscCode, accountHolderName, bankName,
+            aadhar, pan
         } = req.body;
 
         const driver = await Driver.findById(id);
@@ -747,6 +773,24 @@ exports.adminUpdateDriver = async (req, res) => {
                 success: false,
                 message: "Driver not found"
             });
+        }
+
+        // Check global duplicates before updating
+        if (email && email !== driver.email) {
+            const emailTakenBy = await isEmailTaken(email, id);
+            if (emailTakenBy) return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+        }
+        if (phone && phone !== driver.phone) {
+            const phoneTakenBy = await isPhoneTaken(phone, id);
+            if (phoneTakenBy) return res.status(400).json({ success: false, message: `Phone number is already registered as ${phoneTakenBy}` });
+        }
+        if (carNumber && carNumber !== driver.carDetails?.carNumber) {
+            const existing = await Driver.findOne({ "carDetails.carNumber": carNumber });
+            if (existing) return res.status(400).json({ success: false, message: "Car number is already registered" });
+        }
+        if (licenseNumber && licenseNumber !== driver.licenseNumber) {
+            const existing = await Driver.findOne({ licenseNumber });
+            if (existing) return res.status(400).json({ success: false, message: "License number is already registered" });
         }
 
         // Update basic info
@@ -759,40 +803,66 @@ exports.adminUpdateDriver = async (req, res) => {
         if (city) driver.city = city;
         if (state) driver.state = state;
         if (pincode) driver.pincode = pincode;
+        if (debtLimit !== undefined) driver.debtLimit = debtLimit;
 
         if (password) {
             driver.password = password;
         }
 
-        // Update image if provided
-        if (req.file) {
-            driver.image = req.file.filename;
+        // Update main image
+        if (req.files?.image) {
+            driver.image = req.files.image[0].filename;
         }
 
-        // Update Car Details
-        if (carNumber || carModel || carBrand || carType) {
-            driver.carDetails = {
-                carNumber: carNumber || driver.carDetails?.carNumber,
-                carModel: carModel || driver.carDetails?.carModel,
-                carBrand: carBrand || driver.carDetails?.carBrand,
-                carType: carType || driver.carDetails?.carType,
-                seatCapacity: seatCapacity || driver.carDetails?.seatCapacity || 4,
-                carColor: carColor || driver.carDetails?.carColor,
-                manufacturingYear: manufacturingYear || driver.carDetails?.manufacturingYear,
-                insuranceExpiry: insuranceExpiry || driver.carDetails?.insuranceExpiry,
-                permitExpiry: permitExpiry || driver.carDetails?.permitExpiry,
-                pucExpiry: pucExpiry || driver.carDetails?.pucExpiry
+        // Update Documents (text versions)
+        if (aadhar || pan) {
+            driver.documents = {
+                license: licenseNumber || driver.documents?.license,
+                aadhar: aadhar || driver.documents?.aadhar,
+                pan: pan || driver.documents?.pan
             };
+        }
+
+        // 4. Update Car Details and Document Images
+        if (
+            carNumber || carModel || carBrand || carType || lastServiceDate || nextServiceDate || 
+            req.files?.rcImage || req.files?.insuranceImage || req.files?.permitImage || req.files?.pucImage
+        ) {
+            // First initialize object if missing
+            if (!driver.carDetails) driver.carDetails = {};
+            if (!driver.carDetails.carDocuments) driver.carDetails.carDocuments = {};
+
+            // Update basic car text fields
+            if (carNumber) driver.carDetails.carNumber = carNumber;
+            if (carModel) driver.carDetails.carModel = carModel;
+            if (carBrand) driver.carDetails.carBrand = carBrand;
+            if (carType) driver.carDetails.carType = carType;
+            if (seatCapacity) driver.carDetails.seatCapacity = seatCapacity;
+            if (carColor) driver.carDetails.carColor = carColor;
+            if (manufacturingYear) driver.carDetails.manufacturingYear = manufacturingYear;
+            if (insuranceExpiry) driver.carDetails.insuranceExpiry = insuranceExpiry;
+            if (permitExpiry) driver.carDetails.permitExpiry = permitExpiry;
+            if (pucExpiry) driver.carDetails.pucExpiry = pucExpiry;
+            if (lastServiceDate) driver.carDetails.lastServiceDate = lastServiceDate;
+            if (nextServiceDate) driver.carDetails.nextServiceDate = nextServiceDate;
+
+            // Update images
+            if (req.files?.rcImage)        driver.carDetails.carDocuments.rc        = req.files.rcImage[0].filename;
+            if (req.files?.insuranceImage) driver.carDetails.carDocuments.insurance = req.files.insuranceImage[0].filename;
+            if (req.files?.permitImage)    driver.carDetails.carDocuments.permit    = req.files.permitImage[0].filename;
+            if (req.files?.pucImage)       driver.carDetails.carDocuments.puc       = req.files.pucImage[0].filename;
+            
+            // Explicitly mark for Mongoose update
+            driver.markModified('carDetails');
         }
 
         // Update Bank Details
         if (accountNumber || ifscCode || accountHolderName || bankName) {
-            driver.bankDetails = {
-                accountNumber: accountNumber || driver.bankDetails?.accountNumber,
-                ifscCode: ifscCode || driver.bankDetails?.ifscCode,
-                accountHolderName: accountHolderName || driver.bankDetails?.accountHolderName,
-                bankName: bankName || driver.bankDetails?.bankName
-            };
+            if (!driver.bankDetails) driver.bankDetails = {};
+            if (accountNumber)      driver.bankDetails.accountNumber     = accountNumber;
+            if (ifscCode)           driver.bankDetails.ifscCode          = ifscCode;
+            if (accountHolderName)  driver.bankDetails.accountHolderName = accountHolderName;
+            if (bankName)           driver.bankDetails.bankName          = bankName;
         }
 
         await driver.save();

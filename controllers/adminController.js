@@ -6,17 +6,16 @@ const Agent = require("../models/Agent")
 const Fleet = require("../models/Fleet")
 const Booking = require("../models/Booking")
 const Transaction = require("../models/Transaction")
+const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness")
 
 exports.registerAdmin = async (req, res) => {
     try {
         const { name, email, password } = req.body
         const image = req.file ? req.file.filename : null
-        const adminExist = await Admin.findOne({ email })
-        if (adminExist) {
-            return res.status(400).json({
-                success: false,
-                message: "Admin already exists"
-            })
+        // Check global email uniqueness
+        const emailTakenBy = await isEmailTaken(email);
+        if (emailTakenBy) {
+            return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
         }
         const admin = await Admin.create({
             name,
@@ -99,6 +98,19 @@ exports.getProfile = async (req, res) => {
 exports.updateProfile = async (req, res) => {
     try {
         const { name, email, password } = req.body
+        const id = req.user.id;
+
+        const admin = await Admin.findById(id);
+        if (!admin) {
+             return res.status(404).json({ success: false, message: "Admin not found" });
+        }
+
+        // Check global email uniqueness if changed
+        if (email && email !== admin.email) {
+            const emailTakenBy = await isEmailTaken(email, id);
+            if (emailTakenBy) return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+        }
+
         const updateData = {
             name,
             email,
@@ -107,15 +119,15 @@ exports.updateProfile = async (req, res) => {
         if (req.file) {
             updateData.image = req.file.filename
         }
-        const admin = await Admin.findByIdAndUpdate(
-            req.user.id,
+        const updatedAdmin = await Admin.findByIdAndUpdate(
+            id,
             updateData,
             { new: true }
         )
         res.json({
             success: true,
             message: "Profile updated successfully",
-            admin
+            admin: updatedAdmin
         })
     } catch (error) {
         res.status(500).json({

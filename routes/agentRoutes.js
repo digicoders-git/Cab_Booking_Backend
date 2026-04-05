@@ -21,7 +21,11 @@ const { auth, adminOnly, agentOnly } = require("../middleware/auth");
 const upload = require("../middleware/uploadAdminImage");
 
 // Agent Creation (Admin Only - Only Admin can create agents)
-router.post("/create", auth, adminOnly, upload.single("image"), registerAgent);
+router.post("/create", auth, adminOnly, upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "aadhar", maxCount: 1 },
+    { name: "pan", maxCount: 1 }
+]), registerAgent);
 
 // Agent Login
 router.post("/login", loginAgent);
@@ -39,7 +43,11 @@ router.get("/report", auth, agentOnly, getAgentReport);
 router.get("/report/download", auth, agentOnly, downloadAgentReport);
 
 // Update Agent Profile (Protected - Agent Only)
-router.put("/profile-update", auth, agentOnly, upload.single("image"), updateAgentProfile);
+router.put("/profile-update", auth, agentOnly, upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "aadhar", maxCount: 1 },
+    { name: "pan", maxCount: 1 }
+]), updateAgentProfile);
 
 // Get All Agents (Admin Only)
 router.get("/all", auth, adminOnly, getAllAgents);
@@ -54,7 +62,11 @@ router.put("/toggle-status/:id", auth, adminOnly, toggleAgentStatus);
 router.put("/update-commission/:id", auth, adminOnly, updateCommission);
 
 // Update Agent Manually (Admin Only)
-router.put("/update/:id", auth, adminOnly, upload.single("image"), adminUpdateAgent);
+router.put("/update/:id", auth, adminOnly, upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "aadhar", maxCount: 1 },
+    { name: "pan", maxCount: 1 }
+]), adminUpdateAgent);
 
 // Get Single Agent (Admin Only)
 router.get("/:id", auth, adminOnly, getSingleAgent);

@@ -20,8 +20,13 @@ const {
 const { auth, adminOnly, fleetOnly } = require("../middleware/auth");
 const upload = require("../middleware/uploadAdminImage");
 
-// Fleet Creation (Admin Only)
-router.post("/create", auth, adminOnly, upload.single("image"), createFleet);
+// 1. Create Fleet (Admin Only) - Multi-part with documents
+router.post("/create", auth, adminOnly, upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "gstCertificate", maxCount: 1 },
+    { name: "panCard", maxCount: 1 },
+    { name: "businessLicense", maxCount: 1 }
+]), createFleet);
 
 // Fleet Login
 router.post("/login", loginFleet);
@@ -29,8 +34,13 @@ router.post("/login", loginFleet);
 // Fleet Profile (Protected - Fleet Only)
 router.get("/profile", auth, fleetOnly, getFleetProfile);
 
-// Update Fleet Profile (Protected - Fleet Only)
-router.put("/profile-update", auth, fleetOnly, upload.single("image"), updateFleetProfile);
+// Update Fleet Profile (Protected - Fleet Only) - Multi-part
+router.put("/profile-update", auth, fleetOnly, upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "gstCertificate", maxCount: 1 },
+    { name: "panCard", maxCount: 1 },
+    { name: "businessLicense", maxCount: 1 }
+]), updateFleetProfile);
 
 // Fleet Dashboard (Protected - Fleet Only)
 router.get("/dashboard", auth, fleetOnly, getFleetDashboard);
@@ -53,8 +63,13 @@ router.put("/toggle-status/:id", auth, adminOnly, toggleFleetStatus);
 // Update Fleet Wallet Balance (Admin Only)
 router.put("/update-wallet/:id", auth, adminOnly, updateWalletBalance);
 
-// Update Fleet Manually (Admin Only)
-router.put("/update/:id", auth, adminOnly, upload.single("image"), adminUpdateFleet);
+// Update Fleet Manually (Admin Only) - Multi-part
+router.put("/update/:id", auth, adminOnly, upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "gstCertificate", maxCount: 1 },
+    { name: "panCard", maxCount: 1 },
+    { name: "businessLicense", maxCount: 1 }
+]), adminUpdateFleet);
 
 // Get Single Fleet (Admin Only) - MUST BE LAST
 router.get("/:id", auth, adminOnly, getSingleFleet);

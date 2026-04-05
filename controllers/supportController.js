@@ -130,3 +130,23 @@ exports.getSupportSummary = async (req, res) => {
         res.status(500).json({ success: false, message: "Error fetching support summary", error: error.message });
     }
 };
+
+// 6. Admin: Delete Support Request
+exports.deleteSupportRequest = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const request = await Support.findByIdAndDelete(id);
+
+        if (!request) {
+            return res.status(404).json({ success: false, message: "Support request not found" });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Support request deleted successfully"
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error deleting support request", error: error.message });
+    }
+};
