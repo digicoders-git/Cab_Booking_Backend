@@ -161,15 +161,25 @@ exports.updateSelfProfile = async (req, res) => {
         if (pincode) vendor.pincode = pincode;
 
         // Update photo if uploaded
-        if (req.file) vendor.image = req.file.filename;
+        if (req.files) {
+            if (req.files.image) vendor.image = req.files.image[0].filename;
+
+            if (req.files.aadhar || req.files.pan || req.files.gst) {
+                if (!vendor.documents) vendor.documents = {};
+                if (req.files.aadhar) vendor.documents.aadhar = req.files.aadhar[0].filename;
+                if (req.files.pan) vendor.documents.pan = req.files.pan[0].filename;
+                if (req.files.gst) vendor.documents.gst = req.files.gst[0].filename;
+                vendor.markModified('documents');
+            }
+        }
 
         // Update Bank Details
         if (accountNumber || ifscCode || accountHolderName || bankName) {
             vendor.bankDetails = {
-                accountNumber: accountNumber || vendor.bankDetails.accountNumber,
-                ifscCode: ifscCode || vendor.bankDetails.ifscCode,
-                accountHolderName: accountHolderName || vendor.bankDetails.accountHolderName,
-                bankName: bankName || vendor.bankDetails.bankName
+                accountNumber: accountNumber || vendor.bankDetails?.accountNumber || "",
+                ifscCode: ifscCode || vendor.bankDetails?.ifscCode || "",
+                accountHolderName: accountHolderName || vendor.bankDetails?.accountHolderName || "",
+                bankName: bankName || vendor.bankDetails?.bankName || ""
             };
         }
 

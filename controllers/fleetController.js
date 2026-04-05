@@ -230,7 +230,7 @@ exports.updateFleetProfile = async (req, res) => {
             req.user.id,
             updateData,
             { new: true }
-        ).select("password");
+        ).select("-password");
 
         res.json({
             success: true,

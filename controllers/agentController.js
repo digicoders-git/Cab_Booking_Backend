@@ -668,24 +668,24 @@ exports.updateAgentProfile = async (req, res) => {
             updateData.password = password;
         }
 
-        if (req.file) {
-            updateData.image = req.file.filename;
-        }
-
         if (accountNumber || ifscCode || accountHolderName || bankName) {
             updateData.bankDetails = {
-                accountNumber,
-                ifscCode,
-                accountHolderName,
-                bankName
+                accountNumber: accountNumber || agentRecord.bankDetails?.accountNumber,
+                ifscCode: ifscCode || agentRecord.bankDetails?.ifscCode,
+                accountHolderName: accountHolderName || agentRecord.bankDetails?.accountHolderName,
+                bankName: bankName || agentRecord.bankDetails?.bankName
             };
         }
 
-        if (aadhar || pan) {
-            updateData.documents = {
-                aadhar: aadhar || undefined,
-                pan: pan || undefined
-            };
+        if (req.files) {
+            if (req.files.image) updateData.image = req.files.image[0].filename;
+            
+            if (req.files.aadhar || req.files.pan) {
+                updateData.documents = {
+                    aadhar: req.files.aadhar ? req.files.aadhar[0].filename : agentRecord.documents?.aadhar,
+                    pan: req.files.pan ? req.files.pan[0].filename : agentRecord.documents?.pan
+                };
+            }
         }
 
         const agent = await Agent.findByIdAndUpdate(

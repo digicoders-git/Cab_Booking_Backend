@@ -53,7 +53,12 @@ router.get("/profile/me", auth, vendorOnly, vendorController.getVendorProfile);
 
 // Self Profile Update (NEW: Vendor can update their own profile)
 const upload = require("../middleware/uploadAdminImage"); // Generic image upload
-router.put("/profile/self-update", auth, vendorOnly, upload.single("image"), vendorController.updateSelfProfile);
+router.put("/profile/self-update", auth, vendorOnly, upload.fields([
+  { name: 'image', maxCount: 1 },
+  { name: 'aadhar', maxCount: 1 },
+  { name: 'pan', maxCount: 1 },
+  { name: 'gst', maxCount: 1 }
+]), vendorController.updateSelfProfile);
 
 // Dashboard Stats
 router.get("/dashboard/stats", auth, vendorOnly, vendorController.getVendorDashboard);
