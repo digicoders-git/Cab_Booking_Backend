@@ -25,6 +25,20 @@ const userSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  walletBalance: {
+    type: Number,
+    default: 0
+  },
+  totalEarnings: {
+    type: Number,
+    default: 0
+  },
+  bankDetails: {
+    accountNumber: { type: String, default: "" },
+    ifscCode: { type: String, default: "" },
+    accountHolderName: { type: String, default: "" },
+    bankName: { type: String, default: "" }
   }
 }, { timestamps: true });
 

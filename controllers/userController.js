@@ -171,7 +171,7 @@ exports.toggleUserStatus = async (req, res) => {
 exports.updateUserProfile = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, email } = req.body;
+        const { name, email, accountNumber, ifscCode, accountHolderName, bankName } = req.body;
 
         const user = await User.findById(id);
 
@@ -197,6 +197,16 @@ exports.updateUserProfile = async (req, res) => {
                 return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
             }
             user.email = email;
+        }
+
+        // Update bank details if any fields provided
+        if (accountNumber || ifscCode || accountHolderName || bankName) {
+            user.bankDetails = {
+                accountNumber: accountNumber || user.bankDetails?.accountNumber,
+                ifscCode: ifscCode || user.bankDetails?.ifscCode,
+                accountHolderName: accountHolderName || user.bankDetails?.accountHolderName,
+                bankName: bankName || user.bankDetails?.bankName
+            };
         }
 
         // If a profile image was uploaded

@@ -3,6 +3,7 @@ const Driver = require("../models/Driver");
 const Agent = require("../models/Agent");
 const Fleet = require("../models/Fleet");
 const Admin = require("../models/Admin");
+const User = require("../models/User");
 
 // 1. Get Wallet Balance and Transaction History
 exports.getWalletDetails = async (req, res) => {
@@ -25,6 +26,9 @@ exports.getWalletDetails = async (req, res) => {
         } else if (role === 'admin') {
             userModel = 'Admin';
             userData = await Admin.findById(userId);
+        } else if (role === 'user') {
+            userModel = 'User';
+            userData = await User.findById(userId);
         }
 
         if (!userData) {
@@ -66,6 +70,9 @@ exports.requestWithdrawal = async (req, res) => {
         } else if (role === 'fleet') {
             userModel = 'Fleet';
             userData = await Fleet.findById(userId);
+        } else if (role === 'user') {
+            userModel = 'User';
+            userData = await User.findById(userId);
         }
 
         if (!userData || userData.walletBalance < amount) {
@@ -143,6 +150,7 @@ exports.rejectWithdrawal = async (req, res) => {
         if (transaction.userModel === 'Driver') user = await Driver.findById(transaction.user);
         if (transaction.userModel === 'Agent') user = await Agent.findById(transaction.user);
         if (transaction.userModel === 'Fleet') user = await Fleet.findById(transaction.user);
+        if (transaction.userModel === 'User') user = await User.findById(transaction.user);
 
         if (user) {
             user.walletBalance += transaction.amount;

@@ -1,0 +1,313 @@
+{
+	"info": {
+		"_postman_id": "3e4b5c6d-7e8f-9a0b-1c2d-3e4f5g6h7i8j",
+		"name": "CapBokkin User Panel COMPLETED Collection",
+		"description": "Full 16 API collection for the User Panel including Auth, Profile, Car Search, Booking, Live Tracking, Support, Wallet, and Notifications.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Authentication & Profile",
+			"item": [
+				{
+					"name": "User Login & Registration",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"phone\": \"9876543210\",\n  \"otp\": \"123456\",\n  \"name\": \"Vivek Raj\",\n  \"email\": \"vivek@example.com\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/users/login",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "login"]
+						}
+					}
+				},
+				{
+					"name": "Get My Profile Info",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/users/profile/:userId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "profile", ":userId"],
+							"variable": [
+								{ "key": "userId", "value": "65b2a0c8d1e3f9001c7d2e4a" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Update Profile Details",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Vivek Raj\",\n  \"email\": \"vivekraj@example.com\",\n  \"accountNumber\": \"1234567890\",\n  \"ifscCode\": \"SBIN0001234\",\n  \"accountHolderName\": \"Vivek Raj\",\n  \"bankName\": \"State Bank of India\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/users/update-profile/:userId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "users", "update-profile", ":userId"],
+							"variable": [
+								{ "key": "userId", "value": "65b2a0c8d1e3f9001c7d2e4a" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "2. Car & Booking Engine",
+			"item": [
+				{
+					"name": "Get All Active Car Categories",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/api/car-categories/active",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "car-categories", "active"]
+						}
+					}
+				},
+				{
+					"name": "Quick Fare Estimate (Single Choice)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"pickup\": { \"lat\": 26.8467, \"lng\": 80.9462 },\n  \"drop\": { \"lat\": 28.6139, \"lng\": 77.2090 },\n  \"categoryId\": \"65b2e0f4d1e3f9a71c7d2e4b\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/bookings/estimate-fare",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "bookings", "estimate-fare"]
+						}
+					}
+				},
+				{
+					"name": "Search Cabs (Compare All Categories)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"pickup\": { \"lat\": 26.8467, \"lng\": 80.9462 },\n  \"drop\": { \"lat\": 28.6139, \"lng\": 77.2090 }\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/bookings/search-cabs",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "bookings", "search-cabs"]
+						}
+					}
+				},
+				{
+					"name": "Book a New Ride",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"passengerDetails\": { \"name\": \"Vivek Raj\", \"phone\": \"9876543210\" },\n  \"rideType\": \"Private\",\n  \"carCategory\": \"65b2e0f4d1e3f9a71c7d2e4b\",\n  \"pickup\": {\n    \"address\": \"Hazratganj, Lucknow\",\n    \"latitude\": 26.8467,\n    \"longitude\": 80.9462\n  },\n  \"drop\": {\n    \"address\": \"Railway Station, Lucknow\",\n    \"latitude\": 26.8911,\n    \"longitude\": 80.9322\n  },\n  \"estimatedDistanceKm\": 5.2,\n  \"fareEstimate\": 120,\n  \"paymentMethod\": \"Cash\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/bookings/create",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "bookings", "create"]
+						}
+					}
+				},
+				{
+					"name": "My Ride History (Bookings)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/bookings/my-bookings",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "bookings", "my-bookings"]
+						}
+					}
+				},
+				{
+					"name": "Get Single Ride/Booking Detail",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/bookings/:bookingId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "bookings", ":bookingId"],
+							"variable": [
+								{ "key": "bookingId", "value": "651f4e92b1a0f4a71b9e2f4c" }
+							]
+						}
+					}
+				},
+				{
+					"name": "Cancel Current Booking",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"Plans changed, booked another ride\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/bookings/cancel/:bookingId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "bookings", "cancel", ":bookingId"],
+							"variable": [
+								{ "key": "bookingId", "value": "651f4e92b1a0f4a71b9e2f4c" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "3. Live Tracking",
+			"item": [
+				{
+					"name": "Track Driver Real-Time Location",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/trips/track/:bookingId",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "trips", "track", ":bookingId"],
+							"variable": [
+								{ "key": "bookingId", "value": "651f4e92b1a0f4a71b9e2f4c" }
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "4. Support System",
+			"item": [
+				{
+					"name": "Raise Support/Complaint Ticket",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"subject\": \"Driver Behavior\",\n  \"message\": \"The driver was rude during the trip.\",\n  \"bookingId\": \"651f4e92b1a0f4a71b9e2f4c\"\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/support/create",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "support", "create"]
+						}
+					}
+				},
+				{
+					"name": "View My Support Tickets History",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/support/my-tickets",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "support", "my-tickets"]
+						}
+					}
+				},
+				{
+					"name": "Get Support Tickets Summary",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/support/report-summary",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "support", "report-summary"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "5. Wallet & Notifications",
+			"item": [
+				{
+					"name": "Get My Wallet Balance & Transactions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/wallet/my-wallet",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "wallet", "my-wallet"]
+						}
+					}
+				},
+				{
+					"name": "Get App Notifications",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{userToken}}" }
+						],
+						"url": {
+							"raw": "{{baseUrl}}/api/notifications/my-notifications",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "notifications", "my-notifications"]
+						}
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{ "key": "baseUrl", "value": "http://localhost:5000" },
+		{ "key": "userToken", "value": "PASTE_YOUR_JWT_HERE" }
+	]
+}
