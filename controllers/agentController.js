@@ -10,6 +10,7 @@ exports.registerAgent = async (req, res) => {
         const { 
             name, email, phone, password, commissionPercentage, 
             address, city, state, pincode,
+            aadharNumber, panNumber,
             accountNumber, ifscCode, accountHolderName, bankName 
         } = req.body;
 
@@ -40,6 +41,8 @@ exports.registerAgent = async (req, res) => {
             city,
             state,
             pincode,
+            aadharNumber,
+            panNumber,
             documents: { aadhar, pan },
             bankDetails: {
                 accountNumber,
@@ -637,7 +640,7 @@ exports.downloadAgentReport = async (req, res) => {
 // Update Agent Profile (Including Documents)
 exports.updateAgentProfile = async (req, res) => {
     try {
-        const { name, email, phone, password, address, city, state, pincode, accountNumber, ifscCode, accountHolderName, bankName, aadhar, pan } = req.body;
+        const { name, email, phone, password, address, city, state, pincode, accountNumber, ifscCode, accountHolderName, bankName, aadharNumber, panNumber } = req.body;
         const id = req.user.id;
         const agentRecord = await Agent.findById(id);
         if (!agentRecord) return res.status(404).json({ success: false, message: "Agent not found" });
@@ -661,7 +664,9 @@ exports.updateAgentProfile = async (req, res) => {
             address,
             city,
             state,
-            pincode
+            pincode,
+            aadharNumber,
+            panNumber
         };
 
         if (password) {
@@ -859,7 +864,7 @@ exports.adminUpdateAgent = async (req, res) => {
         const { id } = req.params;
         const { 
             name, email, phone, password, commissionPercentage,
-            address, city, state, pincode, aadhar, pan,
+            address, city, state, pincode, aadharNumber, panNumber,
             accountNumber, ifscCode, accountHolderName, bankName
         } = req.body;
 
@@ -893,6 +898,8 @@ exports.adminUpdateAgent = async (req, res) => {
         if (city) agent.city = city;
         if (state) agent.state = state;
         if (pincode) agent.pincode = pincode;
+        if (aadharNumber !== undefined) agent.aadharNumber = aadharNumber;
+        if (panNumber !== undefined) agent.panNumber = panNumber;
         if (commissionPercentage !== undefined) agent.commissionPercentage = commissionPercentage;
 
         // Handle File Fields from upload.fields

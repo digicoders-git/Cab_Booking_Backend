@@ -11,7 +11,7 @@ const carCategorySchema = new mongoose.Schema({
     type: Number,
     required: true,
     min: 1,
-    max: 10 // Max capacity setting
+    max: 100 // Increased limit for larger vehicles like buses/vans
   },
   avgSpeedKmH: {
     type: Number,

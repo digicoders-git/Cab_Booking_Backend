@@ -70,7 +70,7 @@ exports.getMyNotifications = async (req, res) => {
 exports.getAllNotifications = async (req, res) => {
     try {
         const notifications = await Notification.find()
-            .populate("createdBy", "name")
+            .populate("createdBy", "name image")
             .sort({ createdAt: -1 });
 
         res.json({

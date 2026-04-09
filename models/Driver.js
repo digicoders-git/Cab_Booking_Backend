@@ -176,6 +176,14 @@ const driverSchema = new mongoose.Schema({
       default: null
     }
   },
+  aadharNumber: {
+    type: String,
+    default: ""
+  },
+  panNumber: {
+    type: String,
+    default: ""
+  },
   address: {
     type: String,
     default: ""

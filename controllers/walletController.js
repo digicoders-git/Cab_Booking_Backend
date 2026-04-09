@@ -168,6 +168,7 @@ exports.rejectWithdrawal = async (req, res) => {
 exports.getAllTransactions = async (req, res) => {
     try {
         const transactions = await Transaction.find()
+            .populate("user", "name phone image")
             .sort({ createdAt: -1 })
             .limit(100);
 
@@ -188,8 +189,8 @@ exports.getPendingPayouts = async (req, res) => {
             category: 'Withdrawal', 
             status: 'Pending' 
         })
-        .populate("user", "name phone email") // Dynamic populate based on userModel
-        .sort({ createdAt: -1 });
+        .populate("user", "name phone email image") // Dynamic populate based on userModel
+            .sort({ createdAt: -1 });
 
         res.json({
             success: true,

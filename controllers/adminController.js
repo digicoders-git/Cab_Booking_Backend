@@ -203,7 +203,7 @@ exports.registerSubAdmin = async (req, res) => {
 // 2. Get All Admin/Sub-Admins
 exports.getAllAdmins = async (req, res) => {
     try {
-        const admins = await Admin.find().sort({ createdAt: -1 });
+        const admins = await Admin.find({ role: "SubAdmin" }).sort({ createdAt: -1 });
         res.status(200).json({
             success: true,
             count: admins.length,
@@ -330,8 +330,8 @@ exports.getDashboardStats = async (req, res) => {
             recentBookings: await Booking.find()
                 .limit(5)
                 .sort({ createdAt: -1 })
-                .populate("user", "name")
-                .populate("assignedDriver", "name")
+                .populate("user", "name image")
+                .populate("assignedDriver", "name image")
         };
 
         const adminData = await Admin.findById(req.user.id);

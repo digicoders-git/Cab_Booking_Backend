@@ -61,7 +61,7 @@ exports.getMySupportRequests = async (req, res) => {
 exports.getAllSupportRequests = async (req, res) => {
     try {
         const requests = await Support.find()
-            .populate("sender", "name email phone")
+            .populate("sender", "name email phone image")
             .sort({ createdAt: -1 });
 
         res.status(200).json({

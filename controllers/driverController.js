@@ -13,7 +13,7 @@ exports.registerDriver = async (req, res) => {
             // Driver Details
             name, email, phone, password, licenseNumber, licenseExpiry, 
             address, city, state, pincode,
-            aadhar, pan,
+            aadharNumber, panNumber,
             accountNumber, ifscCode, accountHolderName, bankName,
             
             // Car Details (Optional for direct registration)
@@ -26,6 +26,9 @@ exports.registerDriver = async (req, res) => {
         const insuranceImage = req.files?.insuranceImage ? req.files.insuranceImage[0].filename : null;
         const permitImage    = req.files?.permitImage    ? req.files.permitImage[0].filename    : null;
         const pucImage       = req.files?.pucImage       ? req.files.pucImage[0].filename       : null;
+
+        const aadhar = req.files?.aadhar ? req.files.aadhar[0].filename : null;
+        const pan = req.files?.pan ? req.files.pan[0].filename : null;
 
         // Check global email uniqueness
         const emailTakenBy = await isEmailTaken(email);
@@ -88,6 +91,8 @@ exports.registerDriver = async (req, res) => {
             city,
             state,
             pincode,
+            aadharNumber,
+            panNumber,
             documents: {
                 license: licenseNumber,
                 aadhar,
@@ -224,6 +229,7 @@ exports.updateDriverProfile = async (req, res) => {
             name, email, phone, password, 
             licenseNumber, licenseExpiry,
             address, city, state, pincode,
+            aadharNumber, panNumber,
             accountNumber, ifscCode, accountHolderName, bankName,
             license, aadhar, pan,
             
@@ -259,7 +265,9 @@ exports.updateDriverProfile = async (req, res) => {
             address,
             city,
             state,
-            pincode
+            pincode,
+            aadharNumber,
+            panNumber
         };
 
         if (password) {
@@ -758,7 +766,7 @@ exports.adminUpdateDriver = async (req, res) => {
         const { id } = req.params;
         const { 
             name, email, phone, password, licenseNumber, licenseExpiry, 
-            address, city, state, pincode,
+            address, city, state, pincode, aadharNumber, panNumber,
             carNumber, carModel, carBrand, carType, seatCapacity, carColor,
             manufacturingYear, insuranceExpiry, permitExpiry, pucExpiry,
             lastServiceDate, nextServiceDate, debtLimit,
@@ -803,6 +811,8 @@ exports.adminUpdateDriver = async (req, res) => {
         if (city) driver.city = city;
         if (state) driver.state = state;
         if (pincode) driver.pincode = pincode;
+        if (aadharNumber !== undefined) driver.aadharNumber = aadharNumber;
+        if (panNumber !== undefined) driver.panNumber = panNumber;
         if (debtLimit !== undefined) driver.debtLimit = debtLimit;
 
         if (password) {

@@ -396,8 +396,8 @@ exports.getAllBookings = async (req, res) => {
         const bookings = await Booking.find()
             .populate("carCategory", "name image")
             .populate("assignedDriver", "_id name phone carDetails")
-            .populate("user", "name phone")
-            .populate("agent", "name phone")
+            .populate("user", "name phone image")
+            .populate("agent", "name phone image")
             .sort({ createdAt: -1 });
 
         res.json({
@@ -511,7 +511,8 @@ exports.getSingleBooking = async (req, res) => {
         const booking = await Booking.findById(bookingId)
             .populate("carCategory", "name image")
             .populate("assignedDriver", "_id name phone carDetails")
-            .populate("user", "name phone");
+            .populate("user", "name phone image")
+            .populate("agent", "name phone image");
 
         if (!booking) {
             return res.status(404).json({ success: false, message: "Booking not found" });
