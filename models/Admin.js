@@ -32,8 +32,19 @@ const adminSchema = new mongoose.Schema({
     defaultCommission: {
         type: Number,
         default: 10 // Global platform fee % for individual drivers
+    },
+    role: {
+        type: String,
+        enum: ["SuperAdmin", "SubAdmin"],
+        default: "SuperAdmin"
+    },
+    permissions: [{
+        type: String
+    }],
+    isActive: {
+        type: Boolean,
+        default: true
     }
-
 }, { timestamps: true })
 
 module.exports = mongoose.model("Admin", adminSchema)

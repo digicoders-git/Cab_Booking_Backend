@@ -29,7 +29,7 @@ const initSocket = (server) => {
             if (role === 'admin') socket.join('admin_room');
             if (role === 'agent') socket.join(`agent_${userId}`);
             if (role === 'vendor') socket.join(`vendor_${userId}`); // NEW: Vendor specific room
-            
+
             // --- NEW: Fleet Owner joining their specific fleet room ---
             if (role === 'fleet') socket.join(`fleet_${userId}`);
 
@@ -110,7 +110,7 @@ const initSocket = (server) => {
                 if (activeBookings && activeBookings.length > 0) {
                     activeBookings.forEach(booking => {
                         const payloadWithBookingId = { ...updatePayload, bookingId: booking._id.toString() };
-                        
+
                         if (booking.agent) {
                             const agentRoom = `agent_${booking.agent.toString()}`;
                             io.to(agentRoom).emit("driver_location_update", payloadWithBookingId);
@@ -139,18 +139,18 @@ const initSocket = (server) => {
                     // NEW: Update active bookings with new location for persistence
                     await Booking.updateMany(
                         { assignedDriver: driverId, bookingStatus: { $in: ["Accepted", "Ongoing"] } },
-                        { 
-                            $set: { 
-                                driverLocation: { 
-                                    latitude, 
-                                    longitude, 
-                                    heading: heading || 0, 
-                                    lastUpdated: new Date() 
-                                } 
-                            } 
+                        {
+                            $set: {
+                                driverLocation: {
+                                    latitude,
+                                    longitude,
+                                    heading: heading || 0,
+                                    lastUpdated: new Date()
+                                }
+                            }
                         }
                     );
-                    
+
                     lastDBUpdate[driverId] = now; // Aakhri update time save kar liya
                     console.log(`💾 Driver ${driverId} location saved to DB (Throttled)`);
                 }

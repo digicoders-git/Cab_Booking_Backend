@@ -526,3 +526,33 @@ exports.getSingleBooking = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
+
+// 6. Delete Booking (Admin Only)
+exports.deleteBooking = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const booking = await Booking.findById(bookingId);
+
+        if (!booking) {
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        // Optional: Integrity check. Maybe don't allow deleting ongoing trips?
+        if (booking.bookingStatus === "Ongoing") {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Cannot delete an ongoing booking. Please cancel it first." 
+            });
+        }
+
+        await Booking.findByIdAndDelete(bookingId);
+
+        res.json({
+            success: true,
+            message: "Booking record deleted successfully"
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};

@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const vendorController = require("../controllers/vendorController");
 const { auth, adminOnly, vendorOnly } = require("../middleware/auth");
+const { checkPermission } = require("../middleware/rbac");
 const uploadCarDocs = require("../middleware/uploadCarDocs");
 const uploadFleetDocs = require("../middleware/uploadFleetDocs");
 
@@ -11,7 +12,7 @@ const uploadFleetDocs = require("../middleware/uploadFleetDocs");
 
 // Create Vendor (Admin set karta hai — name, area, commission%)
 const uploadProfile = require("../middleware/uploadAdminImage");
-router.post("/create", auth, adminOnly, uploadProfile.fields([
+router.post("/create", auth, checkPermission("VENDOR_CREATE"), uploadProfile.fields([
     { name: "image", maxCount: 1 },
     { name: "aadhar", maxCount: 1 },
     { name: "pan", maxCount: 1 },
@@ -19,13 +20,13 @@ router.post("/create", auth, adminOnly, uploadProfile.fields([
 ]), vendorController.createVendor);
 
 // Get All Vendors
-router.get("/all", auth, adminOnly, vendorController.getAllVendors);
+router.get("/all", auth, checkPermission("VENDOR_READ"), vendorController.getAllVendors);
 
 // Get Single Vendor
-router.get("/:id", auth, adminOnly, vendorController.getSingleVendor);
+router.get("/:id", auth, checkPermission("VENDOR_READ"), vendorController.getSingleVendor);
 
 // Update Vendor
-router.put("/update/:id", auth, adminOnly, uploadProfile.fields([
+router.put("/update/:id", auth, checkPermission("VENDOR_EDIT"), uploadProfile.fields([
     { name: "image", maxCount: 1 },
     { name: "aadhar", maxCount: 1 },
     { name: "pan", maxCount: 1 },
@@ -33,13 +34,13 @@ router.put("/update/:id", auth, adminOnly, uploadProfile.fields([
 ]), vendorController.updateVendor);
 
 // Update Commission % Only
-router.patch("/commission/:id", auth, adminOnly, vendorController.updateVendorCommission);
+router.patch("/commission/:id", auth, checkPermission("VENDOR_COMMISSION"), vendorController.updateVendorCommission);
 
 // Toggle Active/Deactive
-router.patch("/toggle/:id", auth, adminOnly, vendorController.toggleVendorStatus);
+router.patch("/toggle/:id", auth, checkPermission("VENDOR_STATUS"), vendorController.toggleVendorStatus);
 
 // Delete Vendor
-router.delete("/delete/:id", auth, adminOnly, vendorController.deleteVendor);
+router.delete("/delete/:id", auth, checkPermission("VENDOR_DELETE"), vendorController.deleteVendor);
 
 // ============================================================
 // VENDOR ROUTES (Vendor Only)

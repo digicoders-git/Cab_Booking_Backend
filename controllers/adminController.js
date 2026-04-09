@@ -21,7 +21,8 @@ exports.registerAdmin = async (req, res) => {
             name,
             email,
             password,
-            image
+            image,
+            role: "SuperAdmin" // Default first admin should be SuperAdmin
         })
         res.status(201).json({
             success: true,
@@ -52,6 +53,14 @@ exports.loginAdmin = async (req, res) => {
                 message: "Invalid password"
             })
         }
+
+        // Check if account is active
+        if (admin.isActive === false) {
+            return res.status(403).json({
+                success: false,
+                message: "⚠️ Account On Hold: your access has been temporarily suspended by the management. Please contact the Super Admin."
+            })
+        }
         const token = jwt.sign(
             {
                 id: admin._id,
@@ -64,7 +73,13 @@ exports.loginAdmin = async (req, res) => {
             success: true,
             message: "Login successful",
             token,
-            admin
+            admin: {
+                id: admin._id,
+                name: admin.name,
+                email: admin.email,
+                role: admin.role,
+                permissions: admin.permissions
+            }
         })
     } catch (error) {
         res.status(500).json({
@@ -76,12 +91,20 @@ exports.loginAdmin = async (req, res) => {
 
 exports.getProfile = async (req, res) => {
     try {
-        const admin = await Admin.findById(req.user.id)
+        const admin = await Admin.findById(req.user.id);
         if (!admin) {
             return res.status(404).json({
                 success: false,
-                message: "Admin not found"
-            })
+                message: "Admin account not found"
+            });
+        }
+
+        // check if account is active
+        if (admin.isActive === false && admin.role !== 'SuperAdmin') {
+            return res.status(403).json({
+                success: false,
+                message: "Access Denied: Your account is currently inactive."
+            });
         }
         res.json({
             success: true,
@@ -136,6 +159,148 @@ exports.updateProfile = async (req, res) => {
         })
     }
 }
+
+// ================= RBAC: SUB-ADMIN MANAGEMENT =================
+
+// 1. Register a new Sub-Admin (Only SuperAdmin)
+exports.registerSubAdmin = async (req, res) => {
+    try {
+        const { name, email, password, permissions } = req.body;
+        const image = req.file ? req.file.filename : null;
+
+        // Check global email uniqueness
+        const emailTakenBy = await isEmailTaken(email);
+        if (emailTakenBy) {
+            return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+        }
+
+        const finalPermissions = typeof permissions === 'string' ? JSON.parse(permissions) : (permissions || []);
+
+        const subAdmin = await Admin.create({
+            name,
+            email,
+            password,
+            image,
+            role: "SubAdmin",
+            permissions: finalPermissions
+        });
+
+        res.status(201).json({
+            success: true,
+            message: "Sub-Admin created successfully",
+            subAdmin
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Server error",
+            error: error.message
+        });
+    }
+};
+
+// 2. Get All Admin/Sub-Admins
+exports.getAllAdmins = async (req, res) => {
+    try {
+        const admins = await Admin.find().sort({ createdAt: -1 });
+        res.status(200).json({
+            success: true,
+            count: admins.length,
+            admins
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error fetching admins" });
+    }
+};
+
+// 3. Update Sub-Admin Permissions
+exports.updateAdminPermissions = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, email, password, permissions, isActive } = req.body;
+
+        const admin = await Admin.findById(id);
+        if (!admin) {
+            return res.status(404).json({ success: false, message: "Admin not found" });
+        }
+
+        if (admin.role === "SuperAdmin") {
+            return res.status(400).json({ success: false, message: "Cannot modify SuperAdmin permissions" });
+        }
+
+        if (permissions !== undefined) {
+            admin.permissions = typeof permissions === 'string' ? JSON.parse(permissions) : permissions;
+        }
+        if (isActive !== undefined) admin.isActive = isActive;
+        if (name) admin.name = name;
+        if (password) admin.password = password;
+        if (email && email !== admin.email) {
+            const emailTakenBy = await isEmailTaken(email, id);
+            if (emailTakenBy) return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+            admin.email = email;
+        }
+
+        await admin.save();
+
+        res.json({
+            success: true,
+            message: "Permissions updated successfully",
+            admin
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+// 4. Delete Admin/Sub-Admin
+exports.deleteAdmin = async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Prevent self-deletion
+        if (id === req.user.id) {
+            return res.status(400).json({ success: false, message: "You cannot delete yourself" });
+        }
+
+        const admin = await Admin.findById(id);
+        if (!admin) return res.status(404).json({ success: false, message: "Admin not found" });
+
+        if (admin.role === "SuperAdmin") {
+            return res.status(400).json({ success: false, message: "SuperAdmin cannot be deleted" });
+        }
+
+        await Admin.findByIdAndDelete(id);
+
+        res.json({
+            success: true,
+            message: "Admin deleted successfully"
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+// 5. Get Single Admin/Sub-Admin
+exports.getSingleAdmin = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const admin = await Admin.findById(id);
+        if (!admin) {
+            return res.status(404).json({ success: false, message: "Admin not found" });
+        }
+        res.status(200).json({
+            success: true,
+            admin
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error fetching admin" });
+    }
+};
+
+// ================= ORIGINAL ADMIN LOGIC CONTINUES =================
 
 exports.getDashboardStats = async (req, res) => {
     try {

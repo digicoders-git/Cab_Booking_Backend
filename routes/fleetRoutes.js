@@ -18,10 +18,11 @@ const {
 } = require("../controllers/fleetController");
 
 const { auth, adminOnly, fleetOnly } = require("../middleware/auth");
+const { checkPermission } = require("../middleware/rbac");
 const upload = require("../middleware/uploadAdminImage");
 
 // 1. Create Fleet (Admin Only) - Multi-part with documents
-router.post("/create", auth, adminOnly, upload.fields([
+router.post("/create", auth, checkPermission("FLEET_CREATE"), upload.fields([
     { name: "image", maxCount: 1 },
     { name: "gstCertificate", maxCount: 1 },
     { name: "panCard", maxCount: 1 },
@@ -52,19 +53,19 @@ router.get("/performance", auth, fleetOnly, getFleetPerformance);
 router.get("/completed-rides", auth, fleetOnly, getFleetCompletedRides);
 
 // Get All Fleets (Admin Only)
-router.get("/all", auth, adminOnly, getAllFleets);
+router.get("/all", auth, checkPermission("FLEET_READ"), getAllFleets);
 
 // Delete Fleet (Admin Only)
-router.delete("/delete/:id", auth, adminOnly, deleteFleet);
+router.delete("/delete/:id", auth, checkPermission("FLEET_DELETE"), deleteFleet);
 
 // Toggle Fleet Status (Admin Only)
-router.put("/toggle-status/:id", auth, adminOnly, toggleFleetStatus);
+router.put("/toggle-status/:id", auth, checkPermission("FLEET_STATUS"), toggleFleetStatus);
 
 // Update Fleet Wallet Balance (Admin Only)
-router.put("/update-wallet/:id", auth, adminOnly, updateWalletBalance);
+router.put("/update-wallet/:id", auth, checkPermission("FLEET_WALLET"), updateWalletBalance);
 
 // Update Fleet Manually (Admin Only) - Multi-part
-router.put("/update/:id", auth, adminOnly, upload.fields([
+router.put("/update/:id", auth, checkPermission("FLEET_EDIT"), upload.fields([
     { name: "image", maxCount: 1 },
     { name: "gstCertificate", maxCount: 1 },
     { name: "panCard", maxCount: 1 },
@@ -72,6 +73,6 @@ router.put("/update/:id", auth, adminOnly, upload.fields([
 ]), adminUpdateFleet);
 
 // Get Single Fleet (Admin Only) - MUST BE LAST
-router.get("/:id", auth, adminOnly, getSingleFleet);
+router.get("/:id", auth, checkPermission("FLEET_READ"), getSingleFleet);
 
 module.exports = router;
