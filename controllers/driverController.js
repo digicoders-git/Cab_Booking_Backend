@@ -147,6 +147,28 @@ exports.loginDriver = async (req, res) => {
             });
         }
 
+        if (driver.isRejected) {
+            return res.status(403).json({
+                success: false,
+                message: `Your registration was rejected by Admin. Reason: ${driver.rejectionReason || "Not specified"}`,
+                driver: {
+                    name: driver.name,
+                    email: driver.email,
+                    phone: driver.phone,
+                    licenseNumber: driver.licenseNumber,
+                    licenseExpiry: driver.licenseExpiry,
+                    address: driver.address,
+                    city: driver.city,
+                    state: driver.state,
+                    pincode: driver.pincode,
+                    aadharNumber: driver.aadharNumber,
+                    panNumber: driver.panNumber,
+                    carDetails: driver.carDetails,
+                    bankDetails: driver.bankDetails
+                }
+            });
+        }
+
         if (!driver.isApproved) {
             return res.status(403).json({
                 success: false,
@@ -965,6 +987,77 @@ exports.getDriverReport = async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Error fetching driver report",
+            error: error.message
+        });
+    }
+};
+
+// Resubmit Documents for Rejected Drivers
+exports.resubmitDriverDocuments = async (req, res) => {
+    try {
+        const { email, phone } = req.body;
+
+        if (!email && !phone) {
+            return res.status(400).json({ success: false, message: "Email or Phone is required to identify the driver" });
+        }
+
+        const query = email ? { email } : { phone };
+        const driver = await Driver.findOne(query);
+
+        if (!driver) {
+            return res.status(404).json({ success: false, message: "Driver not found" });
+        }
+
+        if (!driver.isRejected) {
+            return res.status(400).json({ success: false, message: "Only rejected drivers can use this option. Your account is either approved or already pending." });
+        }
+
+        // Update basic info if provided (optional)
+        const { name, address, city, state, pincode, licenseNumber, licenseExpiry } = req.body;
+        if (name) driver.name = name;
+        if (address) driver.address = address;
+        if (city) driver.city = city;
+        if (state) driver.state = state;
+        if (pincode) driver.pincode = pincode;
+        if (licenseNumber) driver.licenseNumber = licenseNumber;
+        if (licenseExpiry) driver.licenseExpiry = licenseExpiry;
+
+        // Safety: Ensure nested objects exist
+        if (!driver.carDetails) driver.carDetails = {};
+        if (!driver.carDetails.carDocuments) driver.carDetails.carDocuments = {};
+        if (!driver.documents) driver.documents = {};
+
+        // Update documents (files)
+        if (req.files?.image) driver.image = req.files.image[0].filename;
+        if (req.files?.rcImage) driver.carDetails.carDocuments.rc = req.files.rcImage[0].filename;
+        if (req.files?.insuranceImage) driver.carDetails.carDocuments.insurance = req.files.insuranceImage[0].filename;
+        if (req.files?.permitImage) driver.carDetails.carDocuments.permit = req.files.permitImage[0].filename;
+        if (req.files?.pucImage) driver.carDetails.carDocuments.puc = req.files.pucImage[0].filename;
+        if (req.files?.aadhar) driver.documents.aadhar = req.files.aadhar[0].filename;
+        if (req.files?.pan) driver.documents.pan = req.files.pan[0].filename;
+
+        // Reset rejection status
+        driver.isRejected = false;
+        driver.rejectionReason = null;
+        driver.isActive = false; 
+        driver.isApproved = false;
+
+        // Important: Mark modified for nested objects
+        driver.markModified("carDetails");
+        driver.markModified("documents");
+
+        await driver.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Documents resubmitted successfully. Waiting for admin approval.",
+            driver
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error resubmitting documents",
             error: error.message
         });
     }

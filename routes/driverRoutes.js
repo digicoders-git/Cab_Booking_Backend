@@ -20,7 +20,8 @@ const {
     approveDriver,
     rejectDriver,
     adminUpdateDriver,
-    getDriverReport
+    getDriverReport,
+    resubmitDriverDocuments
 } = require("../controllers/driverController");
 
 const { auth, adminOnly, driverOnly, fleetOnly } = require("../middleware/auth");
@@ -32,6 +33,9 @@ router.post("/register", uploadCarDocs, registerDriver);
 
 // Driver Login
 router.post("/login", loginDriver);
+
+// Resubmit Documents (Allowed for Rejected Drivers)
+router.post("/resubmit", uploadCarDocs, resubmitDriverDocuments);
 
 // Driver Profile (Protected - Driver Only)
 router.get("/profile", auth, driverOnly, getDriverProfile);

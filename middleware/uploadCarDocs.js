@@ -17,7 +17,9 @@ const uploadCarDocs = multer({ storage }).fields([
     { name: "rcImage",        maxCount: 1 },  // RC Document
     { name: "insuranceImage", maxCount: 1 },  // Insurance / Beema
     { name: "permitImage",    maxCount: 1 },  // Permit
-    { name: "pucImage",       maxCount: 1 }   // PUC
+    { name: "pucImage",       maxCount: 1 },  // PUC
+    { name: "aadhar",         maxCount: 1 },  // Aadhar Card
+    { name: "pan",            maxCount: 1 }   // PAN Card
 ]);
 
 module.exports = uploadCarDocs;
