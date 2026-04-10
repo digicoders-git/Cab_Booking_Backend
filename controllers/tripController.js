@@ -197,7 +197,8 @@ exports.autoMatchDriver = async (bookingId) => {
                 drop: booking.drop.address,
                 distance: booking.estimatedDistanceKm,
                 rideType: booking.rideType,
-                fare: booking.fareEstimate
+                fare: booking.fareEstimate,
+                expiresAt: Date.now() + 10000 // Send exact expiry time (10s from now)
             });
             console.log(`Driver ${nearestDriver.name} notified via Socket about New Request! 🟢`);
         } catch (err) {
@@ -226,7 +227,12 @@ exports.getPendingRequests = async (req, res) => {
             .sort({ createdAt: -1 });
 
         // Filter: Sirf wahi requests dikhao jinki booking abhi bhi "Pending" hai
-        const activeRequests = requests.filter(req => req.booking && req.booking.bookingStatus === "Pending");
+        const activeRequests = requests.filter(req => req.booking && req.booking.bookingStatus === "Pending").map(req => {
+            const reqObj = req.toObject();
+            // Calculate expiresAt based on createdAt + 10 seconds
+            reqObj.expiresAt = new Date(req.createdAt).getTime() + 10000;
+            return reqObj;
+        });
 
         res.json({
             success: true,
@@ -387,6 +393,29 @@ exports.respondToRequest = async (req, res) => {
 
             await driver.save();
 
+            // 🎯 Real-time Status Update to ADMIN PANEL
+            try {
+                const io = getIO();
+                const activityStatus = driver.currentRideType === "Shared" ? "On Shared Ride" : "On Private Ride";
+                
+                io.to('admin_room').emit("driver_location_update", {
+                    driverId: driver._id.toString(),
+                    status: activityStatus,
+                    latitude: driver.currentLocation?.latitude,
+                    longitude: driver.currentLocation?.longitude,
+                    heading: driver.currentHeading || 0,
+                    currentTrip: {
+                        type: driver.currentRideType,
+                        pickup: { address: booking.pickup.address, latitude: booking.pickup.latitude, longitude: booking.pickup.longitude },
+                        drop: { address: booking.drop.address, latitude: booking.drop.latitude, longitude: booking.drop.longitude },
+                        passengers: booking.seatsBooked || 1
+                    }
+                });
+                console.log(`Admin notified of Driver ${driver.name} status change to ${activityStatus} (Accepted) 🟢`);
+            } catch (err) {
+                console.error("Admin Socket Notification Error (Accepted):", err.message);
+            }
+
             return res.json({ success: true, message: "Ride Accepted! Proceed to pickup.", booking });
 
         } else if (action === "Reject") {
@@ -441,6 +470,25 @@ exports.startTrip = async (req, res) => {
                 });
                 console.log(`User ${booking.user} notified via Socket (Trip Started)`);
             }
+
+            // 🎯 Real-time Status Update to ADMIN PANEL
+            const driver = await Driver.findById(driverId);
+            const activityStatus = driver.currentRideType === "Shared" ? "On Shared Ride" : "On Private Ride";
+            io.to('admin_room').emit("driver_location_update", {
+                driverId: driver._id.toString(),
+                status: activityStatus,
+                latitude: driver.currentLocation?.latitude,
+                longitude: driver.currentLocation?.longitude,
+                heading: driver.currentHeading || 0,
+                currentTrip: {
+                    type: driver.currentRideType,
+                    pickup: { address: booking.pickup.address, latitude: booking.pickup.latitude, longitude: booking.pickup.longitude },
+                    drop: { address: booking.drop.address, latitude: booking.drop.latitude, longitude: booking.drop.longitude },
+                    passengers: booking.seatsBooked || 1
+                }
+            });
+            console.log(`Admin notified: Trip Started (Status: ${activityStatus})`);
+
         } catch (err) {
             console.error("Socket Notification Error (startTrip):", err.message);
         }
@@ -649,6 +697,24 @@ exports.endTrip = async (req, res) => {
         }
 
         await driver.save();
+
+        // 🎯 Real-time Status Update to ADMIN PANEL
+        try {
+            const io = getIO();
+            const activityStatus = driver.isOnline ? (driver.isAvailable ? "Idle" : (driver.currentRideType === "Shared" ? "On Shared Ride" : "On Private Ride")) : "Offline";
+            
+            io.to('admin_room').emit("driver_location_update", {
+                driverId: driver._id.toString(),
+                status: activityStatus,
+                latitude: driver.currentLocation?.latitude,
+                longitude: driver.currentLocation?.longitude,
+                heading: driver.currentHeading || 0,
+                currentTrip: null // Clear trip on end
+            });
+            console.log(`Admin notified: Trip Ended (Driver Status: ${activityStatus})`);
+        } catch (err) {
+            console.error("Admin Socket Notification Error (endTrip):", err.message);
+        }
 
         // REAL-TIME UPDATE TO AGENT & USER
         try {

@@ -59,6 +59,13 @@ const initSocket = (server) => {
             try {
                 await Driver.findByIdAndUpdate(driverId, { isOnline: true });
                 console.log(`Driver ${driverId} is now ONLINE ✅`);
+
+                // Notify Admins
+                io.to('admin_room').emit("driver_location_update", {
+                    driverId,
+                    status: "Idle", // Since they just came online
+                    isOnline: true
+                });
             } catch (error) {
                 console.error("Online Status Error:", error.message);
             }
@@ -69,6 +76,13 @@ const initSocket = (server) => {
             try {
                 await Driver.findByIdAndUpdate(driverId, { isOnline: false });
                 console.log(`Driver ${driverId} is now OFFLINE ❌`);
+
+                // Notify Admins
+                io.to('admin_room').emit("driver_location_update", {
+                    driverId,
+                    status: "Offline",
+                    isOnline: false
+                });
             } catch (error) {
                 console.error("Offline Status Error:", error.message);
             }
@@ -79,12 +93,27 @@ const initSocket = (server) => {
             const { driverId, latitude, longitude, heading } = data;
 
             try {
-                // --- STEP 1: FAST BROADCAST (Bina DB touch kiye) ---
+                // Fetch driver to get latest status/info for broadcast
+                const driver = await Driver.findById(driverId).select("isOnline isAvailable currentRideType");
+                let activityStatus = "Offline";
+
+                if (driver) {
+                    if (driver.isOnline) {
+                        if (driver.isAvailable) {
+                            activityStatus = "Idle";
+                        } else {
+                            activityStatus = driver.currentRideType === "Shared" ? "On Shared Ride" : "On Private Ride";
+                        }
+                    }
+                }
+
+                // --- STEP 1: FAST BROADCAST (Admins, Fleets, Vendors) ---
                 const updatePayload = {
                     driverId,
                     latitude,
                     longitude,
                     heading,
+                    status: activityStatus,
                     timestamp: new Date()
                 };
 

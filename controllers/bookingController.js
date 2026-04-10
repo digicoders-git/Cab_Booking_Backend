@@ -14,9 +14,9 @@ function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
     const R = 6371; // Earth radius in km
     const dLat = deg2rad(lat2 - lat1);
     const dLon = deg2rad(lon2 - lon1);
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + 
-              Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
-              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
 }
@@ -82,130 +82,130 @@ exports.getAllFareEstimates = async (req, res) => {
             pickupLat,
             pickupLng,
             dropLat,
-            dropLng 
+            dropLng
         } = req.body;
 
-    if (!distanceKm) {
-        return res.status(400).json({ success: false, message: "Distance from Google Maps is required" });
-    }
+        if (!distanceKm) {
+            return res.status(400).json({ success: false, message: "Distance from Google Maps is required" });
+        }
 
-    const categories = await CarCategory.find({ isActive: true });
-    const seats = seatsBooked || 1;
+        const categories = await CarCategory.find({ isActive: true });
+        const seats = seatsBooked || 1;
 
-    // Fetch all currently active, online drivers to calculate real ETA
-    const availableDrivers = await Driver.find({
-        isOnline: true,
-        isActive: true,
-        isAvailable: true,
-        isApproved: true
-    }).select("currentLocation carDetails.carType");
+        // Fetch all currently active, online drivers to calculate real ETA
+        const availableDrivers = await Driver.find({
+            isOnline: true,
+            isActive: true,
+            isAvailable: true,
+            isApproved: true
+        }).select("currentLocation carDetails.carType");
 
-    // Normalize rideType to handle lowercase/uppercase (shaired, SHARED, etc.)
-    const normalizedRideType = rideType ? rideType.toLowerCase() : null;
+        // Normalize rideType to handle lowercase/uppercase (shaired, SHARED, etc.)
+        const normalizedRideType = rideType ? rideType.toLowerCase() : null;
 
-    const options = categories.map(category => {
-        const privateFare = category.baseFare + (category.privateRatePerKm * distanceKm);
-        const sharedFare = category.baseFare + (category.sharedRatePerSeatPerKm * distanceKm * seats);
+        const options = categories.map(category => {
+            const privateFare = category.baseFare + (category.privateRatePerKm * distanceKm);
+            const sharedFare = category.baseFare + (category.sharedRatePerSeatPerKm * distanceKm * seats);
 
-        // --- REAL ETA CALCULATION LOGIC ---
-        let arrivalMins = 0;
-        let minDriverDist = Infinity;
+            // --- REAL ETA CALCULATION LOGIC ---
+            let arrivalMins = 0;
+            let minDriverDist = Infinity;
 
-        // Find drivers specifically driving this Category of car
-        const categoryDrivers = availableDrivers.filter(d => 
-            d.carDetails && d.carDetails.carType && d.carDetails.carType.toString() === category._id.toString()
-        );
+            // Find drivers specifically driving this Category of car
+            const categoryDrivers = availableDrivers.filter(d =>
+                d.carDetails && d.carDetails.carType && d.carDetails.carType.toString() === category._id.toString()
+            );
 
-        // Find the absolute nearest driver's distance to the pickup location
-        if (categoryDrivers.length > 0 && pickupLat && pickupLng) {
-            categoryDrivers.forEach(driver => {
-                if (driver.currentLocation && driver.currentLocation.latitude && driver.currentLocation.longitude) {
-                    const distToPickup = getDistanceFromLatLonInKm(
-                        pickupLat, pickupLng, 
-                        driver.currentLocation.latitude, driver.currentLocation.longitude
-                    );
-                    if (distToPickup < minDriverDist) {
-                        minDriverDist = distToPickup;
+            // Find the absolute nearest driver's distance to the pickup location
+            if (categoryDrivers.length > 0 && pickupLat && pickupLng) {
+                categoryDrivers.forEach(driver => {
+                    if (driver.currentLocation && driver.currentLocation.latitude && driver.currentLocation.longitude) {
+                        const distToPickup = getDistanceFromLatLonInKm(
+                            pickupLat, pickupLng,
+                            driver.currentLocation.latitude, driver.currentLocation.longitude
+                        );
+                        if (distToPickup < minDriverDist) {
+                            minDriverDist = distToPickup;
+                        }
                     }
-                }
-            });
-        }
-
-        // Calculate time based on nearest driver distance (assume driver approaches at an avg city speed of 20 km/h)
-        if (minDriverDist !== Infinity) {
-            const approachingSpeedKmH = 20; 
-            arrivalMins = Math.round((minDriverDist / approachingSpeedKmH) * 60);
-            if (arrivalMins < 1) arrivalMins = 1; // Minimum 1 min
-        } else {
-            // Fallback: No drivers available in this category right now
-            // We show a higher default value indicating scarcity, e.g. 15-20 mins
-            arrivalMins = Math.floor(Math.random() * (20 - 15 + 1)) + 15; 
-        }
-        // --- END REAL ETA LOGIC ---
-
-        const speed = category.avgSpeedKmH || 25;
-        const travelTimeMins = Math.round((distanceKm / speed) * 60);
-
-        const now = new Date();
-        const dropTime = new Date(now.getTime() + (arrivalMins + travelTimeMins) * 60000);
-        const dropTimeStr = dropTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-        let cabOption = {
-            _id: category._id, // Add this for frontend compatibility
-            carCategoryId: category._id,
-            name: category.name,
-            image: category.image,
-            seatCapacity: category.seatCapacity,
-            arrivalMins: `${arrivalMins} mins away`,
-            dropTime: `Drop ${dropTimeStr}`,
-            description: category.name === "Auto" ? "Hassle-free Auto rides" : `Affordable ${category.name} rides`,
-            tag: category.name === "Bike" ? "FASTEST" : (category.name === "Premium" ? "PREMIUM" : null),
-            // NEW: Added nearby drivers locations for Map display (Uber/Rapido style)
-            nearbyDrivers: categoryDrivers.map(d => ({
-                id: d._id,
-                latitude: d.currentLocation.latitude,
-                longitude: d.currentLocation.longitude
-            })).slice(0, 10) // Limit to 10 for map performance
-        };
-
-        // Only show the specific fare user asked for
-        if (normalizedRideType === "private") {
-            cabOption.fare = Math.round(privateFare);
-            cabOption.rideType = "Private";
-            cabOption.seatLayout = null; 
-        } else if (normalizedRideType === "shared") {
-            cabOption.fare = Math.round(sharedFare);
-            cabOption.rideType = "Shared";
-            cabOption.seatLayout = category.seatLayout; 
-        } else {
-            // If no specific choice, show both
-            cabOption.privateFare = Math.round(privateFare);
-            cabOption.sharedFare = Math.round(sharedFare);
-            cabOption.rideType = "Both";
-            cabOption.seatLayout = category.seatLayout;
-        }
-
-        return cabOption;
-    });
-
-    res.json({
-        success: true,
-        mapsInfo: {
-            pickup: pickupAddress || "Coordinates Provided",
-            drop: dropAddress || "Coordinates Provided",
-            distanceKm,
-            coordinates: {
-                from: { lat: pickupLat, lng: pickupLng },
-                to: { lat: dropLat, lng: dropLng }
+                });
             }
-        },
-        selectedRideType: rideType || "Both Options Available",
-        options
-    });
 
-} catch (error) {
-    res.status(500).json({ success: false, message: "Server error", error: error.message });
-}
+            // Calculate time based on nearest driver distance (assume driver approaches at an avg city speed of 20 km/h)
+            if (minDriverDist !== Infinity) {
+                const approachingSpeedKmH = 20;
+                arrivalMins = Math.round((minDriverDist / approachingSpeedKmH) * 60);
+                if (arrivalMins < 1) arrivalMins = 1; // Minimum 1 min
+            } else {
+                // Fallback: No drivers available in this category right now
+                // We show a higher default value indicating scarcity, e.g. 15-20 mins
+                arrivalMins = Math.floor(Math.random() * (20 - 15 + 1)) + 15;
+            }
+            // --- END REAL ETA LOGIC ---
+
+            const speed = category.avgSpeedKmH || 25;
+            const travelTimeMins = Math.round((distanceKm / speed) * 60);
+
+            const now = new Date();
+            const dropTime = new Date(now.getTime() + (arrivalMins + travelTimeMins) * 60000);
+            const dropTimeStr = dropTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+            let cabOption = {
+                _id: category._id, // Add this for frontend compatibility
+                carCategoryId: category._id,
+                name: category.name,
+                image: category.image,
+                seatCapacity: category.seatCapacity,
+                arrivalMins: `${arrivalMins} mins away`,
+                dropTime: `Drop ${dropTimeStr}`,
+                description: category.name === "Auto" ? "Hassle-free Auto rides" : `Affordable ${category.name} rides`,
+                tag: category.name === "Bike" ? "FASTEST" : (category.name === "Premium" ? "PREMIUM" : null),
+                // NEW: Added nearby drivers locations for Map display (Uber/Rapido style)
+                nearbyDrivers: categoryDrivers.map(d => ({
+                    id: d._id,
+                    latitude: d.currentLocation.latitude,
+                    longitude: d.currentLocation.longitude
+                })).slice(0, 10) // Limit to 10 for map performance
+            };
+
+            // Only show the specific fare user asked for
+            if (normalizedRideType === "private") {
+                cabOption.fare = Math.round(privateFare);
+                cabOption.rideType = "Private";
+                cabOption.seatLayout = null;
+            } else if (normalizedRideType === "shared") {
+                cabOption.fare = Math.round(sharedFare);
+                cabOption.rideType = "Shared";
+                cabOption.seatLayout = category.seatLayout;
+            } else {
+                // If no specific choice, show both
+                cabOption.privateFare = Math.round(privateFare);
+                cabOption.sharedFare = Math.round(sharedFare);
+                cabOption.rideType = "Both";
+                cabOption.seatLayout = category.seatLayout;
+            }
+
+            return cabOption;
+        });
+
+        res.json({
+            success: true,
+            mapsInfo: {
+                pickup: pickupAddress || "Coordinates Provided",
+                drop: dropAddress || "Coordinates Provided",
+                distanceKm,
+                coordinates: {
+                    from: { lat: pickupLat, lng: pickupLng },
+                    to: { lat: dropLat, lng: dropLng }
+                }
+            },
+            selectedRideType: rideType || "Both Options Available",
+            options
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
 };
 
 // 2. Create Booking (User/Agent)
@@ -281,8 +281,8 @@ exports.createBooking = async (req, res) => {
         const newBooking = await Booking.create(bookingData);
 
         // --- SEQUENTIAL MATCHING LOGIC (The Waterfall) ---
-        const matchInterval = 30000; // 30 seconds for each driver
-        const maxTime = 120000;      // 2 minutes total wait time
+        const matchInterval = 11000; // 11 seconds (1s buffer for frontend timer sync)
+        const maxTime = 240000;      // 4 minutes total wait time 
         let timeElapsed = 0;
 
         const attemptMatching = async () => {
@@ -318,11 +318,19 @@ exports.createBooking = async (req, res) => {
                         console.error("Socket Error on Expire:", err.message);
                     }
 
-                    console.log(`Booking ${newBooking._id} expired after 2 mins matching attempts.`);
+                    console.log(`Booking ${newBooking._id} expired after 4 mins matching attempts.`);
                     return;
                 }
 
-                // 3. Purani pending requests ko timeout kar do (Water-fall effect)
+                // 3. Purani pending requests ko timeout kar do (Water-fall effect) - Emit Socket Event before updating
+                const pendingRequestsToTimeout = await RideRequest.find({ booking: newBooking._id, status: "Pending" });
+                const io = getIO();
+                pendingRequestsToTimeout.forEach(r => {
+                    io.to(r.driver.toString()).emit("ride_request_timeout", {
+                        requestId: r._id,
+                        bookingId: newBooking._id
+                    });
+                });
                 await RideRequest.updateMany({ booking: newBooking._id, status: "Pending" }, { status: "Timeout" });
 
                 // 4. Agle nearest driver ko dhundho
@@ -331,7 +339,7 @@ exports.createBooking = async (req, res) => {
                 if (matchResult.success) {
                     console.log(`[Waterfall] Request sent to Next Driver: ${matchResult.driverDetails.name}`);
                 } else {
-                    console.log(`[Waterfall] No more drivers found for now. Retrying in 30s...`);
+                    console.log(`[Waterfall] No more drivers found for now. Retrying in ${matchInterval/1000}s...`);
                 }
 
                 // 5. Agle attempt ke liye timer set karein (Recursive)
@@ -376,7 +384,7 @@ exports.getMyBookings = async (req, res) => {
 
         const bookings = await Booking.find(filter)
             .populate("carCategory", "name image")
-            .populate("assignedDriver", "_id name phone carDetails")
+            .populate("assignedDriver", "_id name phone image carDetails")
             .sort({ createdAt: -1 });
 
         res.json({
@@ -448,10 +456,10 @@ exports.cancelBooking = async (req, res) => {
                     driver.currentRideType = null;
                     driver.availableSeats = 0;
                     driver.currentHeading = null;
-                    
+
                     // Reset shared seats if any
                     if (driver.seatMap && driver.seatMap.length > 0) {
-                        driver.seatMap.forEach(s => { 
+                        driver.seatMap.forEach(s => {
                             if (s.bookingId && s.bookingId.toString() === booking._id.toString()) {
                                 s.isBooked = false;
                                 s.bookingId = null;
@@ -462,14 +470,24 @@ exports.cancelBooking = async (req, res) => {
                     await driver.save();
                     console.log(`Driver ${driver._id} is now FULLY RESET after cancellation ✅`);
 
-                    // 🎯 Live Notification to Driver
+                    // 🎯 Live Notification to Admin & Driver
                     const io = getIO();
+
+                    // Admin Update
+                    io.to('admin_room').emit("driver_location_update", {
+                        driverId: driver._id.toString(),
+                        status: "Idle",
+                        latitude: driver.currentLocation?.latitude,
+                        longitude: driver.currentLocation?.longitude
+                    });
+
+                    // Driver Notification
                     io.to(driver._id.toString()).emit("booking_update", {
                         bookingId: booking._id,
                         status: "Cancelled",
                         message: `Trip cancelled by ${booking.cancelledBy}`
                     });
-                    console.log(`Driver notified via Socket about cancellation.`);
+                    console.log(`Admin & Driver notified via Socket about cancellation.`);
                 }
             } catch (err) {
                 console.error("Driver Reset/Notify Error on Cancel:", err.message);
@@ -491,7 +509,7 @@ exports.cancelBooking = async (req, res) => {
                     status: "Cancelled"
                 });
             }
-        } catch (err) {}
+        } catch (err) { }
 
         res.json({
             success: true,
@@ -510,7 +528,7 @@ exports.getSingleBooking = async (req, res) => {
         const { bookingId } = req.params;
         const booking = await Booking.findById(bookingId)
             .populate("carCategory", "name image")
-            .populate("assignedDriver", "_id name phone carDetails")
+            .populate("assignedDriver", "_id name phone image carDetails")
             .populate("user", "name phone image")
             .populate("agent", "name phone image");
 
@@ -540,9 +558,9 @@ exports.deleteBooking = async (req, res) => {
 
         // Optional: Integrity check. Maybe don't allow deleting ongoing trips?
         if (booking.bookingStatus === "Ongoing") {
-            return res.status(400).json({ 
-                success: false, 
-                message: "Cannot delete an ongoing booking. Please cancel it first." 
+            return res.status(400).json({
+                success: false,
+                message: "Cannot delete an ongoing booking. Please cancel it first."
             });
         }
 

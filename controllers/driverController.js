@@ -400,6 +400,29 @@ exports.toggleOnlineStatus = async (req, res) => {
 
         await driver.save();
 
+        // 🎯 Real-time Status Update to Admin Panel
+        try {
+            const { getIO } = require("../socket/socket");
+            const io = getIO();
+            
+            let activityStatus = "Offline";
+            if (driver.isOnline) {
+                if (driver.isAvailable) activityStatus = "Idle";
+                else activityStatus = driver.currentRideType === "Shared" ? "On Shared Ride" : "On Private Ride";
+            }
+
+            io.to('admin_room').emit("driver_location_update", {
+                driverId: driver._id.toString(),
+                status: activityStatus,
+                latitude: driver.currentLocation?.latitude,
+                longitude: driver.currentLocation?.longitude,
+                heading: driver.currentHeading || 0
+            });
+            console.log(`Admin notified of Driver ${driver.name} status change to ${activityStatus} 🟢`);
+        } catch (err) {
+            console.error("Socket Error (toggleStatus):", err.message);
+        }
+
         res.json({
             success: true,
             message: `Driver is now ${driver.isOnline ? 'Online' : 'Offline'}`,
