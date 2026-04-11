@@ -145,7 +145,7 @@ exports.updateProfile = async (req, res) => {
         const updatedAdmin = await Admin.findByIdAndUpdate(
             id,
             updateData,
-            { new: true }
+            { returnDocument: 'after' }
         )
         res.json({
             success: true,

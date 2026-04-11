@@ -19,6 +19,8 @@ const notificationRoutes = require("./routes/notificationRoutes"); // NEW: Notif
 const walletRoutes = require("./routes/walletRoutes"); // NEW: Earning & Payout System
 const supportRoutes = require("./routes/supportRoutes"); // NEW: Support System for all panels
 const vendorRoutes = require("./routes/vendorRoutes"); // NEW: Vendor Panel
+const areaPricingRoutes = require("./routes/areaPricingRoutes"); // NEW: Area Wise Pricing
+const serviceAreaRoutes = require("./routes/serviceAreaRoutes"); // NEW: Service Availability Check
 
 const app = express();
 const server = http.createServer(app);
@@ -52,6 +54,8 @@ app.use("/api/notifications", notificationRoutes); // NEW: App Notifications
 app.use("/api/wallet", walletRoutes); // NEW: Earning & Payout Management
 app.use("/api/support", supportRoutes); // NEW: Support System
 app.use("/api/vendors", vendorRoutes);  // NEW: Vendor Panel
+app.use("/api/area-pricing", areaPricingRoutes); // NEW: Area Wise Pricing
+app.use("/api/service-areas", serviceAreaRoutes); // NEW: Service Availability Check
 
 
 const PORT = process.env.PORT || 5000;

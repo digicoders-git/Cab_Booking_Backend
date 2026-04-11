@@ -5,6 +5,55 @@ const RideRequest = require("../models/RideRequest");
 const tripController = require("./tripController");
 const Driver = require("../models/Driver");
 const { getIO } = require("../socket/socket");
+const AreaPricing = require("../models/AreaPricing");
+const serviceAreaController = require("./serviceAreaController");
+
+// Helper: Calculate Area-specific pricing overrides
+const getAreaSpecificRates = async (address, defaultBase, defaultPrivateRate, defaultSharedRate) => {
+    try {
+        let lookupAddress = address;
+
+        // More robust: handle if address is an object {address: "..."} which is common in many Map apps
+        if (address && typeof address === 'object') {
+            lookupAddress = address.address || address.name || "";
+        }
+
+        if (!lookupAddress) return { baseFare: defaultBase, privateRate: defaultPrivateRate, sharedRate: defaultSharedRate, isSpecial: false };
+
+        const lowerAddress = lookupAddress.toLowerCase();
+        
+        const activeAreas = await AreaPricing.find({ isActive: true }).sort({ priority: -1 });
+        
+        for (const area of activeAreas) {
+            const areaNameLower = area.areaName.toLowerCase();
+            
+            // 🎯 SIMPLE LOGIC: Just check if address string contains the area name or any keyword
+            const nameMatch = lowerAddress.includes(areaNameLower);
+            const kwMatch = area.matchingKeywords.some(keyword => 
+                lowerAddress.includes(keyword.toLowerCase())
+            );
+
+            if (nameMatch || kwMatch) {
+                console.log(`✨ [PRICING] Match Found! Area: ${area.areaName} (via Simple String Match)`);
+                // Apply Multipliers
+                let finalBase = defaultBase * (area.baseFareMultiplier || 1);
+                let finalPrivateRate = defaultPrivateRate * (area.privateRateMultiplier || 1);
+                let finalSharedRate = defaultSharedRate * (area.sharedRateMultiplier || 1);
+
+                return { 
+                    baseFare: finalBase, 
+                    privateRate: finalPrivateRate, 
+                    sharedRate: finalSharedRate,
+                    isSpecial: true, 
+                    areaName: area.areaName 
+                };
+            }
+        }
+    } catch (error) {
+        console.error("Area Pricing Lookup Error:", error.message);
+    }
+    return { baseFare: defaultBase, privateRate: defaultPrivateRate, sharedRate: defaultSharedRate, isSpecial: false };
+};
 
 // Haversine helper to calculate distance between coordinates
 function deg2rad(deg) { return deg * (Math.PI / 180); }
@@ -30,29 +79,41 @@ exports.estimateFare = async (req, res) => {
             return res.status(400).json({ success: false, message: "Missing required fields" });
         }
 
+        // --- NEW: Service Availability Enforcement ---
+        const addressToMatch = req.body.pickupAddress || req.body.pickup?.address || req.body.pickup;
+        const isServiceable = await serviceAreaController.checkServiceAvailability(addressToMatch);
+        
+        if (!isServiceable) {
+            return res.status(400).json({
+                success: false,
+                message: "No rides available at your location right now. Try again later or check nearby areas."
+            });
+        }
+
         const category = await CarCategory.findById(carCategoryId);
         if (!category) {
             return res.status(404).json({ success: false, message: "Car Category not found" });
         }
 
+        // --- NEW: Area Wise Pricing Logic ---
+        // handle both pickupAddress string and pickup object
+        const rates = await getAreaSpecificRates(addressToMatch, category.baseFare, category.privateRatePerKm, category.sharedRatePerSeatPerKm);
+        
         let estimatedFare = 0;
+        const normalizedRideType = rideType.toLowerCase();
 
-        // Base concept: Private vs Shared Pricing
-        if (rideType === "Private") {
-            estimatedFare = category.baseFare + (category.privateRatePerKm * distanceKm);
-        } else if (rideType === "Shared") {
-            const seats = seatsBooked || 1; // Default to 1 seat if not provided
-
+        // Base concept: Private vs Shared Pricing using Dynamic Rates
+        if (normalizedRideType === "private") {
+            estimatedFare = rates.baseFare + (rates.privateRate * distanceKm);
+        } else if (normalizedRideType === "shared") {
+            const seats = seatsBooked || 1; 
             if (seats > category.seatCapacity) {
                 return res.status(400).json({
                     success: false,
                     message: `Requested seats (${seats}) exceed car capacity (${category.seatCapacity})`
                 });
             }
-
-            // Calculation: BaseFare + (Rate Per Seat Per Km * Distance * Number of Seats Booked)
-            // (Note: Optional business logic: base fare could also be multiplied by seats if desired)
-            estimatedFare = category.baseFare + (category.sharedRatePerSeatPerKm * distanceKm * seats);
+            estimatedFare = rates.baseFare + (rates.sharedRate * distanceKm * seats);
         } else {
             return res.status(400).json({ success: false, message: "Invalid Ride Type" });
         }
@@ -61,8 +122,10 @@ exports.estimateFare = async (req, res) => {
             success: true,
             distanceKm,
             rideType,
+            isSpecialArea: rates.isSpecial,
+            areaDetected: rates.areaName || "Default",
             seatsBooked: rideType === "Private" ? category.seatCapacity : (seatsBooked || 1),
-            estimatedFare: Math.round(estimatedFare) // Rounded to handle floating points cleanly
+            estimatedFare: Math.round(estimatedFare) 
         });
 
     } catch (error) {
@@ -89,6 +152,22 @@ exports.getAllFareEstimates = async (req, res) => {
             return res.status(400).json({ success: false, message: "Distance from Google Maps is required" });
         }
 
+        // --- NEW: Service Availability Enforcement ---
+        let addressToMatch = (pickupAddress || req.body.pickup?.address || req.body.pickup);
+        console.log("--------------------------------------------------");
+        console.log("🚀 [BOOKING API] Search request received for address:", addressToMatch);
+
+        const isServiceable = await serviceAreaController.checkServiceAvailability(addressToMatch);
+        
+        if (!isServiceable) {
+            console.log("🚫 [BOOKING API] Service Denied for this address.");
+            return res.status(400).json({
+                success: false,
+                message: "No rides available at your location right now. Try again later or check nearby areas."
+            });
+        }
+        console.log("✅ [BOOKING API] Service Allowed. Proceeding to fare estimates...");
+
         const categories = await CarCategory.find({ isActive: true });
         const seats = seatsBooked || 1;
 
@@ -103,9 +182,35 @@ exports.getAllFareEstimates = async (req, res) => {
         // Normalize rideType to handle lowercase/uppercase (shaired, SHARED, etc.)
         const normalizedRideType = rideType ? rideType.toLowerCase() : null;
 
+        // --- NEW: Area Wise Pricing Integration ---
+        let matchedArea = null;
+        addressToMatch = (pickupAddress || req.body.pickup?.address || req.body.pickup);
+        
+        if (addressToMatch) {
+            const activeAreas = await AreaPricing.find({ isActive: true }).sort({ priority: -1 });
+            const lookupStr = (typeof addressToMatch === 'object' ? (addressToMatch.address || "") : addressToMatch).toLowerCase();
+            
+            matchedArea = activeAreas.find(area => {
+                const nameMatch = lookupStr.includes(area.areaName.toLowerCase());
+                const kwMatch = area.matchingKeywords.some(kw => lookupStr.includes(kw.toLowerCase()));
+                return nameMatch || kwMatch;
+            });
+        }
+
         const options = categories.map(category => {
-            const privateFare = category.baseFare + (category.privateRatePerKm * distanceKm);
-            const sharedFare = category.baseFare + (category.sharedRatePerSeatPerKm * distanceKm * seats);
+            // Apply Area Specific Overrides if matched
+            let base = category.baseFare;
+            let privateRate = category.privateRatePerKm;
+            let sharedRate = category.sharedRatePerSeatPerKm;
+
+            if (matchedArea) {
+                base *= (matchedArea.baseFareMultiplier || 1);
+                privateRate *= (matchedArea.privateRateMultiplier || 1);
+                sharedRate *= (matchedArea.sharedRateMultiplier || 1);
+            }
+
+            const privateFare = base + (privateRate * distanceKm);
+            const sharedFare = base + (sharedRate * distanceKm * seats);
 
             // --- REAL ETA CALCULATION LOGIC ---
             let arrivalMins = 0;
@@ -200,6 +305,8 @@ exports.getAllFareEstimates = async (req, res) => {
                 }
             },
             selectedRideType: rideType || "Both Options Available",
+            isSpecialArea: !!matchedArea,
+            areaDetected: matchedArea ? matchedArea.areaName : "Default",
             options
         });
 
@@ -225,22 +332,43 @@ exports.createBooking = async (req, res) => {
             return res.status(400).json({ success: false, message: "Required fields missing" });
         }
 
+        // --- NEW: Service Availability Enforcement ---
+        let addressToMatch = (pickupAddress || req.body.pickup?.address || req.body.pickup);
+        console.log("-----------------------------------------");
+        console.log("📝 [BOOKING API] Create Booking Request for:", addressToMatch);
+
+        const isServiceable = await serviceAreaController.checkServiceAvailability(addressToMatch);
+        
+        if (!isServiceable) {
+            console.log("🚫 [BOOKING API] Booking Creation Denied.");
+            return res.status(400).json({
+                success: false,
+                message: "No rides available at your location right now. Try again later or check nearby areas."
+            });
+        }
+        console.log("✅ [BOOKING API] Booking Creation Authorized.");
+
         // Rate Card Lookup
         const category = await CarCategory.findById(carCategoryId);
         if (!category) {
             return res.status(404).json({ success: false, message: "Car Category not found" });
         }
 
+        // --- NEW: Area Wise Pricing Logic for consistency ---
+        addressToMatch = (pickupAddress || req.body.pickup?.address || req.body.pickup);
+        const areaRates = await getAreaSpecificRates(addressToMatch, category.baseFare, category.privateRatePerKm, category.sharedRatePerSeatPerKm);
+
+        const normalizedRideType = rideType ? rideType.toLowerCase() : "";
         // Calculate Fare Internally to prevent tampering from Client side
-        let fareEstimate = category.baseFare;
+        let fareEstimate = areaRates.baseFare;
         let finalSeats = 1;
 
-        if (rideType === "Private") {
-            fareEstimate += (category.privateRatePerKm * distanceKm);
+        if (normalizedRideType === "private") {
+            fareEstimate += (areaRates.privateRate * distanceKm);
             finalSeats = category.seatCapacity; // Booking whole car
-        } else if (rideType === "Shared") {
+        } else if (normalizedRideType === "shared") {
             finalSeats = seatsBooked || 1;
-            fareEstimate += (category.sharedRatePerSeatPerKm * distanceKm * finalSeats);
+            fareEstimate += (areaRates.sharedRate * distanceKm * finalSeats);
         }
 
         fareEstimate = Math.round(fareEstimate);

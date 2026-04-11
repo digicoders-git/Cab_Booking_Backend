@@ -348,7 +348,7 @@ exports.updateDriverProfile = async (req, res) => {
         const driver = await Driver.findByIdAndUpdate(
             req.user.id,
             updateData,
-            { new: true }
+            { returnDocument: 'after' }
         ).select("-password");
 
         res.json({
@@ -460,7 +460,7 @@ exports.updateLocation = async (req, res) => {
                     lastUpdated: new Date()
                 }
             },
-            { new: true }
+            { returnDocument: 'after' }
         ).select("-password");
 
         res.json({
