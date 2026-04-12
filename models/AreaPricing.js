@@ -1,25 +1,60 @@
 const mongoose = require("mongoose");
 
-const AreaPricingSchema = new mongoose.Schema({
+const areaPricingSchema = new mongoose.Schema({
     areaName: {
         type: String,
-        required: true,
-        unique: true, // e.g., "Ghazipur", "Lucknow", "Airport Zone"
+        required: [true, "Area name is required"],
         trim: true
     },
-    // We can match this name against the address parts from Google Maps
-    matchingKeywords: {
-        type: [String],
-        default: [] // ["Ghazipur", "Saidpur", "Zamania"] - Keywords to match in address
+    // 🛰️ Geo-Spatial Fields
+    centerLat: {
+        type: Number,
+        required: true
     },
-    
-    // Pricing Overrides
-    baseFareMultiplier: { type: Number, default: 1 }, // 1 means no change, 1.2 means 20% extra
-    privateRateMultiplier: { type: Number, default: 1 }, // Multiplier for Private Rate per KM
-    sharedRateMultiplier: { type: Number, default: 1 },  // Multiplier for Shared Rate per KM (Seat based)
-    
-    isActive: { type: Boolean, default: true },
-    priority: { type: Number, default: 0 } // Higher number = Higher priority (Specific areas should have higher priority than districts)
+    centerLng: {
+        type: Number,
+        required: true
+    },
+    radiusKm: {
+        type: Number,
+        default: 5 // Default 5KM range
+    },
+    // GeoJSON for high-speed MongoDB spatial queries
+    location: {
+        type: {
+            type: String,
+            enum: ['Point'],
+            default: 'Point'
+        },
+        coordinates: {
+            type: [Number], // [longitude, latitude]
+            required: true
+        }
+    },
+    priority: {
+        type: Number,
+        default: 0
+    },
+    baseFareMultiplier: {
+        type: Number,
+        default: 1
+    },
+    privateRateMultiplier: {
+        type: Number,
+        default: 1
+    },
+    sharedRateMultiplier: {
+        type: Number,
+        default: 1
+    },
+    isActive: {
+        type: Boolean,
+        default: true
+    }
 }, { timestamps: true });
 
-module.exports = mongoose.model("AreaPricing", AreaPricingSchema);
+// 🚀 Index for Geo-Spatial Search
+areaPricingSchema.index({ location: "2dsphere" });
+
+const AreaPricing = mongoose.model("AreaPricing", areaPricingSchema);
+module.exports = AreaPricing;

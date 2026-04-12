@@ -112,6 +112,11 @@ const fleetCarSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  // NEW: Admin approval for marketplace visibility
+  isApproved: {
+    type: Boolean,
+    default: false
+  },
   
   isBusy: {
     type: Boolean,

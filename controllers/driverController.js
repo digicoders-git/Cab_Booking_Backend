@@ -4,6 +4,8 @@ const Transaction = require("../models/Transaction");
 const jwt = require("jsonwebtoken");
 const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness");
 const bcrypt = require("bcryptjs");
+const FleetCar = require("../models/FleetCar");
+const FleetDriver = require("../models/FleetDriver");
 
 // Register Driver (Open Registration - Pending Admin Approval)
 // Driver can register with car details
@@ -741,6 +743,27 @@ exports.approveDriver = async (req, res) => {
         driver.approvedBy = req.user.id;
         driver.approvedAt = new Date();
         await driver.save();
+
+        // 🚀 SYNC: If this is a Fleet Driver, approve their Fleet records too
+        try {
+            if (driver.createdByModel === "Fleet") {
+                // 1. Approve Fleet Car if assigned
+                if (driver.carDetails && driver.carDetails.carNumber) {
+                    await FleetCar.findOneAndUpdate(
+                        { carNumber: driver.carDetails.carNumber },
+                        { isApproved: true, isActive: true }
+                    );
+                }
+                
+                // 2. Approve Fleet Driver
+                await FleetDriver.findOneAndUpdate(
+                    { email: driver.email },
+                    { isApproved: true }
+                );
+            }
+        } catch (syncErr) {
+            console.error("Fleet sync error during approval:", syncErr.message);
+        }
 
         res.json({
             success: true,

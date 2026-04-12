@@ -8,49 +8,47 @@ const { getIO } = require("../socket/socket");
 const AreaPricing = require("../models/AreaPricing");
 const serviceAreaController = require("./serviceAreaController");
 
-// Helper: Calculate Area-specific pricing overrides
-const getAreaSpecificRates = async (address, defaultBase, defaultPrivateRate, defaultSharedRate) => {
+// Helper: Calculate Area-specific pricing overrides (GEO-SPATIAL VERSION)
+const getAreaSpecificRates = async (pickupLat, pickupLng, defaultBase, defaultPrivateRate, defaultSharedRate) => {
     try {
-        let lookupAddress = address;
+        if (!pickupLat || !pickupLng) return { baseFare: defaultBase, privateRate: defaultPrivateRate, sharedRate: defaultSharedRate, isSpecial: false };
 
-        // More robust: handle if address is an object {address: "..."} which is common in many Map apps
-        if (address && typeof address === 'object') {
-            lookupAddress = address.address || address.name || "";
-        }
+        // 🚀 SMART GEO SEARCH: Find zones near the rider (Max 50KM buffer)
+        const activeAreas = await AreaPricing.find({
+            isActive: true,
+            location: {
+                $nearSphere: {
+                    $geometry: {
+                        type: "Point",
+                        coordinates: [parseFloat(pickupLng), parseFloat(pickupLat)]
+                    },
+                    $maxDistance: 50000 // 50 KM Search Radius
+                }
+            }
+        }).sort({ priority: -1 }); // Priority is still King for overlapping zones
 
-        if (!lookupAddress) return { baseFare: defaultBase, privateRate: defaultPrivateRate, sharedRate: defaultSharedRate, isSpecial: false };
-
-        const lowerAddress = lookupAddress.toLowerCase();
-        
-        const activeAreas = await AreaPricing.find({ isActive: true }).sort({ priority: -1 });
-        
         for (const area of activeAreas) {
-            const areaNameLower = area.areaName.toLowerCase();
-            
-            // 🎯 SIMPLE LOGIC: Just check if address string contains the area name or any keyword
-            const nameMatch = lowerAddress.includes(areaNameLower);
-            const kwMatch = area.matchingKeywords.some(keyword => 
-                lowerAddress.includes(keyword.toLowerCase())
+            // Calculate actual distance again to verify against custom Radius
+            const distanceToCenter = getDistanceFromLatLonInKm(
+                pickupLat, pickupLng, 
+                area.centerLat, area.centerLng
             );
 
-            if (nameMatch || kwMatch) {
-                console.log(`✨ [PRICING] Match Found! Area: ${area.areaName} (via Simple String Match)`);
-                // Apply Multipliers
-                let finalBase = defaultBase * (area.baseFareMultiplier || 1);
-                let finalPrivateRate = defaultPrivateRate * (area.privateRateMultiplier || 1);
-                let finalSharedRate = defaultSharedRate * (area.sharedRateMultiplier || 1);
-
+            // 🎯 CHECK IF USER IS INSIDE THE RADIUS (e.g., within 5KM of Charbagh)
+            if (distanceToCenter <= (area.radiusKm || 5)) {
+                console.log(`✨ [GEO-PRICING] Match Found! Zone: ${area.areaName} (${distanceToCenter.toFixed(2)} KM away)`);
+                
                 return { 
-                    baseFare: finalBase, 
-                    privateRate: finalPrivateRate, 
-                    sharedRate: finalSharedRate,
+                    baseFare: defaultBase * (area.baseFareMultiplier || 1), 
+                    privateRate: defaultPrivateRate * (area.privateRateMultiplier || 1), 
+                    sharedRate: defaultSharedRate * (area.sharedRateMultiplier || 1),
                     isSpecial: true, 
                     areaName: area.areaName 
                 };
             }
         }
     } catch (error) {
-        console.error("Area Pricing Lookup Error:", error.message);
+        console.error("Geo Pricing Lookup Error:", error.message);
     }
     return { baseFare: defaultBase, privateRate: defaultPrivateRate, sharedRate: defaultSharedRate, isSpecial: false };
 };
@@ -73,15 +71,10 @@ function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
 // 1. Estimate Fare
 exports.estimateFare = async (req, res) => {
     try {
-        const { carCategoryId, distanceKm, rideType, seatsBooked } = req.body;
-
-        if (!carCategoryId || !distanceKm || !rideType) {
-            return res.status(400).json({ success: false, message: "Missing required fields" });
-        }
-
-        // --- NEW: Service Availability Enforcement ---
-        const addressToMatch = req.body.pickupAddress || req.body.pickup?.address || req.body.pickup;
-        const isServiceable = await serviceAreaController.checkServiceAvailability(addressToMatch);
+        const { carCategoryId, distanceKm, rideType, seatsBooked, pickupLat, pickupLng } = req.body;
+        
+        // --- NEW: Service Availability Enforcement (GPS VERSION) ---
+        const isServiceable = await serviceAreaController.checkServiceAvailability(pickupLat, pickupLng);
         
         if (!isServiceable) {
             return res.status(400).json({
@@ -96,8 +89,14 @@ exports.estimateFare = async (req, res) => {
         }
 
         // --- NEW: Area Wise Pricing Logic ---
-        // handle both pickupAddress string and pickup object
-        const rates = await getAreaSpecificRates(addressToMatch, category.baseFare, category.privateRatePerKm, category.sharedRatePerSeatPerKm);
+        // 🚀 GEO-SPATIAL PRICING: Match by coordinates
+        const rates = await getAreaSpecificRates(
+            pickupLat, 
+            pickupLng,
+            category.baseFare, 
+            category.privateRatePerKm, 
+            category.sharedRatePerSeatPerKm
+        );
         
         let estimatedFare = 0;
         const normalizedRideType = rideType.toLowerCase();
@@ -141,6 +140,7 @@ exports.getAllFareEstimates = async (req, res) => {
             rideType,
             seatsBooked,
             pickupAddress,
+            pickupPin, // 🚀 READ PIN
             dropAddress,
             pickupLat,
             pickupLng,
@@ -152,15 +152,14 @@ exports.getAllFareEstimates = async (req, res) => {
             return res.status(400).json({ success: false, message: "Distance from Google Maps is required" });
         }
 
-        // --- NEW: Service Availability Enforcement ---
-        let addressToMatch = (pickupAddress || req.body.pickup?.address || req.body.pickup);
+        // --- NEW: Service Availability Enforcement (GPS VERSION) ---
         console.log("--------------------------------------------------");
-        console.log("🚀 [BOOKING API] Search request received for address:", addressToMatch);
+        console.log(`🚀 [BOOKING API] Search request GPS: ${pickupLat}, ${pickupLng}`);
 
-        const isServiceable = await serviceAreaController.checkServiceAvailability(addressToMatch);
+        const isServiceable = await serviceAreaController.checkServiceAvailability(pickupLat, pickupLng);
         
         if (!isServiceable) {
-            console.log("🚫 [BOOKING API] Service Denied for this address.");
+            console.log("🚫 [BOOKING API] GPS outside service area.");
             return res.status(400).json({
                 success: false,
                 message: "No rides available at your location right now. Try again later or check nearby areas."
@@ -182,32 +181,19 @@ exports.getAllFareEstimates = async (req, res) => {
         // Normalize rideType to handle lowercase/uppercase (shaired, SHARED, etc.)
         const normalizedRideType = rideType ? rideType.toLowerCase() : null;
 
-        // --- NEW: Area Wise Pricing Integration ---
-        let matchedArea = null;
-        addressToMatch = (pickupAddress || req.body.pickup?.address || req.body.pickup);
-        
-        if (addressToMatch) {
-            const activeAreas = await AreaPricing.find({ isActive: true }).sort({ priority: -1 });
-            const lookupStr = (typeof addressToMatch === 'object' ? (addressToMatch.address || "") : addressToMatch).toLowerCase();
-            
-            matchedArea = activeAreas.find(area => {
-                const nameMatch = lookupStr.includes(area.areaName.toLowerCase());
-                const kwMatch = area.matchingKeywords.some(kw => lookupStr.includes(kw.toLowerCase()));
-                return nameMatch || kwMatch;
-            });
-        }
+        const options = await Promise.all(categories.map(async (category) => {
+            // 🚀 GEO-SPATIAL PRICING: Match by coordinates
+            const areaRates = await getAreaSpecificRates(
+                pickupLat, 
+                pickupLng,
+                category.baseFare, 
+                category.privateRatePerKm, 
+                category.sharedRatePerSeatPerKm
+            );
 
-        const options = categories.map(category => {
-            // Apply Area Specific Overrides if matched
-            let base = category.baseFare;
-            let privateRate = category.privateRatePerKm;
-            let sharedRate = category.sharedRatePerSeatPerKm;
-
-            if (matchedArea) {
-                base *= (matchedArea.baseFareMultiplier || 1);
-                privateRate *= (matchedArea.privateRateMultiplier || 1);
-                sharedRate *= (matchedArea.sharedRateMultiplier || 1);
-            }
+            let base = areaRates.baseFare;
+            let privateRate = areaRates.privateRate;
+            let sharedRate = areaRates.sharedRate;
 
             const privateFare = base + (privateRate * distanceKm);
             const sharedFare = base + (sharedRate * distanceKm * seats);
@@ -291,7 +277,7 @@ exports.getAllFareEstimates = async (req, res) => {
             }
 
             return cabOption;
-        });
+        }));
 
         res.json({
             success: true,
@@ -305,8 +291,8 @@ exports.getAllFareEstimates = async (req, res) => {
                 }
             },
             selectedRideType: rideType || "Both Options Available",
-            isSpecialArea: !!matchedArea,
-            areaDetected: matchedArea ? matchedArea.areaName : "Default",
+            isSpecialArea: options.some(opt => opt.isSpecial),
+            areaDetected: options.find(opt => opt.isSpecial)?.appliedArea || "Default",
             options
         });
 
@@ -332,15 +318,14 @@ exports.createBooking = async (req, res) => {
             return res.status(400).json({ success: false, message: "Required fields missing" });
         }
 
-        // --- NEW: Service Availability Enforcement ---
-        let addressToMatch = (pickupAddress || req.body.pickup?.address || req.body.pickup);
+        // --- NEW: Service Availability Enforcement (GPS VERSION) ---
         console.log("-----------------------------------------");
-        console.log("📝 [BOOKING API] Create Booking Request for:", addressToMatch);
+        console.log(`📝 [BOOKING API] Booking GPS Check: ${pickupLat}, ${pickupLng}`);
 
-        const isServiceable = await serviceAreaController.checkServiceAvailability(addressToMatch);
+        const isServiceable = await serviceAreaController.checkServiceAvailability(pickupLat, pickupLng);
         
         if (!isServiceable) {
-            console.log("🚫 [BOOKING API] Booking Creation Denied.");
+            console.log("🚫 [BOOKING API] GPS Denied.");
             return res.status(400).json({
                 success: false,
                 message: "No rides available at your location right now. Try again later or check nearby areas."
@@ -354,9 +339,14 @@ exports.createBooking = async (req, res) => {
             return res.status(404).json({ success: false, message: "Car Category not found" });
         }
 
-        // --- NEW: Area Wise Pricing Logic for consistency ---
-        addressToMatch = (pickupAddress || req.body.pickup?.address || req.body.pickup);
-        const areaRates = await getAreaSpecificRates(addressToMatch, category.baseFare, category.privateRatePerKm, category.sharedRatePerSeatPerKm);
+        // --- NEW: Area Wise Pricing Logic (GEO-SPATIAL) ---
+        const areaRates = await getAreaSpecificRates(
+            pickupLat, 
+            pickupLng,
+            category.baseFare, 
+            category.privateRatePerKm, 
+            category.sharedRatePerSeatPerKm
+        );
 
         const normalizedRideType = rideType ? rideType.toLowerCase() : "";
         // Calculate Fare Internally to prevent tampering from Client side

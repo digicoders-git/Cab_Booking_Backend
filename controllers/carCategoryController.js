@@ -3,7 +3,10 @@ const CarCategory = require("../models/CarCategory");
 // 1. Create a New Car Category (Admin Only)
 exports.createCarCategory = async (req, res) => {
     try {
-        const { name, seatCapacity, privateRatePerKm, sharedRatePerSeatPerKm, baseFare, seatLayout, avgSpeedKmH } = req.body;
+        const { 
+            name, seatCapacity, privateRatePerKm, sharedRatePerSeatPerKm, 
+            baseFare, seatLayout, avgSpeedKmH, bulkBookingBasePrice 
+        } = req.body;
 
         const image = req.file ? req.file.filename : null;
 
@@ -40,6 +43,7 @@ exports.createCarCategory = async (req, res) => {
             seatLayout: parsedSeatLayout,
             avgSpeedKmH: avgSpeedKmH || 25,
             image,
+            bulkBookingBasePrice: bulkBookingBasePrice || 0,
             createdBy: req.user.id
         });
 
@@ -101,7 +105,10 @@ exports.getAllCategoriesAdmin = async (req, res) => {
 exports.updateCarCategory = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, seatCapacity, privateRatePerKm, sharedRatePerSeatPerKm, baseFare, isActive, seatLayout, avgSpeedKmH } = req.body;
+        const { 
+            name, seatCapacity, privateRatePerKm, sharedRatePerSeatPerKm, 
+            baseFare, isActive, seatLayout, avgSpeedKmH, bulkBookingBasePrice 
+        } = req.body;
 
         const category = await CarCategory.findById(id);
 
@@ -119,6 +126,7 @@ exports.updateCarCategory = async (req, res) => {
         if (sharedRatePerSeatPerKm) category.sharedRatePerSeatPerKm = sharedRatePerSeatPerKm;
         if (baseFare !== undefined) category.baseFare = baseFare;
         if (isActive !== undefined) category.isActive = isActive;
+        if (bulkBookingBasePrice !== undefined) category.bulkBookingBasePrice = bulkBookingBasePrice;
 
         if (seatLayout) {
             if (typeof seatLayout === "string") {
