@@ -371,6 +371,14 @@ exports.respondToRequest = async (req, res) => {
 
                 // EXACT SEAT LOCKING:
                 if (booking.selectedSeats && booking.selectedSeats.length > 0) {
+                    // INITIALIZE SEAT MAP IF EMPTY (Fix: New driver or first shared ride needs map setup)
+                    if (!driver.seatMap || driver.seatMap.length === 0) {
+                        const layout = driver.carDetails?.carType?.seatLayout;
+                        if (layout && layout.length > 0) {
+                            driver.seatMap = layout.map(s => ({ seatName: s, isBooked: false, bookingId: null }));
+                        }
+                    }
+
                     for (let seatName of booking.selectedSeats) {
                         const seatEntry = driver.seatMap.find(s => s.seatName === seatName);
                         if (seatEntry) {
