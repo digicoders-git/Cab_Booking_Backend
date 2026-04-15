@@ -87,7 +87,12 @@ const bulkBookingSchema = new mongoose.Schema({
     notes: {
         type: String,
         trim: true
+    },
+    startOtp: {
+        type: String,
+        default: null
     }
+
 
 }, { timestamps: true });
 

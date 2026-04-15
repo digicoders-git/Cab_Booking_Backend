@@ -21,4 +21,15 @@ router.get("/my-requests", auth, bulkBookingController.getMyCreatedRequests);
 // 6. Cancel Request
 router.delete("/cancel/:bookingId", auth, bulkBookingController.cancelBulkBooking);
 
+// 7. Hard Delete Request (Admin Only)
+router.delete("/delete/:bookingId", auth, bulkBookingController.deleteBulkBooking);
+
+// 8. Start Trip (OTP Based)
+router.post("/start/:bookingId", auth, bulkBookingController.startBulkBooking);
+
+// 9. End Trip
+router.post("/end/:bookingId", auth, bulkBookingController.endBulkBooking);
+
 module.exports = router;
+
+

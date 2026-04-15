@@ -3,6 +3,8 @@ const CarCategory = require("../models/CarCategory");
 const FleetCar = require("../models/FleetCar");
 const Fleet = require("../models/Fleet");
 const { getIO } = require("../socket/socket");
+const serviceAreaController = require("./serviceAreaController");
+
 
 // 1. Create Bulk Booking Request
 exports.createBulkBooking = async (req, res) => {
@@ -16,6 +18,17 @@ exports.createBulkBooking = async (req, res) => {
         if (!pickup || !drop || !pickupDateTime || !carsRequired || !offeredPrice) {
             return res.status(400).json({ success: false, message: "Missing required fields" });
         }
+
+        // --- NEW: Service Availability Enforcement (GPS VERSION) ---
+        const isServiceable = await serviceAreaController.checkServiceAvailability(pickup.latitude, pickup.longitude);
+        
+        if (!isServiceable) {
+            return res.status(400).json({
+                success: false,
+                message: "Bulk bookings are not available at this location yet. Please check back later."
+            });
+        }
+
 
         // Calculate System Estimated Price
         // Formula: Rate (per KM) * Quantity * Days * Distance
@@ -46,24 +59,42 @@ exports.createBulkBooking = async (req, res) => {
             systemEstimatedPrice,
             offeredPrice,
             priceModifiedPercentage,
-            notes
+            notes,
+            startOtp: Math.floor(1000 + Math.random() * 9000).toString() // 4-digit OTP
         });
 
-        // 🛰️ TARGETED NOTIFICATION LOGIC
-        // Find Fleets that have the required approved cars
-        const requiredCategoryIds = carsRequired.map(c => c.category);
-        
-        // Find Fleet IDs who have at least one approved car in the requested categories
-        const eligibleFleets = await FleetCar.distinct("fleetId", {
-            carType: { $in: requiredCategoryIds },
-            isApproved: true,
-            isActive: true
-        });
 
-        if (eligibleFleets.length > 0) {
+        // 🛰️ STRICT TARGETED NOTIFICATION LOGIC
+        // Find Fleets that have ENOUGH quantity of required approved cars
+        const fleets = await Fleet.find({ isActive: true });
+        let eligibleFleetIds = [];
+
+        for (const fleet of fleets) {
+            let isEveryRequirementMet = true;
+
+            for (const reqItem of carsRequired) {
+                const availableCount = await FleetCar.countDocuments({
+                    fleetId: fleet._id,
+                    carType: reqItem.category,
+                    isApproved: true,
+                    isActive: true
+                });
+
+                if (availableCount < (reqItem.quantity || 1)) {
+                    isEveryRequirementMet = false;
+                    break;
+                }
+            }
+
+            if (isEveryRequirementMet) {
+                eligibleFleetIds.push(fleet._id);
+            }
+        }
+
+        if (eligibleFleetIds.length > 0) {
             try {
                 const io = getIO();
-                eligibleFleets.forEach(fleetId => {
+                eligibleFleetIds.forEach(fleetId => {
                     io.to(`fleet_${fleetId.toString()}`).emit("new_bulk_deal", {
                         bookingId: newBooking._id,
                         pickup: pickup.address,
@@ -73,11 +104,12 @@ exports.createBulkBooking = async (req, res) => {
                         cars: carsRequired.length
                     });
                 });
-                console.log(`Targeted Bulk Notification sent to ${eligibleFleets.length} Fleets 🟢`);
+                console.log(`Strict Targeted Bulk Notification sent to ${eligibleFleetIds.length} Fleets 🟢`);
             } catch (err) {
                 console.error("Socket Error (Bulk Booking):", err.message);
             }
         }
+
 
         res.status(201).json({
             success: true,
@@ -107,12 +139,36 @@ exports.getMarketplace = async (req, res) => {
             query["carsRequired.category"] = { $in: approvedCategories };
         }
         
-        // Admins see everything in Marketplace
-        const bookings = await BulkBooking.find(query)
+        // Admins see everything in Marketplace, Fleets see relevant with enough quantity
+        const allBookings = await BulkBooking.find(query)
             .populate("carsRequired.category", "name image")
+            .populate("createdBy", "name phone image")
             .sort({ createdAt: -1 });
 
-        res.json({ success: true, count: bookings.length, bookings });
+        if (role === 'fleet') {
+            // Filter bookings where this fleet meets the quantity requirement for ALL cars in the request
+            const filteredBookings = [];
+            for (const booking of allBookings) {
+                let canHandle = true;
+                for (const reqItem of booking.carsRequired) {
+                    const availableCount = await FleetCar.countDocuments({
+                        fleetId: id,
+                        carType: reqItem.category._id,
+                        isApproved: true,
+                        isActive: true
+                    });
+                    if (availableCount < (reqItem.quantity || 1)) {
+                        canHandle = false;
+                        break;
+                    }
+                }
+                if (canHandle) filteredBookings.push(booking);
+            }
+            return res.json({ success: true, count: filteredBookings.length, bookings: filteredBookings });
+        }
+
+        res.json({ success: true, count: allBookings.length, bookings: allBookings });
+
 
     } catch (error) {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
@@ -180,7 +236,9 @@ exports.getMyBulkBookings = async (req, res) => {
         const fleetId = req.user.id;
         const bookings = await BulkBooking.find({ assignedFleet: fleetId })
             .populate("carsRequired.category", "name image")
+            .populate("createdBy", "name phone image") // 🟢 Added this line
             .sort({ acceptedAt: -1 });
+
 
         res.json({ success: true, count: bookings.length, bookings });
     } catch (error) {
@@ -233,3 +291,118 @@ exports.cancelBulkBooking = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
+
+// 7. Hard Delete Bulk Booking (Admin Only)
+exports.deleteBulkBooking = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+
+        // Security check: Only Admins can delete
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ success: false, message: "Only Admins are allowed to delete bookings permanently." });
+        }
+
+        const booking = await BulkBooking.findById(bookingId);
+        if (!booking) {
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        // Optional: Check if trip is ongoing
+        if (['Ongoing', 'Accepted'].includes(booking.status)) {
+            // Agar aap chahte hain ki Accepted rides bhi delete ho jayein, toh ye condition hata sakte hain.
+            // Lekin safety ke liye main ise rakha hai.
+            return res.status(400).json({ 
+                success: false, 
+                message: `Cannot delete a ${booking.status} ride. Please cancel it first or wait for completion.` 
+            });
+        }
+
+        await BulkBooking.findByIdAndDelete(bookingId);
+
+        res.json({
+            success: true,
+            message: "Bulk booking record deleted successfully from database."
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// 8. Start Bulk Trip (OTP Search)
+exports.startBulkBooking = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const { otp } = req.body;
+
+        const booking = await BulkBooking.findById(bookingId);
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        // Security: Only assigned fleet can start
+        if (booking.assignedFleet?.toString() !== req.user.id) {
+            return res.status(403).json({ success: false, message: "Not authorized. Only the assigned fleet can start this trip." });
+        }
+
+        if (booking.status !== "Accepted") {
+            return res.status(400).json({ success: false, message: `Booking must be in 'Accepted' status to start. Current status: ${booking.status}` });
+        }
+
+        if (booking.startOtp !== otp) {
+            return res.status(400).json({ success: false, message: "Invalid OTP! Please check with the customer." });
+        }
+
+        booking.status = "Ongoing";
+        await booking.save();
+
+        // Notify Creator
+        try {
+            getIO().to(booking.createdBy.toString()).emit("bulk_booking_update", {
+                bookingId: booking._id,
+                status: "Ongoing",
+                message: "Your bulk trip has officially started!"
+            });
+        } catch (err) {}
+
+        res.json({ success: true, message: "Trip started successfully! Enjoy the ride.", booking });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// 9. End Bulk Trip
+exports.endBulkBooking = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+
+        const booking = await BulkBooking.findById(bookingId);
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        if (booking.assignedFleet?.toString() !== req.user.id && req.user.role !== 'admin') {
+            return res.status(403).json({ success: false, message: "Not authorized to end this trip." });
+        }
+
+        if (booking.status !== "Ongoing") {
+            return res.status(400).json({ success: false, message: "Only Ongoing trips can be ended." });
+        }
+
+        booking.status = "Completed";
+        await booking.save();
+
+        // Notify Creator
+        try {
+            getIO().to(booking.createdBy.toString()).emit("bulk_booking_update", {
+                bookingId: booking._id,
+                status: "Completed",
+                message: "Your bulk trip has been completed successfully."
+            });
+        } catch (err) {}
+
+        res.json({ success: true, message: "Trip completed successfully!", booking });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+

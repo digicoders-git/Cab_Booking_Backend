@@ -10,7 +10,7 @@ const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness")
 
 exports.registerAdmin = async (req, res) => {
     try {
-        const { name, email, password } = req.body
+        const { name, email, password, phone } = req.body
         const image = req.file ? req.file.filename : null
         // Check global email uniqueness
         const emailTakenBy = await isEmailTaken(email);
@@ -20,10 +20,12 @@ exports.registerAdmin = async (req, res) => {
         const admin = await Admin.create({
             name,
             email,
+            phone,
             password,
             image,
             role: "SuperAdmin" // Default first admin should be SuperAdmin
         })
+
         res.status(201).json({
             success: true,
             message: "Admin registered successfully",
@@ -120,7 +122,7 @@ exports.getProfile = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
     try {
-        const { name, email, password } = req.body
+        const { name, email, password, phone } = req.body
         const id = req.user.id;
 
         const admin = await Admin.findById(id);
@@ -137,8 +139,10 @@ exports.updateProfile = async (req, res) => {
         const updateData = {
             name,
             email,
+            phone,
             password
         }
+
         if (req.file) {
             updateData.image = req.file.filename
         }
@@ -165,7 +169,7 @@ exports.updateProfile = async (req, res) => {
 // 1. Register a new Sub-Admin (Only SuperAdmin)
 exports.registerSubAdmin = async (req, res) => {
     try {
-        const { name, email, password, permissions } = req.body;
+        const { name, email, password, phone, permissions } = req.body;
         const image = req.file ? req.file.filename : null;
 
         // Check global email uniqueness
@@ -179,11 +183,13 @@ exports.registerSubAdmin = async (req, res) => {
         const subAdmin = await Admin.create({
             name,
             email,
+            phone,
             password,
             image,
             role: "SubAdmin",
             permissions: finalPermissions
         });
+
 
         res.status(201).json({
             success: true,
