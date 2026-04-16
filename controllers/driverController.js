@@ -1108,3 +1108,33 @@ exports.resubmitDriverDocuments = async (req, res) => {
         });
     }
 };
+
+// Update Driver's FCM Token
+exports.updateFcmToken = async (req, res) => {
+    try {
+        const { fcmToken } = req.body;
+        const driverId = req.user.id;
+
+        if (!fcmToken) {
+            return res.status(400).json({ success: false, message: "FCM Token is required" });
+        }
+
+        const driver = await Driver.findByIdAndUpdate(
+            driverId,
+            { fcmToken },
+            { new: true }
+        );
+
+        if (!driver) {
+            return res.status(404).json({ success: false, message: "Driver not found" });
+        }
+
+        res.json({
+            success: true,
+            message: "FCM Token updated successfully"
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error updating FCM token", error: error.message });
+    }
+};
+

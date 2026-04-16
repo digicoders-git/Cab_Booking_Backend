@@ -5,6 +5,7 @@ const Booking = require("../models/Booking");
 
 let io;
 const lastDBUpdate = {}; // Optimized: Throttling ke liye driver update time tracking
+const disconnectTimers = {}; // Grace period timers for refresh detection
 
 const initSocket = (server) => {
     io = new Server(server, {
@@ -191,14 +192,43 @@ const initSocket = (server) => {
         socket.on("disconnect", async () => {
             console.log(`User Disconnected: ${socket.id} (ID: ${socket.userId}, Role: ${socket.role})`);
 
-            // FAIL-SAFE: If a driver disconnects (tab close, logout, network loss), mark them offline
+            // REFRESH FIX: 8 second grace period dete hain
+            // Agar driver refresh kar raha hai toh woh 8 sec mein reconnect kar lega
+            // Sirf tab offline mark karo jab genuinely disconnect ho (tab close, logout)
             if (socket.role === 'driver' && socket.userId) {
-                try {
-                    await Driver.findByIdAndUpdate(socket.userId, { isOnline: false });
-                    console.log(`💾 Driver ${socket.userId} automatically marked OFFLINE on disconnect ✅`);
-                } catch (error) {
-                    console.error("Disconnect Cleanup Error:", error.message);
+                const driverId = socket.userId;
+
+                // Pehle koi timer chal raha hai toh cancel karo
+                if (disconnectTimers[driverId]) {
+                    clearTimeout(disconnectTimers[driverId]);
                 }
+
+                disconnectTimers[driverId] = setTimeout(async () => {
+                    try {
+                        // Check karo: kya driver ka koi active socket room mein hai?
+                        const rooms = io.sockets.adapter.rooms;
+                        const driverRoom = rooms.get(driverId);
+
+                        // Agar room empty hai (koi reconnect nahi hua) tabhi offline karo
+                        if (!driverRoom || driverRoom.size === 0) {
+                            await Driver.findByIdAndUpdate(driverId, { isOnline: false });
+                            io.to('admin_room').emit("driver_location_update", {
+                                driverId,
+                                status: "Offline",
+                                isOnline: false
+                            });
+                            console.log(`💾 Driver ${driverId} marked OFFLINE after grace period ✅`);
+                        } else {
+                            console.log(`🔄 Driver ${driverId} reconnected during grace period — staying ONLINE ✅`);
+                        }
+                    } catch (error) {
+                        console.error("Disconnect Cleanup Error:", error.message);
+                    } finally {
+                        delete disconnectTimers[driverId];
+                    }
+                }, 8000); // 8 second grace period
+
+                console.log(`⏳ Driver ${driverId} disconnect grace period started (8s)...`);
             }
         });
     });

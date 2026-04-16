@@ -4,6 +4,7 @@ const http = require("http");
 const connectDB = require("./config/db");
 const { initSocket } = require("./socket/socket");
 require("dotenv").config();
+require("./config/firebaseAdmin"); // Initialize Firebase Admin SDK
 const adminRoutes = require("./routes/adminRoutes");
 const userRoutes = require("./routes/userRoutes");
 const agentRoutes = require("./routes/agentRoutes");

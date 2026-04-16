@@ -21,7 +21,8 @@ const {
     rejectDriver,
     adminUpdateDriver,
     getDriverReport,
-    resubmitDriverDocuments
+    resubmitDriverDocuments,
+    updateFcmToken
 } = require("../controllers/driverController");
 
 const { auth, adminOnly, driverOnly, fleetOnly } = require("../middleware/auth");
@@ -49,6 +50,9 @@ router.put("/toggle-online", auth, driverOnly, toggleOnlineStatus);
 
 // Update Driver Location (Protected - Driver Only)
 router.put("/update-location", auth, driverOnly, updateLocation);
+
+// Update FCM Token (Protected - Driver Only)
+router.put("/update-fcm-token", auth, driverOnly, updateFcmToken);
 
 // Get Pending Drivers (Admin Only) - MUST BE BEFORE /:id
 router.get("/pending", auth, checkPermission("DRIVER_READ"), getPendingDrivers);

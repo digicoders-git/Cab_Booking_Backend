@@ -8,6 +8,7 @@ const Fleet = require("../models/Fleet");
 const Vendor = require("../models/Vendor");
 const Notification = require("../models/Notification");
 const { getIO } = require("../socket/socket");
+const { sendPushNotification } = require("../utils/fcmNotification");
 
 // Haversine formula to get distance between two points in km
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
@@ -105,7 +106,7 @@ exports.autoMatchDriver = async (bookingId) => {
 
         const availableDrivers = await Driver.find(driverQuery)
             .populate("carDetails.carType")
-            .select("_id name phone currentLocation availableSeats currentRideType currentHeading carDetails isAvailable seatMap");
+            .select("_id name phone currentLocation availableSeats currentRideType currentHeading carDetails isAvailable seatMap fcmToken");
 
         const newBookingHeading = calculateHeading(
             booking.pickup.latitude, booking.pickup.longitude,
@@ -203,6 +204,18 @@ exports.autoMatchDriver = async (bookingId) => {
             console.log(`Driver ${nearestDriver.name} notified via Socket about New Request! 🟢`);
         } catch (err) {
             console.error("Socket error (autoMatchDriver):", err.message);
+        }
+
+        // 🎯 PUSH NOTIFICATION: If driver has a token, send a push!
+        if (nearestDriver.fcmToken) {
+            sendPushNotification(nearestDriver.fcmToken, {
+                title: "🚖 New Ride Request!",
+                body: `New ${booking.rideType} ride from ${booking.pickup.address}. Tap to view.`,
+                data: {
+                    bookingId: booking._id.toString(),
+                    type: "NEW_RIDE"
+                }
+            });
         }
 
         return {

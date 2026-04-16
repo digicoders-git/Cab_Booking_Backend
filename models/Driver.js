@@ -261,6 +261,10 @@ const driverSchema = new mongoose.Schema({
     type: String,
     enum: ["Admin", "Fleet", "Self", "Vendor"],
     default: "Self"
+  },
+  fcmToken: {
+    type: String,
+    default: null
   }
 }, { timestamps: true });
 
