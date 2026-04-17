@@ -30,6 +30,56 @@ exports.createNotification = async (req, res) => {
             createdByModel: 'Admin'
         });
 
+        console.log(`[ADMIN-NOTIF-DEBUG] Notification saved to DB. ID: ${notification._id}`);
+
+        // --- Firebase Push Notification Dispatch ---
+        const { sendPushNotification, sendTopicNotification, sendConditionNotification } = require("../utils/fcmNotification");
+        
+        const fcmPayload = {
+            title: title,
+            body: message,
+            data: { 
+                type: "ANNOUNCEMENT", 
+                id: notification._id.toString(),
+                title: title,
+                body: message
+            }
+        };
+
+        try {
+            if (recipient) {
+                console.log(`[ADMIN-NOTIF-DEBUG] Targeting specific user: ${recipient} (${recipientModel})`);
+                const models = { 
+                    User: require("../models/User"), 
+                    Driver: require("../models/Driver"),
+                    Agent: require("../models/Agent"),
+                    Fleet: require("../models/Fleet"),
+                    Vendor: require("../models/Vendor"),
+                    SubAdmin: require("../models/Admin")
+                };
+                if (models[recipientModel]) {
+                    const target = await models[recipientModel].findById(recipient);
+                    if (target?.fcmToken) {
+                        await sendPushNotification(target.fcmToken, fcmPayload);
+                        console.log(`[ADMIN-NOTIF-DEBUG] FCM sent to individual: ${target.name}`);
+                    } else {
+                        console.log(`[ADMIN-NOTIF-DEBUG] ⚠️ Individual target found but has no FCM Token.`);
+                    }
+                }
+            } else if (targetRoles?.includes("all")) {
+                console.log(`[ADMIN-NOTIF-DEBUG] Broadcasting to EVERYONE (topic: all)`);
+                const fcmRes = await sendTopicNotification("all", fcmPayload);
+                console.log(`[ADMIN-NOTIF-DEBUG] Global Broadcast Response:`, fcmRes);
+            } else if (targetRoles?.length > 0) {
+                const condition = targetRoles.map(role => `'${role}' in topics`).join(' || ');
+                console.log(`[ADMIN-NOTIF-DEBUG] Broadcasting to ROLES: ${targetRoles.join(', ')} (Condition: ${condition})`);
+                const fcmRes = await sendConditionNotification(condition, fcmPayload);
+                console.log(`[ADMIN-NOTIF-DEBUG] Role Broadcast Response:`, fcmRes);
+            }
+        } catch (fcmErr) {
+            console.error(`[ADMIN-NOTIF-DEBUG] ❌ FCM Dispatch Failed:`, fcmErr.message);
+        }
+
         res.status(201).json({
             success: true,
             message: "Notification sent successfully!",

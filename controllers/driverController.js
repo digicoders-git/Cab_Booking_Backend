@@ -1129,9 +1129,18 @@ exports.updateFcmToken = async (req, res) => {
             return res.status(404).json({ success: false, message: "Driver not found" });
         }
 
+        // Subscribe to Topics for Broadcasts
+        try {
+            const { subscribeToTopic } = require("../utils/fcmNotification");
+            await subscribeToTopic(fcmToken, "all");
+            await subscribeToTopic(fcmToken, "driver");
+        } catch (topicErr) {
+            console.error("Driver Topic Sync Error:", topicErr.message);
+        }
+
         res.json({
             success: true,
-            message: "FCM Token updated successfully"
+            message: "FCM Token and Topics updated successfully"
         });
     } catch (error) {
         res.status(500).json({ success: false, message: "Error updating FCM token", error: error.message });

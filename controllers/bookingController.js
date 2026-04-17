@@ -7,6 +7,7 @@ const Driver = require("../models/Driver");
 const { getIO } = require("../socket/socket");
 const AreaPricing = require("../models/AreaPricing");
 const serviceAreaController = require("./serviceAreaController");
+const { sendPushNotification } = require("../utils/fcmNotification");
 
 // Helper: Calculate Area-specific pricing overrides (GEO-SPATIAL VERSION)
 const getAreaSpecificRates = async (pickupLat, pickupLng, defaultBase, defaultPrivateRate, defaultSharedRate) => {
@@ -424,6 +425,16 @@ exports.createBooking = async (req, res) => {
                                 status: "Expired",
                                 message: "No driver accepted the request within the time limit."
                             });
+
+                            // 🚀 FCM Push to Rider about Expiration
+                            const rider = await User.findById(checkBooking.user);
+                            if (rider && rider.fcmToken) {
+                                await sendPushNotification(rider.fcmToken, {
+                                    title: "⚠️ No Driver Found",
+                                    body: "Sorry, we couldn't find a driver for your request. Please try again.",
+                                    data: { type: "RIDE_EXPIRED", bookingId: checkBooking._id.toString() }
+                                });
+                            }
                         }
                         if (checkBooking.agent) {
                             io.to(`agent_${checkBooking.agent.toString()}`).emit("booking_update", {
@@ -432,8 +443,20 @@ exports.createBooking = async (req, res) => {
                                 message: "No driver accepted the request within the time limit."
                             });
                         }
+
+                        // 🚀 FCM Push to all currently notified drivers about Expiration
+                        const pendingReqsForFCM = await RideRequest.find({ booking: checkBooking._id, status: "Pending" }).populate('driver');
+                        for (let r of pendingReqsForFCM) {
+                            if (r.driver && r.driver.fcmToken) {
+                                await sendPushNotification(r.driver.fcmToken, {
+                                    title: "⚠️ Request Expired",
+                                    body: "A ride request you were viewing has expired.",
+                                    data: { type: "RIDE_EXPIRED", bookingId: checkBooking._id.toString() }
+                                });
+                            }
+                        }
                     } catch (err) {
-                        console.error("Socket Error on Expire:", err.message);
+                        console.error("Socket/FCM Error on Expire:", err.message);
                     }
 
                     console.log(`Booking ${newBooking._id} expired after 4 mins matching attempts.`);
@@ -469,9 +492,16 @@ exports.createBooking = async (req, res) => {
             }
         };
 
-        // Pehla attempt turant shuru karein (Agar Private ride hai ya Shared with seats hai)
-        if (rideType === "Private" || (rideType === "Shared" && selectedSeats && selectedSeats.length > 0)) {
+        // Pehla attempt turant shuru karein (Case-Insensitive check)
+        const isMatchedType = normalizedRideType === "private" || (normalizedRideType === "shared" && selectedSeats && selectedSeats.length > 0);
+        
+        console.log(`📡 [BOOKING ENGINE] Attempting to start matching. RideType: ${normalizedRideType}, Matches: ${isMatchedType}`);
+
+        if (isMatchedType) {
+            console.log("🚀 [BOOKING ENGINE] Waterfall matching started successfully!");
             attemptMatching();
+        } else {
+            console.warn("⚠️ [BOOKING ENGINE] Matching NOT started. Check rideType or selectedSeats.");
         }
 
         res.status(201).json({
@@ -605,6 +635,20 @@ exports.cancelBooking = async (req, res) => {
                         status: "Cancelled",
                         message: `Trip cancelled by ${booking.cancelledBy}`
                     });
+
+                    // 🚀 FCM Push Notification to Driver for Cancellation
+                    if (driver.fcmToken) {
+                        await sendPushNotification(driver.fcmToken, {
+                            title: "🚨 Ride Cancelled",
+                            body: `Trip ${booking._id.toString().slice(-6)} has been cancelled by the rider.`,
+                            data: {
+                                type: "RIDE_CANCELLED",
+                                bookingId: booking._id.toString()
+                            }
+                        });
+                        console.log(`FCM Cancel Push sent to Driver ${driver.name} ✅`);
+                    }
+
                     console.log(`Admin & Driver notified via Socket about cancellation.`);
                 }
             } catch (err) {

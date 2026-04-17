@@ -14,7 +14,8 @@ const {
     getAgentDashboard, // Naya function add kiya
     getAgentReport, // Detail report including 7 days earnings
     downloadAgentReport, // Download report as PDF or CSV
-    adminUpdateAgent
+    adminUpdateAgent,
+    updateFcmToken
 } = require("../controllers/agentController");
 
 const { auth, adminOnly, agentOnly } = require("../middleware/auth");
@@ -68,6 +69,9 @@ router.put("/update/:id", auth, checkPermission("AGENT_EDIT"), upload.fields([
     { name: "aadhar", maxCount: 1 },
     { name: "pan", maxCount: 1 }
 ]), adminUpdateAgent);
+
+// Update Agent FCM Token
+router.put("/update-fcm-token", auth, agentOnly, updateFcmToken);
 
 // Get Single Agent (Admin Only)
 router.get("/:id", auth, checkPermission("AGENT_READ"), getSingleAgent);

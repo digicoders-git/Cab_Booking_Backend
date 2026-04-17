@@ -111,4 +111,7 @@ router.get("/wallet/withdrawals", auth, vendorOnly, vendorController.getMyVendor
 // ============================================================
 router.get("/reports/pure-vendor-data", auth, vendorOnly, vendorController.getPureVendorDataReport);
 
+// Update FCM Token
+router.patch("/update-fcm-token", auth, vendorOnly, vendorController.updateFcmToken);
+
 module.exports = router;

@@ -226,6 +226,39 @@ exports.updateUserProfile = async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Error updating profile",
+        });
+    }
+};
+
+// Update FCM Token for push notifications
+exports.updateFcmToken = async (req, res) => {
+    try {
+        const { fcmToken } = req.body;
+        const userId = req.user.id;
+
+        if (!fcmToken) {
+            return res.status(400).json({ success: false, message: "FCM token is required" });
+        }
+
+        await User.findByIdAndUpdate(userId, { fcmToken });
+
+        // Subscribe to Topics for Broadcasts
+        try {
+            const { subscribeToTopic } = require("../utils/fcmNotification");
+            await subscribeToTopic(fcmToken, "all");
+            await subscribeToTopic(fcmToken, "user");
+        } catch (topicErr) {
+            console.error("User Topic Sync Error:", topicErr.message);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "FCM token and Topics updated successfully"
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error updating FCM token",
             error: error.message
         });
     }

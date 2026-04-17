@@ -14,7 +14,8 @@ const {
     updateWalletBalance,
     getFleetPerformance,
     getFleetCompletedRides,
-    adminUpdateFleet
+    adminUpdateFleet,
+    updateFcmToken
 } = require("../controllers/fleetController");
 
 const { auth, adminOnly, fleetOnly } = require("../middleware/auth");
@@ -71,6 +72,9 @@ router.put("/update/:id", auth, checkPermission("FLEET_EDIT"), upload.fields([
     { name: "panCard", maxCount: 1 },
     { name: "businessLicense", maxCount: 1 }
 ]), adminUpdateFleet);
+
+// Update Fleet FCM Token
+router.put("/update-fcm-token", auth, fleetOnly, updateFcmToken);
 
 // Get Single Fleet (Admin Only) - MUST BE LAST
 router.get("/:id", auth, checkPermission("FLEET_READ"), getSingleFleet);

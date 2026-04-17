@@ -670,3 +670,36 @@ exports.getFleetCompletedRides = async (req, res) => {
         });
     }
 };
+
+// Update Fleet FCM Token
+exports.updateFcmToken = async (req, res) => {
+    try {
+        const { fcmToken } = req.body;
+        if (!fcmToken) return res.status(400).json({ success: false, message: "FCM Token is required" });
+
+        const fleet = await Fleet.findByIdAndUpdate(req.user.id, { fcmToken }, { new: true });
+        console.log(`[FCM-SYNC] Token updated for Fleet: ${fleet?.name || 'Unknown'} (${req.user.id})`);
+
+        // Subscribe to Topics for Broadcasts
+        try {
+            const { subscribeToTopic } = require("../utils/fcmNotification");
+            await subscribeToTopic(fcmToken, "all");
+            await subscribeToTopic(fcmToken, "fleet");
+            await subscribeToTopic(fcmToken, "agent");
+        } catch (topicErr) {
+            console.error("Topic Sync Error:", topicErr.message);
+        }
+
+        res.json({
+            success: true,
+            message: "Fleet FCM Token and Topics updated successfully"
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error updating FCM Token",
+            error: error.message
+        });
+    }
+};

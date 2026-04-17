@@ -102,6 +102,10 @@ const agentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "Admin",
     default: null
+  },
+  fcmToken: {
+    type: String,
+    default: null
   }
 }, { timestamps: true });
 

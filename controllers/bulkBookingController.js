@@ -4,6 +4,7 @@ const FleetCar = require("../models/FleetCar");
 const Fleet = require("../models/Fleet");
 const { getIO } = require("../socket/socket");
 const serviceAreaController = require("./serviceAreaController");
+const { sendPushNotification } = require("../utils/fcmNotification");
 
 
 // 1. Create Bulk Booking Request
@@ -67,10 +68,13 @@ exports.createBulkBooking = async (req, res) => {
         // 🛰️ STRICT TARGETED NOTIFICATION LOGIC
         // Find Fleets that have ENOUGH quantity of required approved cars
         const fleets = await Fleet.find({ isActive: true });
+        console.log(`[BULK-DEBUG] Total Active Fleets found: ${fleets.length}`);
+
         let eligibleFleetIds = [];
 
         for (const fleet of fleets) {
             let isEveryRequirementMet = true;
+            console.log(`[BULK-DEBUG] Checking eligibility for Fleet: ${fleet.companyName} (${fleet._id})`);
 
             for (const reqItem of carsRequired) {
                 const availableCount = await FleetCar.countDocuments({
@@ -80,14 +84,18 @@ exports.createBulkBooking = async (req, res) => {
                     isActive: true
                 });
 
+                console.log(`  - Category ${reqItem.category}: Needs ${reqItem.quantity}, Has ${availableCount}`);
+
                 if (availableCount < (reqItem.quantity || 1)) {
                     isEveryRequirementMet = false;
+                    console.log(`  - ❌ Requirement not met for this category.`);
                     break;
                 }
             }
 
             if (isEveryRequirementMet) {
                 eligibleFleetIds.push(fleet._id);
+                console.log(`  - ✅ Fleet ${fleet.companyName} is ELIGIBLE.`);
             }
         }
 
@@ -104,10 +112,36 @@ exports.createBulkBooking = async (req, res) => {
                         cars: carsRequired.length
                     });
                 });
-                console.log(`Strict Targeted Bulk Notification sent to ${eligibleFleetIds.length} Fleets 🟢`);
+                console.log(`[BULK-DEBUG] Socket events emitted to ${eligibleFleetIds.length} Fleets.`);
+                
+                // --- FCM PUSH NOTIFICATION ---
+                for (const fleetId of eligibleFleetIds) {
+                    const fleet = await Fleet.findById(fleetId);
+                    if (fleet && fleet.fcmToken) {
+                        console.log(`[BULK-DEBUG] Sending FCM to ${fleet.companyName}. Token: ${fleet.fcmToken.substring(0, 10)}...`);
+                        try {
+                            const fcmResult = await sendPushNotification(fleet.fcmToken, {
+                                title: `📦 New Bulk Deal: ₹${offeredPrice}`,
+                                body: `New bulk request at ${pickup.address.split(',')[0]}. Check marketplace!`,
+                                data: {
+                                    bookingId: newBooking._id.toString(),
+                                    type: "NEW_BULK_DEAL"
+                                }
+                            });
+                            console.log(`[BULK-DEBUG] FCM Success for ${fleet.companyName}:`, fcmResult);
+                        } catch (fcmErr) {
+                            console.error(`[BULK-DEBUG] FCM Error for ${fleet.companyName}:`, fcmErr.message);
+                        }
+                    } else {
+                        console.log(`[BULK-DEBUG] ⚠️ Skipping FCM for ${fleet?.companyName || fleetId} - Token Missing!`);
+                    }
+                }
+
             } catch (err) {
-                console.error("Socket Error (Bulk Booking):", err.message);
+                console.error("[BULK-DEBUG] Major Socket/FCM Error:", err.message);
             }
+        } else {
+            console.log("[BULK-DEBUG] ⚠️ No eligible fleets found for this requirement.");
         }
 
 
@@ -196,31 +230,56 @@ exports.acceptBulkBooking = async (req, res) => {
 
         const fleet = await Fleet.findById(fleetId);
 
-        // Notify Rider (Creator)
+        // Notify Rider (Creator) via Socket and FCM
         try {
             const io = getIO();
-            // User Room is their ID
-            io.to(booking.createdBy.toString()).emit("bulk_booking_update", {
+            const creatorId = booking.createdBy.toString();
+            
+            // 1. Socket Notification
+            io.to(creatorId).emit("bulk_booking_update", {
                 bookingId: booking._id,
                 status: "Accepted",
                 fleetName: fleet ? fleet.companyName : "A Fleet Owner",
                 message: "Your bulk booking has been accepted!"
             });
 
-            // Notify Agents specifically if they created it
             if (booking.createdByModel === 'Agent') {
-                io.to(`agent_${booking.createdBy.toString()}`).emit("bulk_booking_update", {
+                io.to(`agent_${creatorId}`).emit("bulk_booking_update", {
                     bookingId: booking._id,
                     status: "Accepted",
                     fleetName: fleet ? fleet.companyName : "A Fleet Owner"
                 });
             }
 
+            // 2. FCM Push Notification
+            const User = require("../models/User");
+            const Agent = require("../models/Agent");
+            const { sendPushNotification } = require("../utils/fcmNotification");
+
+            let creator = null;
+            if (booking.createdByModel === 'User') {
+                creator = await User.findById(creatorId);
+            } else {
+                creator = await Agent.findById(creatorId);
+            }
+
+            if (creator && creator.fcmToken) {
+                await sendPushNotification(creator.fcmToken, {
+                    title: "📦 Bulk Booking Accepted!",
+                    body: `Your booking has been accepted by ${fleet ? fleet.companyName : 'a Fleet Owner'}.`,
+                    data: {
+                        bookingId: booking._id.toString(),
+                        type: "BULK_BOOKING_ACCEPTED"
+                    }
+                });
+                console.log(`FCM Sent to Creator (${booking.createdByModel}): ${creator.name} ✅`);
+            }
+
             // Remove from other fleets' marketplace view
             io.emit("remove_bulk_deal", { bookingId: booking._id });
 
         } catch (err) {
-            console.error("Socket Error (Accept Bulk):", err.message);
+            console.error("Notification Error (Accept Bulk):", err.message);
         }
 
         res.json({ success: true, message: "Bulk deal accepted successfully!", booking });

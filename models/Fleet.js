@@ -129,6 +129,10 @@ const fleetSchema = new mongoose.Schema({
     type: String,
     enum: ["Admin", "Vendor"],
     default: "Admin"
+  },
+  fcmToken: {
+    type: String,
+    default: null
   }
 }, { timestamps: true });
 

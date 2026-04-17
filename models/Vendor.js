@@ -92,6 +92,11 @@ const vendorSchema = new mongoose.Schema({
         default: true
     },
 
+    fcmToken: {
+        type: String,
+        default: null
+    },
+
     // Who created this vendor (Always Admin)
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,

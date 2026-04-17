@@ -7,7 +7,8 @@ const {
     getUserProfile,
     updateUserProfile,
     deleteUser,
-    toggleUserStatus
+    toggleUserStatus,
+    updateFcmToken
 } = require("../controllers/userController")
 
 const upload = require("../middleware/uploadAdminImage")
@@ -16,6 +17,9 @@ const { checkPermission } = require("../middleware/rbac")
 
 // User Login / Register Route (OTP Base)
 router.post("/login", loginUser)
+
+// Update FCM Token (Self)
+router.put("/update-fcm-token", auth, updateFcmToken)
 
 // Secure routes (Admin / Sub-Admin)
 router.get("/all", auth, checkPermission("USER_READ"), getAllUsers)

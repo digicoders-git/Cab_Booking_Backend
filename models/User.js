@@ -39,6 +39,10 @@ const userSchema = new mongoose.Schema({
     ifscCode: { type: String, default: "" },
     accountHolderName: { type: String, default: "" },
     bankName: { type: String, default: "" }
+  },
+  fcmToken: {
+    type: String,
+    default: null
   }
 }, { timestamps: true });
 

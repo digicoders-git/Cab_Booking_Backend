@@ -1065,3 +1065,35 @@ exports.toggleVendorFleetStatus = async (req, res) => {
 
 
 
+
+// ============================================================
+// 26. Update FCM Token (Vendor Only)
+// ============================================================
+exports.updateFcmToken = async (req, res) => {
+    try {
+        const { fcmToken } = req.body;
+        const Vendor = require("../models/Vendor");
+
+        if (!fcmToken) {
+            return res.status(400).json({ success: false, message: "FCM token is required" });
+        }
+
+        await Vendor.findByIdAndUpdate(req.user.id, { fcmToken });
+
+        // Subscribe to Topics for Broadcasts
+        try {
+            const { subscribeToTopic } = require("../utils/fcmNotification");
+            await subscribeToTopic(fcmToken, "all");
+            await subscribeToTopic(fcmToken, "vendor");
+        } catch (topicErr) {
+            console.error("Vendor Topic Sync Error:", topicErr.message);
+        }
+
+        res.json({
+            success: true,
+            message: "Vendor FCM Token and Topics updated successfully"
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error updating FCM token", error: error.message });
+    }
+};
