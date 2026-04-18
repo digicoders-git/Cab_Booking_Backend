@@ -4,9 +4,14 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 try {
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY 
-    ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') 
-    : undefined;
+  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  
+  if (privateKey) {
+    // 1. Strip literal quotes if present (common .env issue)
+    privateKey = privateKey.replace(/^"|"$/g, '');
+    // 2. Replace escaped newlines with real newlines
+    privateKey = privateKey.replace(/\\n/g, '\n');
+  }
 
   if (!admin.apps.length) {
     admin.initializeApp({
@@ -19,7 +24,8 @@ try {
     console.log("Firebase Admin SDK initialized successfully! 🔥");
   }
 } catch (error) {
-  console.error("Firebase Admin initialization error:", error.message);
+  console.error("Firebase Admin initialization error Details:", error);
+  console.error("Firebase Admin initialization error message:", error.message);
 }
 
 module.exports = admin;
