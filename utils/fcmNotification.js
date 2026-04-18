@@ -8,6 +8,10 @@ const admin = require("../config/firebaseAdmin");
 const sendPushNotification = async (token, payload) => {
   if (!token) return null;
   const message = {
+    notification: {
+      title: payload.title,
+      body: payload.body,
+    },
     data: {
       ...(payload.data || {}),
       title: payload.title,
@@ -30,6 +34,10 @@ const sendPushNotification = async (token, payload) => {
  */
 const sendTopicNotification = async (topic, payload) => {
   const message = {
+    notification: {
+      title: payload.title,
+      body: payload.body,
+    },
     data: {
       ...(payload.data || {}),
       title: payload.title,
@@ -53,6 +61,10 @@ const sendTopicNotification = async (topic, payload) => {
  */
 const sendConditionNotification = async (condition, payload) => {
     const message = {
+      notification: {
+        title: payload.title,
+        body: payload.body,
+      },
       data: {
         ...(payload.data || {}),
         title: payload.title,

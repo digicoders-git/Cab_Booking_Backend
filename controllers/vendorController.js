@@ -207,10 +207,20 @@ exports.getVendorDashboard = async (req, res) => {
             return res.status(404).json({ success: false, message: "Vendor nahi mila" });
         }
 
-        // Drivers created by this Vendor
-        const totalDrivers = await Driver.countDocuments({ createdBy: req.user.id, createdByModel: "Vendor" });
-        const onlineDrivers = await Driver.countDocuments({ createdBy: req.user.id, createdByModel: "Vendor", isOnline: true });
-        const approvedDrivers = await Driver.countDocuments({ createdBy: req.user.id, createdByModel: "Vendor", isApproved: true });
+        // Find all fleets created by this vendor to include their drivers in stats
+        const vendorFleets = await Fleet.find({ createdBy: req.user.id });
+        const fleetIds = vendorFleets.map(f => f._id);
+        const driverQuery = {
+            $or: [
+                { createdBy: req.user.id, createdByModel: "Vendor" },
+                { createdBy: { $in: fleetIds }, createdByModel: "Fleet" }
+            ]
+        };
+
+        // Drivers created by this Vendor or their Fleets
+        const totalDrivers = await Driver.countDocuments(driverQuery);
+        const onlineDrivers = await Driver.countDocuments({ ...driverQuery, isOnline: true });
+        const approvedDrivers = await Driver.countDocuments({ ...driverQuery, isApproved: true });
 
         // Fleets created by this Vendor
         const totalFleets = await Fleet.countDocuments({ createdBy: req.user.id });
@@ -390,9 +400,15 @@ exports.createFleet = async (req, res) => {
 // ============================================================
 exports.getMyDrivers = async (req, res) => {
     try {
+        // Find all fleets created by this vendor
+        const vendorFleets = await Fleet.find({ createdBy: req.user.id });
+        const fleetIds = vendorFleets.map(f => f._id);
+
         const drivers = await Driver.find({
-            createdBy: req.user.id,
-            createdByModel: "Vendor"
+            $or: [
+                { createdBy: req.user.id, createdByModel: "Vendor" },
+                { createdBy: { $in: fleetIds }, createdByModel: "Fleet" }
+            ]
         }).select("-password").sort({ createdAt: -1 });
 
         res.json({ success: true, count: drivers.length, drivers });
@@ -951,7 +967,17 @@ exports.getPureVendorDataReport = async (req, res) => {
         if (!vendor) return res.status(404).json({ success: false, message: "Vendor nahi mila" });
 
         // 1. Driver Metrics
-        const drivers = await Driver.find({ createdBy: req.user.id, createdByModel: "Vendor" })
+        // Find all fleets created by this vendor
+        const vendorFleets = await Fleet.find({ createdBy: req.user.id });
+        const fleetIds = vendorFleets.map(f => f._id);
+
+        // Find drivers created by this Vendor OR by any of their Fleets
+        const drivers = await Driver.find({
+            $or: [
+                { createdBy: req.user.id, createdByModel: "Vendor" },
+                { createdBy: { $in: fleetIds }, createdByModel: "Fleet" }
+            ]
+        })
             .populate("carDetails.carType", "name image")
             .select("-password");
 

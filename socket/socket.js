@@ -34,14 +34,23 @@ const initSocket = (server) => {
             // --- NEW: Fleet Owner joining their specific fleet room ---
             if (role === 'fleet') socket.join(`fleet_${userId}`);
 
-            // --- NEW: Driver fetching their Fleet/Vendor ID for location streaming ---
+            // --- NEW: Driver fetching their Fleet/Vendor ID (and parent Vendor) for location streaming ---
             if (role === 'driver') {
                 try {
+                    const Fleet = require("../models/Fleet");
                     const driver = await Driver.findById(userId).select("createdBy createdByModel");
+                    
                     if (driver && driver.createdBy) {
                         if (driver.createdByModel === "Fleet") {
                             socket.fleetId = driver.createdBy.toString();
                             console.log(`Driver ${userId} linked to Fleet: ${socket.fleetId}`);
+                            
+                            // Check if this Fleet belongs to a Vendor
+                            const fleet = await Fleet.findById(driver.createdBy).select("createdBy createdByModel");
+                            if (fleet && fleet.createdByModel === "Vendor") {
+                                socket.vendorId = fleet.createdBy.toString();
+                                console.log(`Driver ${userId} also linked to Vendor (via Fleet): ${socket.vendorId}`);
+                            }
                         } else if (driver.createdByModel === "Vendor") {
                             socket.vendorId = driver.createdBy.toString();
                             console.log(`Driver ${userId} linked to Vendor: ${socket.vendorId}`);
