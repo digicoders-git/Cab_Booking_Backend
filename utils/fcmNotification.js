@@ -20,9 +20,12 @@ const sendPushNotification = async (token, payload) => {
     token: token,
   };
   try {
-    return await admin.messaging().send(message);
+    const response = await admin.messaging().send(message);
+    console.log("🚀 FCM Dispatch Success:", response);
+    return response;
   } catch (error) {
-    console.error("FCM Token Error:", error.message);
+    console.error("❌ FCM Dispatch Failed for token:", token.slice(0, 10) + "...");
+    console.error("🔥 Error Detail:", error.message);
     return null;
   }
 };
