@@ -235,9 +235,9 @@ const initSocket = (server) => {
                     } finally {
                         delete disconnectTimers[driverId];
                     }
-                }, 8000); // 8 second grace period
+                }, 3600000); // 1 hour grace period (3,600,000 ms)
 
-                console.log(`⏳ Driver ${driverId} disconnect grace period started (8s)...`);
+                console.log(`⏳ Driver ${driverId} disconnect grace period started (1 hour)...`);
             }
         });
     });
