@@ -3,6 +3,7 @@ const router = express.Router()
 
 const {
     loginUser,
+    sendOtp,
     getAllUsers,
     getUserProfile,
     updateUserProfile,
@@ -16,6 +17,7 @@ const { auth, adminOnly } = require("../middleware/auth")
 const { checkPermission } = require("../middleware/rbac")
 
 // User Login / Register Route (OTP Base)
+router.post("/send-otp", sendOtp)
 router.post("/login", loginUser)
 
 // Update FCM Token (Self)

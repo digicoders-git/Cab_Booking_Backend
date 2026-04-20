@@ -10,6 +10,7 @@ const Notification = require("../models/Notification");
 const { getIO } = require("../socket/socket");
 const { sendPushNotification } = require("../utils/fcmNotification");
 const User = require("../models/User");
+const mongoose = require("mongoose");
 
 // Haversine formula to get distance between two points in km
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
@@ -356,7 +357,8 @@ exports.respondToRequest = async (req, res) => {
                         body: `Driver ${driver.name} is on the way to pick you up.`,
                         data: {
                             bookingId: booking._id.toString(),
-                            type: "ride_accepted"
+                            type: "ride_accepted",
+                            url: `/booking-details/${booking._id.toString()}`
                         }
                     });
                     console.log(`FCM Push sent to User ${booking.user.name} ✅`);
@@ -417,7 +419,8 @@ exports.respondToRequest = async (req, res) => {
                             body: `Driver ${driver.name} has accepted the ride for ${booking.passengerDetails.name}.`,
                             data: {
                                 bookingId: booking._id.toString(),
-                                type: "ride_accepted"
+                                type: "ride_accepted",
+                                url: `/booking-details/${booking._id.toString()}`
                             }
                         });
                         console.log(`FCM Push sent to Agent ${booking.agent.name} ✅`);
@@ -544,6 +547,36 @@ exports.startTrip = async (req, res) => {
 
         booking.bookingStatus = "Ongoing";
         booking.tripData.startedAt = new Date();
+
+        // ⏱️ WAITING CHARGE CALCULATION (Phase 1)
+        if (booking.tripData.arrivedAt) {
+            try {
+                // Fetch car category to get specific waiting rules
+                const carCategory = await mongoose.model("CarCategory").findById(booking.carCategory);
+                if (carCategory) {
+                    const freeTime = (carCategory.freeWaitingMin || 3) * 60 * 1000; // in ms
+                    const ratePerMin = carCategory.waitingChargePerMin || 2;
+                    const totalWaitMs = booking.tripData.startedAt - booking.tripData.arrivedAt;
+
+                    if (totalWaitMs > freeTime) {
+                        const extraMs = totalWaitMs - freeTime;
+                        const extraMin = Math.ceil(extraMs / (60 * 1000));
+                        const totalWaitingCharges = extraMin * ratePerMin;
+
+                        booking.tripData.waitingTimeMin = extraMin;
+                        booking.tripData.waitingCharges = totalWaitingCharges;
+                        
+                        // Add waiting charges to the overall fare
+                        booking.fareEstimate += totalWaitingCharges;
+                        console.log(`⏱️ Waiting Charges Calculated: ${extraMin} min extra = ₹${totalWaitingCharges}`);
+                    }
+                }
+            } catch (err) {
+                console.error("Waiting Calculation Error:", err.message);
+            }
+        }
+
+        booking.markModified("tripData");
         await booking.save();
 
         // 🚀 FCM Push to Driver & Rider for Ongoing Status
@@ -937,7 +970,7 @@ exports.getDriverTrips = async (req, res) => {
         // Find all bookings assigned to this driver
         const bookings = await Booking.find({ assignedDriver: driverId })
             .select("-tripData.startOtp") // SECURITY: Don't show OTP to driver!
-            .populate("carCategory", "name image")
+            .populate("carCategory", "name image freeWaitingMin waitingChargePerMin")
             .populate("user", "name phone")
             .sort({ createdAt: -1 });
 
@@ -946,6 +979,188 @@ exports.getDriverTrips = async (req, res) => {
             count: bookings.length,
             trips: bookings
         });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// 8. Driver notify Arrival at Pickup (Phase 1 Waiting Feature)
+exports.markArrived = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const driverId = req.user.id;
+
+        const booking = await Booking.findOne({ _id: bookingId, assignedDriver: driverId });
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        if (booking.bookingStatus !== "Accepted") {
+            return res.status(400).json({ success: false, message: "Booking must be in 'Accepted' status to mark arrived" });
+        }
+
+        // 1. Mark Arrived
+        booking.tripData.arrivedAt = new Date();
+        await booking.save();
+
+        // 2. Notify USER (Socket)
+        if (booking.user) {
+            try {
+                const io = getIO();
+                io.to(booking.user.toString()).emit("driver_arrived", {
+                    bookingId: booking._id,
+                    message: "Driver has arrived at the pickup location and is waiting.",
+                    arrivedAt: booking.tripData.arrivedAt
+                });
+            } catch (err) {}
+        }
+
+        // 3. Notify AGENT (Socket)
+        if (booking.agent) {
+          try {
+              const io = getIO();
+              io.to(`agent_${booking.agent.toString()}`).emit("driver_arrived", {
+                  bookingId: booking._id,
+                  passengerName: booking.passengerDetails?.name,
+                  message: "Driver Arrived at Pickup"
+              });
+          } catch (err) {}
+        }
+
+        // 4. Send Push Notification to User
+        if (booking.user) {
+            const user = await User.findById(booking.user);
+            if (user && user.fcmToken) {
+                await sendPushNotification(user.fcmToken, {
+                    title: "🚕 Driver Arrived!",
+                    body: "Your driver is waiting at the pickup location. Please reach the car soon.",
+                    data: { 
+                      type: "DRIVER_ARRIVED", 
+                      bookingId: booking._id.toString(),
+                      url: `/booking-details/${booking._id.toString()}`
+                    }
+                });
+            }
+        }
+
+        res.json({ success: true, message: "Check-in successful. Waiting timer started.", arrivedAt: booking.tripData.arrivedAt });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// 9. Driver Cancel Trip (Allowed after Accept but before Start)
+exports.cancelTripByDriver = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const { reason } = req.body;
+        const driverId = req.user.id;
+
+        const booking = await Booking.findOne({ _id: bookingId, assignedDriver: driverId });
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found or not assigned to you" });
+
+        // Only allow cancel if not started (Ongoing/Completed can't be cancelled)
+        if (!["Accepted", "Arrived"].includes(booking.bookingStatus)) {
+            return res.status(400).json({ 
+                success: false, 
+                message: `You cannot cancel this trip because it is already ${booking.bookingStatus}` 
+            });
+        }
+
+        const driver = await Driver.findById(driverId).populate("carDetails.carType");
+
+        // 1. Update Booking Status
+        booking.bookingStatus = "Cancelled";
+        booking.cancelReason = reason || "Driver cancelled the trip";
+        booking.cancelledBy = "Driver";
+        await booking.save();
+
+        // 2. Reset Driver Availability
+        if (booking.rideType === "Private") {
+            driver.isAvailable = true;
+            driver.currentRideType = null;
+            driver.availableSeats = 0;
+            driver.currentHeading = null;
+        } else if (booking.rideType === "Shared") {
+            // Restore seats
+            if (booking.selectedSeats && booking.selectedSeats.length > 0) {
+                for (let seatName of booking.selectedSeats) {
+                    const seatEntry = (driver.seatMap || []).find(s => s.seatName === seatName);
+                    if (seatEntry && seatEntry.bookingId && seatEntry.bookingId.toString() === booking._id.toString()) {
+                        seatEntry.isBooked = false;
+                        seatEntry.bookingId = null;
+                    }
+                }
+            }
+            driver.availableSeats += booking.seatsBooked;
+            const capacity = driver.carDetails?.carType?.seatCapacity || 4;
+
+            if (driver.availableSeats >= capacity) {
+                driver.isAvailable = true;
+                driver.currentRideType = null;
+                driver.availableSeats = 0;
+                driver.currentHeading = null;
+                if(driver.seatMap) driver.seatMap.forEach(s => { s.isBooked = false; s.bookingId = null; });
+            } else {
+                driver.isAvailable = true; 
+            }
+        }
+        await driver.save();
+
+        // 3. Notify User (Socket & FCM)
+        if (booking.user) {
+            try {
+                const io = getIO();
+                io.to(booking.user.toString()).emit("booking_update", {
+                    bookingId: booking._id,
+                    status: "Cancelled",
+                    message: "Sorry, your driver has cancelled the trip."
+                });
+
+                const rider = await User.findById(booking.user);
+                if (rider && rider.fcmToken) {
+                    await sendPushNotification(rider.fcmToken, {
+                        title: "🚨 Ride Cancelled by Driver",
+                        body: `We're sorry, Driver ${driver.name} had to cancel your trip.`,
+                        data: { type: "RIDE_CANCELLED", bookingId: booking._id.toString() }
+                    });
+                }
+            } catch (err) {}
+        }
+
+        // 4. Notify Agent (Socket & FCM)
+        if (booking.agent) {
+           try {
+               const io = getIO();
+               io.to(`agent_${booking.agent.toString()}`).emit("booking_update", {
+                   bookingId: booking._id,
+                   status: "Cancelled",
+                   message: "Driver has cancelled the trip."
+               });
+
+               const agent = await Agent.findById(booking.agent);
+               if (agent && agent.fcmToken) {
+                   await sendPushNotification(agent.fcmToken, {
+                       title: "🚨 Ride Cancelled by Driver",
+                       body: `Driver ${driver.name} cancelled the ride for ${booking.passengerDetails?.name}.`,
+                       data: { type: "RIDE_CANCELLED", bookingId: booking._id.toString() }
+                   });
+               }
+           } catch (err) {}
+        }
+
+        // 5. Notify Admin (Socket)
+        try {
+            const io = getIO();
+            io.to('admin_room').emit("driver_location_update", {
+                driverId: driver._id.toString(),
+                status: "Idle",
+                latitude: driver.currentLocation?.latitude,
+                longitude: driver.currentLocation?.longitude
+            });
+        } catch (err) {}
+
+        res.json({ success: true, message: "Trip cancelled successfully. You are now available for new rides." });
 
     } catch (error) {
         res.status(500).json({ success: false, message: "Server error", error: error.message });

@@ -134,9 +134,12 @@ const bookingSchema = new mongoose.Schema({
   },
 
   tripData: {
+    arrivedAt: { type: Date, default: null }, // Timestamp when driver clicked 'Arrived'
     startedAt: { type: Date, default: null },
     endedAt: { type: Date, default: null },
-    startOtp: { type: String, default: null } // Safety feature: OTP to start ride
+    startOtp: { type: String, default: null }, // Safety feature: OTP to start ride
+    waitingTimeMin: { type: Number, default: 0 }, // Chargeable waiting time
+    waitingCharges: { type: Number, default: 0 }  // Total waiting cost added to bill
   }
 
 }, { timestamps: true });

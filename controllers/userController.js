@@ -2,6 +2,33 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness");
 
+// 1. Send OTP Placeholder API (For Frontend Flow)
+exports.sendOtp = async (req, res) => {
+    try {
+        const { phone } = req.body;
+        if (!phone) {
+            return res.status(400).json({ success: false, message: "Phone number is required" });
+        }
+
+        // Validate 10 digit number
+        if (phone.length !== 10 || isNaN(phone)) {
+            return res.status(400).json({ success: false, message: "Please enter a valid 10-digit phone number" });
+        }
+
+        // In production, you would trigger SMS here.
+        // For now, we just return success for testing.
+        res.status(200).json({
+            success: true,
+            message: "OTP sent successfully (Dummy)",
+            phone,
+            otpMode: "FIXED_TESTING",
+            otp: "123456" // Showing for testing ease
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Failed to process OTP request" });
+    }
+};
+
 // Login / Register User Using Phone and Fixed OTP (Combined API)
 exports.loginUser = async (req, res) => {
     try {
@@ -9,6 +36,11 @@ exports.loginUser = async (req, res) => {
 
         if (!phone || !otp) {
             return res.status(400).json({ success: false, message: "Phone number and OTP are required" });
+        }
+
+        // Validate 10 digit number
+        if (phone.length !== 10 || isNaN(phone)) {
+            return res.status(400).json({ success: false, message: "Please enter a valid 10-digit phone number" });
         }
 
         // Using a fixed OTP for testing
@@ -23,13 +55,23 @@ exports.loginUser = async (req, res) => {
         let isNewUser = false;
 
         if (!user) {
-            // Check global phone uniqueness
+            // Check global phone uniqueness (Optional check if phone registered as driver etc)
             const phoneTakenBy = await isPhoneTaken(phone);
             if (phoneTakenBy) {
                 return res.status(400).json({ success: false, message: `Phone number is already registered as ${phoneTakenBy}` });
             }
 
-            // Check global email uniqueness if provided
+            // If name is not provided, it means we don't have registration details yet
+            if (!name) {
+                return res.status(200).json({
+                    success: true,
+                    isNewUser: true,
+                    message: "New user detected. Please provide your name to complete registration.",
+                    tempPhone: phone
+                });
+            }
+
+            // If user doesn't exist but name IS provided, then register them
             if (email) {
                 const emailTakenBy = await isEmailTaken(email);
                 if (emailTakenBy) {
@@ -37,7 +79,6 @@ exports.loginUser = async (req, res) => {
                 }
             }
 
-            // If user doesn't exist, register them (New Flow)
             user = await User.create({
                 phone,
                 name: name || "",
@@ -60,7 +101,7 @@ exports.loginUser = async (req, res) => {
 
         res.status(isNewUser ? 201 : 200).json({
             success: true,
-            message: isNewUser ? "Registration and Login successful" : "Login successful",
+            message: isNewUser ? "Registration Successful" : "Login successful",
             token,
             user,
             isNewUser

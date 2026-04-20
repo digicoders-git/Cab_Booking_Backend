@@ -8,10 +8,8 @@ const admin = require("../config/firebaseAdmin");
 const sendPushNotification = async (token, payload) => {
   if (!token) return null;
   const message = {
-    notification: {
-      title: payload.title,
-      body: payload.body,
-    },
+    // 🔕 REMOVED 'notification' key to prevent duplicate/default notifications
+    // Only 'data' is sent so the frontend/service-worker can show a custom notification with buttons.
     data: {
       ...(payload.data || {}),
       title: payload.title,
@@ -21,7 +19,7 @@ const sendPushNotification = async (token, payload) => {
   };
   try {
     const response = await admin.messaging().send(message);
-    console.log("🚀 FCM Dispatch Success:", response);
+    console.log("🚀 FCM Dispatch Success (Data-Only):", response);
     return response;
   } catch (error) {
     console.error("❌ FCM Dispatch Failed for token:", token.slice(0, 10) + "...");
@@ -37,10 +35,6 @@ const sendPushNotification = async (token, payload) => {
  */
 const sendTopicNotification = async (topic, payload) => {
   const message = {
-    notification: {
-      title: payload.title,
-      body: payload.body,
-    },
     data: {
       ...(payload.data || {}),
       title: payload.title,
@@ -64,10 +58,6 @@ const sendTopicNotification = async (topic, payload) => {
  */
 const sendConditionNotification = async (condition, payload) => {
     const message = {
-      notification: {
-        title: payload.title,
-        body: payload.body,
-      },
       data: {
         ...(payload.data || {}),
         title: payload.title,

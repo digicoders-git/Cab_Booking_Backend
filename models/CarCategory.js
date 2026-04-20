@@ -53,6 +53,15 @@ const carCategorySchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  // Waiting Time Rules (Phase 1)
+  freeWaitingMin: {
+    type: Number,
+    default: 3 // Default 3 minutes free
+  },
+  waitingChargePerMin: {
+    type: Number,
+    default: 2 // Default ₹2 per extra minute
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Admin"

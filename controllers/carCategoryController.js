@@ -5,7 +5,8 @@ exports.createCarCategory = async (req, res) => {
     try {
         const { 
             name, seatCapacity, privateRatePerKm, sharedRatePerSeatPerKm, 
-            baseFare, seatLayout, avgSpeedKmH, bulkBookingBasePrice 
+            baseFare, seatLayout, avgSpeedKmH, bulkBookingBasePrice,
+            freeWaitingMin, waitingChargePerMin
         } = req.body;
 
         const image = req.file ? req.file.filename : null;
@@ -44,6 +45,8 @@ exports.createCarCategory = async (req, res) => {
             avgSpeedKmH: avgSpeedKmH || 25,
             image,
             bulkBookingBasePrice: bulkBookingBasePrice || 0,
+            freeWaitingMin: freeWaitingMin || 3,
+            waitingChargePerMin: waitingChargePerMin || 2,
             createdBy: req.user.id
         });
 
@@ -107,7 +110,8 @@ exports.updateCarCategory = async (req, res) => {
         const { id } = req.params;
         const { 
             name, seatCapacity, privateRatePerKm, sharedRatePerSeatPerKm, 
-            baseFare, isActive, seatLayout, avgSpeedKmH, bulkBookingBasePrice 
+            baseFare, isActive, seatLayout, avgSpeedKmH, bulkBookingBasePrice,
+            freeWaitingMin, waitingChargePerMin
         } = req.body;
 
         const category = await CarCategory.findById(id);
@@ -127,6 +131,8 @@ exports.updateCarCategory = async (req, res) => {
         if (baseFare !== undefined) category.baseFare = baseFare;
         if (isActive !== undefined) category.isActive = isActive;
         if (bulkBookingBasePrice !== undefined) category.bulkBookingBasePrice = bulkBookingBasePrice;
+        if (freeWaitingMin !== undefined) category.freeWaitingMin = freeWaitingMin;
+        if (waitingChargePerMin !== undefined) category.waitingChargePerMin = waitingChargePerMin;
 
         if (seatLayout) {
             if (typeof seatLayout === "string") {
