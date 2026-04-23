@@ -8,6 +8,8 @@ const {
     startTrip,
     endTrip,
     markArrived,
+    markStopArrived,
+    completeStop,
     cancelTripByDriver,
     getDriverLocation,
     getDriverTrips
@@ -33,7 +35,11 @@ router.put("/execute/:bookingId/start", auth, driverOnly, startTrip);
 // 5. End the trip
 router.put("/execute/:bookingId/end", auth, driverOnly, endTrip);
 
-// 5b. Driver Cancel the trip (Before start)
+// 5b. Multi-stop management
+router.put("/execute/:bookingId/stops/:stopIndex/arrived", auth, driverOnly, markStopArrived);
+router.put("/execute/:bookingId/stops/:stopIndex/complete", auth, driverOnly, completeStop);
+
+// 5c. Driver Cancel the trip (Before start)
 router.put("/execute/:bookingId/cancel", auth, driverOnly, cancelTripByDriver);
 
 // 6. Track Driver Location (User Only)

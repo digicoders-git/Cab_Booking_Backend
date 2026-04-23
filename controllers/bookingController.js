@@ -311,12 +311,21 @@ exports.createBooking = async (req, res) => {
             pickupAddress, pickupLat, pickupLng,
             dropAddress, dropLat, dropLng,
             distanceKm, pickupDate, pickupTime,
-            selectedSeats // NEW: If coming from shared flow
+            selectedSeats, // NEW: If coming from shared flow
+            stops // NEW: Multiple stoppages
         } = req.body;
 
         // Validate basic inputs (Simplified for example)
         if (!passengerName || !pickupAddress || !dropAddress || !carCategoryId) {
             return res.status(400).json({ success: false, message: "Required fields missing" });
+        }
+
+        // --- NEW: Multi-Stop Shared Ride Backend Validation ---
+        if (rideType && rideType.toLowerCase() === "shared" && stops && stops.length > 0) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Stops are not allowed for Shared Rides. Please book a Private Ride for multiple destinations." 
+            });
         }
 
         // --- NEW: Service Availability Enforcement (GPS VERSION) ---
@@ -379,6 +388,7 @@ exports.createBooking = async (req, res) => {
             pickupDate: pickupDate || new Date(),
             pickupTime: pickupTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             selectedSeats: selectedSeats || [], // Track chosen spots
+            stops: stops || [], // NEW: Multi-stop support
             fareEstimate,
             tripData: { startOtp }
         };
@@ -531,7 +541,7 @@ exports.getMyBookings = async (req, res) => {
         }
 
         const bookings = await Booking.find(filter)
-            .populate("carCategory", "name image")
+            .populate("carCategory", "name image freeWaitingMin waitingChargePerMin")
             .populate("assignedDriver", "_id name phone image carDetails")
             .sort({ createdAt: -1 });
 
@@ -551,7 +561,7 @@ exports.getAllBookings = async (req, res) => {
     try {
         const bookings = await Booking.find()
             .populate("carCategory", "name image")
-            .populate("assignedDriver", "_id name phone carDetails")
+            .populate("assignedDriver", "_id name phone image carDetails")
             .populate("user", "name phone image")
             .populate("agent", "name phone image")
             .sort({ createdAt: -1 });
@@ -689,7 +699,7 @@ exports.getSingleBooking = async (req, res) => {
     try {
         const { bookingId } = req.params;
         const booking = await Booking.findById(bookingId)
-            .populate("carCategory", "name image")
+            .populate("carCategory", "name image freeWaitingMin waitingChargePerMin")
             .populate("assignedDriver", "_id name phone image carDetails")
             .populate("user", "name phone image")
             .populate("agent", "name phone image");

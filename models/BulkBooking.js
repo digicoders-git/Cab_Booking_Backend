@@ -28,6 +28,15 @@ const bulkBookingSchema = new mongoose.Schema({
         type: Date,
         required: true
     },
+    tripType: {
+        type: String,
+        enum: ['OneWay', 'RoundTrip'],
+        default: 'OneWay'
+    },
+    returnDateTime: {
+        type: Date,
+        default: null
+    },
     numberOfDays: {
         type: Number,
         default: 1

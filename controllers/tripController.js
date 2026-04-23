@@ -215,6 +215,7 @@ exports.autoMatchDriver = async (bookingId) => {
                 passengerPhone: booking.passengerDetails?.phone || 'N/A',
                 pickup: booking.pickup.address,
                 drop: booking.drop.address,
+                stops: booking.stops || [],
                 distance: booking.estimatedDistanceKm,
                 rideType: booking.rideType,
                 fare: booking.fareEstimate,
@@ -327,7 +328,6 @@ exports.respondToRequest = async (req, res) => {
             booking.assignedDriver = driverId;
 
             const driver = await Driver.findById(driverId).populate("carDetails.carType");
-            booking.assignedCar = null;
 
             // NEW: Set Initial Driver Location on Booking for Real-time mismatch fix
             booking.driverLocation = {
@@ -393,26 +393,28 @@ exports.respondToRequest = async (req, res) => {
             // Real-time Update to AGENT (If booking belongs to an agent)
             if (booking.agent) {
                 try {
+                    const agentId = booking.agent._id || booking.agent;
                     const io = getIO();
-                    io.to(`agent_${booking.agent.toString()}`).emit("booking_update", {
+                    io.to(`agent_${agentId.toString()}`).emit("booking_update", {
                         bookingId: booking._id,
                         status: "Accepted",
                         driverName: driver.name,
                         driverPhone: driver.phone,
-                        driverId: driver._id.toString(), // FIX: Agent map tracking ke liye driver._id bheja
-                        driverLocation: {               // FIX: Initial driver location bhi bhejo takki map turant dikhaye
+                        driverId: driver._id.toString(),
+                        driverLocation: {
                             latitude: driver.currentLocation?.latitude || null,
                             longitude: driver.currentLocation?.longitude || null,
                             heading: driver.currentHeading || 0
                         }
                     });
-                    console.log(`Agent ${booking.agent} notified via Socket (with driverId + location) ✅`);
+                    console.log(`Agent ${agentId} notified via Socket (Accepted) ✅`);
                 } catch (err) {
                     console.error("Agent Socket Notification Error:", err.message);
                 }
 
                 // 🚀 NEW: FCM Push Notification to Agent
-                if (booking.agent && booking.agent.fcmToken) {
+                const agent = booking.agent;
+                if (agent && agent.fcmToken) {
                     try {
                         await sendPushNotification(booking.agent.fcmToken, {
                             title: "🚖 Ride Accepted!",
@@ -604,7 +606,7 @@ exports.startTrip = async (req, res) => {
 
             // Also Notify Agent
             if (booking.agent) {
-                const agent = await Agent.findById(booking.agent);
+                const agent = await Agent.findById(booking.agent._id || booking.agent);
                 if (agent && agent.fcmToken) {
                     await sendPushNotification(agent.fcmToken, {
                         title: "🚕 Trip Started",
@@ -618,20 +620,22 @@ exports.startTrip = async (req, res) => {
 
         // REAL-TIME UPDATE TO AGENT & USER
         try {
+            const agentId = booking.agent?._id || booking.agent;
+            const userId = booking.user?._id || booking.user;
             const io = getIO();
-            if (booking.agent) {
-                io.to(`agent_${booking.agent.toString()}`).emit("booking_update", {
+            if (agentId) {
+                io.to(`agent_${agentId.toString()}`).emit("booking_update", {
                     bookingId: booking._id,
                     status: "Ongoing"
                 });
-                console.log(`Agent ${booking.agent} notified via Socket (Trip Started)`);
+                console.log(`Agent ${agentId} notified via Socket (Trip Started)`);
             }
-            if (booking.user) {
-                io.to(booking.user.toString()).emit("booking_update", {
+            if (userId) {
+                io.to(userId.toString()).emit("booking_update", {
                     bookingId: booking._id,
                     status: "Ongoing"
                 });
-                console.log(`User ${booking.user} notified via Socket (Trip Started)`);
+                console.log(`User ${userId} notified via Socket (Trip Started)`);
             }
 
             // 🎯 Real-time Status Update to ADMIN PANEL
@@ -684,12 +688,24 @@ exports.endTrip = async (req, res) => {
             return res.status(400).json({ success: false, message: "Only Ongoing trips can be ended" });
         }
 
+        // --- NEW: MANDATORY STOP COMPLETION CHECK ---
+        if (booking.stops && booking.stops.length > 0) {
+            const incompleteStop = booking.stops.find(s => s.status !== "Completed");
+            if (incompleteStop) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Pehle saare intermediate stops complete karo! (${incompleteStop.address} baki hai)`
+                });
+            }
+        }
+        // --------------------------------------------
+
         // Setup completion
         booking.bookingStatus = "Completed";
         booking.tripData.endedAt = new Date();
 
-        // Finalize fare and payment method
-        booking.actualFare = booking.fareEstimate;
+        // Finalize fare (Keep the waiting charges added during stops)
+        booking.actualFare = booking.actualFare > 0 ? booking.actualFare : booking.fareEstimate;
         booking.paymentMethod = paymentMethod;
         booking.paymentStatus = "Completed"; 
         await booking.save();
@@ -719,7 +735,7 @@ exports.endTrip = async (req, res) => {
 
             // Also Notify Agent
             if (booking.agent) {
-                const agent = await Agent.findById(booking.agent);
+                const agent = await Agent.findById(booking.agent._id || booking.agent);
                 if (agent && agent.fcmToken) {
                     await sendPushNotification(agent.fcmToken, {
                         title: "🏁 Trip Completed",
@@ -918,16 +934,18 @@ exports.endTrip = async (req, res) => {
 
         // REAL-TIME UPDATE TO AGENT & USER
         try {
+            const agentId = booking.agent?._id || booking.agent;
+            const userId = booking.user?._id || booking.user;
             const io = getIO();
-            if (booking.agent) {
-                io.to(`agent_${booking.agent.toString()}`).emit("booking_update", {
+            if (agentId) {
+                io.to(`agent_${agentId.toString()}`).emit("booking_update", {
                     bookingId: booking._id,
                     status: "Completed",
                     finalFare: booking.actualFare
                 });
             }
-            if (booking.user) {
-                io.to(booking.user.toString()).emit("booking_update", {
+            if (userId) {
+                io.to(userId.toString()).emit("booking_update", {
                     bookingId: booking._id,
                     status: "Completed",
                     finalFare: booking.actualFare
@@ -1017,8 +1035,9 @@ exports.markArrived = async (req, res) => {
         // 3. Notify AGENT (Socket)
         if (booking.agent) {
           try {
+              const agentId = booking.agent._id || booking.agent;
               const io = getIO();
-              io.to(`agent_${booking.agent.toString()}`).emit("driver_arrived", {
+              io.to(`agent_${agentId.toString()}`).emit("driver_arrived", {
                   bookingId: booking._id,
                   passengerName: booking.passengerDetails?.name,
                   message: "Driver Arrived at Pickup"
@@ -1166,3 +1185,118 @@ exports.cancelTripByDriver = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
+
+// 8b. Stop Management: Mark Arrival at a specific Stop
+exports.markStopArrived = async (req, res) => {
+    try {
+        const { bookingId, stopIndex } = req.params;
+        const driverId = req.user.id;
+
+        const booking = await Booking.findOne({ _id: bookingId, assignedDriver: driverId });
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        if (booking.bookingStatus !== "Ongoing") {
+            return res.status(400).json({ success: false, message: "Trip must be 'Ongoing' to manage stops" });
+        }
+
+        const idx = parseInt(stopIndex);
+        if (!booking.stops[idx]) {
+            return res.status(400).json({ success: false, message: "Invalid stop index" });
+        }
+
+        booking.stops[idx].status = "Arrived";
+        booking.stops[idx].arrivedAt = new Date();
+        await booking.save();
+
+        // Notify User/Agent
+        const io = require("../socket/socket").getIO();
+        const userId = booking.user?.toString();
+        const agentId = booking.agent?._id || booking.agent;
+        
+        const socketData = {
+            bookingId: booking._id,
+            stopIndex: idx,
+            status: "Arrived",
+            arrivedAt: booking.stops[idx].arrivedAt,
+            message: `Driver arrived at stop: ${booking.stops[idx].address}`
+        };
+
+        if (userId) io.to(userId).emit("stop_update", socketData);
+        if (agentId) io.to(`agent_${agentId.toString()}`).emit("stop_update", socketData);
+
+        res.json({ success: true, message: "Arrived at stop ✅", stop: booking.stops[idx] });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// 8c. Stop Management: Mark Stop Completed (Calculate Charges)
+exports.completeStop = async (req, res) => {
+    try {
+        const { bookingId, stopIndex } = req.params;
+        const driverId = req.user.id;
+
+        const booking = await Booking.findOne({ _id: bookingId, assignedDriver: driverId }).populate("carCategory");
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        const idx = parseInt(stopIndex);
+        if (!booking.stops[idx] || booking.stops[idx].status !== "Arrived") {
+            return res.status(400).json({ success: false, message: "Stop must be marked 'Arrived' first" });
+        }
+
+        const now = new Date();
+        const arrivedAt = booking.stops[idx].arrivedAt;
+        const elapsedMin = Math.floor((now - arrivedAt) / 60000);
+        
+        const freeMin = booking.carCategory?.freeWaitingMin || 5;
+        const rate = booking.carCategory?.waitingChargePerMin || 2;
+        
+        let waitMin = 0;
+        let waitCharge = 0;
+
+        if (elapsedMin > freeMin) {
+            waitMin = elapsedMin - freeMin;
+            waitCharge = waitMin * rate;
+        }
+
+        booking.stops[idx].status = "Completed";
+        booking.stops[idx].completedAt = now;
+        booking.stops[idx].waitingTimeMin = waitMin;
+        booking.stops[idx].waitingCharges = waitCharge;
+        
+        // Add to total actual fare
+        booking.actualFare = (booking.actualFare || booking.fareEstimate) + waitCharge;
+        
+        await booking.save();
+
+        // Notify User/Agent
+        const io = require("../socket/socket").getIO();
+        const userId = booking.user?.toString();
+        const agentId = booking.agent?._id || booking.agent;
+        
+        const socketData = {
+            bookingId: booking._id,
+            stopIndex: idx,
+            status: "Completed",
+            waitingTimeMin: waitMin,
+            waitingCharges: waitCharge,
+            totalFare: booking.actualFare,
+            message: `Stop completed. Waiting charges: ₹${waitCharge}`
+        };
+
+        if (userId) io.to(userId).emit("stop_update", socketData);
+        if (agentId) io.to(`agent_${agentId.toString()}`).emit("stop_update", socketData);
+
+        res.json({ 
+            success: true, 
+            message: "Stop completed ✅", 
+            waitCharge,
+            totalFare: booking.actualFare
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+

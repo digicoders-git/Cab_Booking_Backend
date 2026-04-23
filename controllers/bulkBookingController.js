@@ -11,7 +11,7 @@ const { sendPushNotification } = require("../utils/fcmNotification");
 exports.createBulkBooking = async (req, res) => {
     try {
         const { 
-            pickup, drop, pickupDateTime, 
+            pickup, drop, pickupDateTime, tripType, returnDateTime,
             numberOfDays, totalDistance, carsRequired, offeredPrice, notes 
         } = req.body;
 
@@ -33,11 +33,14 @@ exports.createBulkBooking = async (req, res) => {
 
         // Calculate System Estimated Price
         // Formula: Rate (per KM) * Quantity * Days * Distance
+        // If Round Trip, we double the distance
         let systemEstimatedPrice = 0;
+        const distanceMultiplier = tripType === 'RoundTrip' ? 2 : 1;
+
         for (const item of carsRequired) {
             const category = await CarCategory.findById(item.category);
             if (category) {
-                systemEstimatedPrice += (category.bulkBookingBasePrice || 0) * (item.quantity || 1) * (numberOfDays || 1) * (totalDistance || 0);
+                systemEstimatedPrice += (category.bulkBookingBasePrice || 0) * (item.quantity || 1) * (numberOfDays || 1) * (totalDistance * distanceMultiplier);
             }
         }
 
@@ -54,6 +57,8 @@ exports.createBulkBooking = async (req, res) => {
             pickup,
             drop,
             pickupDateTime,
+            tripType: tripType || 'OneWay',
+            returnDateTime: tripType === 'RoundTrip' ? returnDateTime : null,
             numberOfDays: numberOfDays || 1,
             totalDistance: totalDistance || 0,
             carsRequired,
@@ -108,6 +113,8 @@ exports.createBulkBooking = async (req, res) => {
                         pickup: pickup.address,
                         drop: drop.address,
                         dateTime: pickupDateTime,
+                        tripType: newBooking.tripType,
+                        returnDateTime: newBooking.returnDateTime,
                         offeredPrice: offeredPrice,
                         cars: carsRequired.length
                     });

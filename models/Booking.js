@@ -56,6 +56,20 @@ const bookingSchema = new mongoose.Schema({
     latitude: { type: Number, required: true },
     longitude: { type: Number, required: true }
   },
+  stops: [{
+    address: { type: String, required: true },
+    latitude: { type: Number, required: true },
+    longitude: { type: Number, required: true },
+    status: { 
+      type: String, 
+      enum: ["Pending", "Arrived", "Completed"], 
+      default: "Pending" 
+    },
+    arrivedAt: { type: Date, default: null },
+    completedAt: { type: Date, default: null },
+    waitingTimeMin: { type: Number, default: 0 },
+    waitingCharges: { type: Number, default: 0 }
+  }],
 
   // Distance & Time
   estimatedDistanceKm: {
