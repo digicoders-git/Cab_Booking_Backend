@@ -30,6 +30,9 @@ router.post("/start/:bookingId", auth, bulkBookingController.startBulkBooking);
 // 9. End Trip
 router.post("/end/:bookingId", auth, bulkBookingController.endBulkBooking);
 
+// 10. Verify Payment (Advance/Security)
+router.post("/verify-payment", auth, bulkBookingController.verifyBulkPayment);
+
 module.exports = router;
 
 

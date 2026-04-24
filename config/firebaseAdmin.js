@@ -11,10 +11,12 @@ try {
   
   if (privateKey) {
     console.log("✅ Private Key found in .env");
-    // 1. Strip literal quotes if present (common .env issue)
-    privateKey = privateKey.replace(/^"|"$/g, '');
-    // 2. Replace escaped newlines with real newlines
+    // 1. Strip literal quotes and trim whitespace
+    privateKey = privateKey.trim().replace(/^["']|["']$/g, '');
+    // 2. Replace literal \n with real newlines
     privateKey = privateKey.replace(/\\n/g, '\n');
+    // 3. Fix double newlines if any
+    privateKey = privateKey.replace(/\n\n/g, '\n');
   } else {
     console.error("❌ ERROR: FIREBASE_PRIVATE_KEY is MISSING in .env!");
   }

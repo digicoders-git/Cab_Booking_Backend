@@ -9,6 +9,7 @@ exports.registerAgent = async (req, res) => {
     try {
         const { 
             name, email, phone, password, commissionPercentage, 
+            bulkCommissionPercentage,
             address, city, state, pincode,
             aadharNumber, panNumber,
             accountNumber, ifscCode, accountHolderName, bankName 
@@ -37,6 +38,7 @@ exports.registerAgent = async (req, res) => {
             password,
             image,
             commissionPercentage: commissionPercentage || 10,
+            bulkCommissionPercentage: bulkCommissionPercentage || 5,
             address,
             city,
             state,
@@ -863,7 +865,7 @@ exports.adminUpdateAgent = async (req, res) => {
     try {
         const { id } = req.params;
         const { 
-            name, email, phone, password, commissionPercentage,
+            name, email, phone, password, commissionPercentage, bulkCommissionPercentage,
             address, city, state, pincode, aadharNumber, panNumber,
             accountNumber, ifscCode, accountHolderName, bankName
         } = req.body;
@@ -901,6 +903,7 @@ exports.adminUpdateAgent = async (req, res) => {
         if (aadharNumber !== undefined) agent.aadharNumber = aadharNumber;
         if (panNumber !== undefined) agent.panNumber = panNumber;
         if (commissionPercentage !== undefined) agent.commissionPercentage = commissionPercentage;
+        if (bulkCommissionPercentage !== undefined) agent.bulkCommissionPercentage = bulkCommissionPercentage;
 
         // Handle File Fields from upload.fields
         if (req.files) {

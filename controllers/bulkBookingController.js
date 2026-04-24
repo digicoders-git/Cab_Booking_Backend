@@ -5,6 +5,10 @@ const Fleet = require("../models/Fleet");
 const { getIO } = require("../socket/socket");
 const serviceAreaController = require("./serviceAreaController");
 const { sendPushNotification } = require("../utils/fcmNotification");
+const Transaction = require("../models/Transaction");
+const Admin = require("../models/Admin");
+const Agent = require("../models/Agent");
+const User = require("../models/User");
 
 
 // 1. Create Bulk Booking Request
@@ -48,6 +52,8 @@ exports.createBulkBooking = async (req, res) => {
             ? ((offeredPrice - systemEstimatedPrice) / systemEstimatedPrice) * 100 
             : 0;
 
+        const advanceAmount = Math.round(offeredPrice * 0.25);
+
         const newBooking = await BulkBooking.create({
             createdBy: req.user.id,
             createdByModel: req.user.role === 'admin' ? 'Admin' : 
@@ -66,7 +72,19 @@ exports.createBulkBooking = async (req, res) => {
             offeredPrice,
             priceModifiedPercentage,
             notes,
-            startOtp: Math.floor(1000 + Math.random() * 9000).toString() // 4-digit OTP
+            status: 'PendingPayment',
+            advancePayment: {
+                amount: advanceAmount,
+                isPaid: false
+            },
+            startOtp: Math.floor(1000 + Math.random() * 9000).toString()
+        });
+
+        res.status(201).json({
+            success: true,
+            message: "Bulk request created. Please pay 25% advance to publish to marketplace.",
+            bookingId: newBooking._id,
+            advanceAmount: advanceAmount
         });
 
 
@@ -229,74 +247,142 @@ exports.acceptBulkBooking = async (req, res) => {
             return res.status(400).json({ success: false, message: "Sorry, this deal is already taken or unavailable." });
         }
 
-        // Lock the booking
-        booking.status = "Accepted";
-        booking.assignedFleet = fleetId;
-        booking.acceptedAt = new Date();
+        const securityAmount = Math.round(booking.offeredPrice * 0.20);
+        
+        booking.fleetSecurityPayment = {
+            amount: securityAmount,
+            isPaid: false
+        };
         await booking.save();
 
-        const fleet = await Fleet.findById(fleetId);
-
-        // Notify Rider (Creator) via Socket and FCM
-        try {
-            const io = getIO();
-            const creatorId = booking.createdBy.toString();
-            
-            // 1. Socket Notification
-            io.to(creatorId).emit("bulk_booking_update", {
-                bookingId: booking._id,
-                status: "Accepted",
-                fleetName: fleet ? fleet.companyName : "A Fleet Owner",
-                message: "Your bulk booking has been accepted!"
-            });
-
-            if (booking.createdByModel === 'Agent') {
-                io.to(`agent_${creatorId}`).emit("bulk_booking_update", {
-                    bookingId: booking._id,
-                    status: "Accepted",
-                    fleetName: fleet ? fleet.companyName : "A Fleet Owner"
-                });
-            }
-
-            // 2. FCM Push Notification
-            const User = require("../models/User");
-            const Agent = require("../models/Agent");
-            const { sendPushNotification } = require("../utils/fcmNotification");
-
-            let creator = null;
-            if (booking.createdByModel === 'User') {
-                creator = await User.findById(creatorId);
-            } else {
-                creator = await Agent.findById(creatorId);
-            }
-
-            if (creator && creator.fcmToken) {
-                await sendPushNotification(creator.fcmToken, {
-                    title: "📦 Bulk Booking Accepted!",
-                    body: `Your booking has been accepted by ${fleet ? fleet.companyName : 'a Fleet Owner'}.`,
-                    data: {
-                        bookingId: booking._id.toString(),
-                        type: "BULK_BOOKING_ACCEPTED"
-                    }
-                });
-                console.log(`FCM Sent to Creator (${booking.createdByModel}): ${creator.name} ✅`);
-            }
-
-            // Remove from other fleets' marketplace view
-            io.emit("remove_bulk_deal", { bookingId: booking._id });
-
-        } catch (err) {
-            console.error("Notification Error (Accept Bulk):", err.message);
-        }
-
-        res.json({ success: true, message: "Bulk deal accepted successfully!", booking });
+        res.json({ 
+            success: true, 
+            message: "To accept this deal, please pay 20% security commission.", 
+            securityAmount,
+            bookingId: booking._id
+        });
 
     } catch (error) {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
 
-// 4. Get Fleet's Own Bulk Bookings
+// 3.5. Verify Bulk Payment (Advance or Security)
+exports.verifyBulkPayment = async (req, res) => {
+    try {
+        const { bookingId, paymentId, type } = req.body; // type: 'advance' or 'security'
+        const booking = await BulkBooking.findById(bookingId);
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        const admin = await Admin.findOne();
+
+        if (type === 'advance') {
+            booking.advancePayment.isPaid = true;
+            booking.advancePayment.razorpayPaymentId = paymentId;
+            booking.status = 'Marketplace';
+            await booking.save();
+
+            // Credit Admin Wallet
+            if (admin) {
+                admin.walletBalance += booking.advancePayment.amount;
+                await admin.save();
+                await Transaction.create({
+                    user: admin._id, userModel: 'Admin', amount: booking.advancePayment.amount,
+                    type: 'Credit', category: 'Bulk Advance', status: 'Completed',
+                    relatedBooking: booking._id, description: `Advance for Bulk Booking ${booking._id}`
+                });
+            }
+
+            // 🛰️ NOTIFY FLEETS (Original Logic)
+            try {
+                const io = getIO();
+                const fleets = await Fleet.find({ isActive: true });
+                fleets.forEach(fleet => {
+                    io.to(`fleet_${fleet._id}`).emit("new_bulk_deal", {
+                        bookingId: booking._id,
+                        pickup: booking.pickup.address,
+                        offeredPrice: booking.offeredPrice
+                    });
+                });
+            } catch (err) {}
+
+            return res.json({ success: true, message: "Advance paid! Published to Marketplace." });
+
+        } else if (type === 'security') {
+            booking.fleetSecurityPayment.isPaid = true;
+            booking.fleetSecurityPayment.razorpayPaymentId = paymentId;
+            booking.status = 'Accepted';
+            booking.assignedFleet = req.user.id;
+            booking.acceptedAt = new Date();
+            await booking.save();
+
+            // Credit Admin Wallet
+            if (admin) {
+                admin.walletBalance += booking.fleetSecurityPayment.amount;
+                await admin.save();
+                await Transaction.create({
+                    user: admin._id, userModel: 'Admin', amount: booking.fleetSecurityPayment.amount,
+                    type: 'Credit', category: 'Bulk Security', status: 'Completed',
+                    relatedBooking: booking._id, description: `Security from Fleet for Bulk Booking ${booking._id}`
+                });
+            }
+
+            // 🛰️ NOTIFY CREATOR & REMOVE FROM MARKETPLACE
+            try {
+                const io = getIO();
+                const fleet = await Fleet.findById(req.user.id);
+                const creatorId = booking.createdBy.toString();
+
+                // 1. Socket Notification to Creator
+                io.to(creatorId).emit("bulk_booking_update", {
+                    bookingId: booking._id,
+                    status: "Accepted",
+                    fleetName: fleet ? fleet.companyName : "A Fleet Owner",
+                    message: "Your bulk booking has been accepted!"
+                });
+
+                if (booking.createdByModel === 'Agent') {
+                    io.to(`agent_${creatorId}`).emit("bulk_booking_update", {
+                        bookingId: booking._id,
+                        status: "Accepted",
+                        fleetName: fleet ? fleet.companyName : "A Fleet Owner"
+                    });
+                }
+
+                // 2. FCM Push Notification to Creator
+                let creator = null;
+                if (booking.createdByModel === 'User') {
+                    creator = await User.findById(creatorId);
+                } else if (booking.createdByModel === 'Agent') {
+                    creator = await Agent.findById(creatorId);
+                }
+
+                if (creator && creator.fcmToken) {
+                    await sendPushNotification(creator.fcmToken, {
+                        title: "📦 Bulk Booking Accepted!",
+                        body: `Your booking has been accepted by ${fleet ? fleet.companyName : 'a Fleet Owner'}.`,
+                        data: {
+                            bookingId: booking._id.toString(),
+                            type: "BULK_BOOKING_ACCEPTED"
+                        }
+                    });
+                }
+
+                // 3. Remove from other fleets' marketplace view
+                io.emit("remove_bulk_deal", { bookingId: booking._id });
+
+            } catch (err) {
+                console.error("Payment Success Notification Error:", err.message);
+            }
+
+            return res.json({ success: true, message: "Security paid! Deal assigned to you.", booking });
+        }
+
+        res.status(400).json({ success: false, message: "Invalid payment type" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
 exports.getMyBulkBookings = async (req, res) => {
     try {
         const fleetId = req.user.id;
@@ -453,6 +539,33 @@ exports.endBulkBooking = async (req, res) => {
         }
 
         booking.status = "Completed";
+        
+        // 💰 AGENT COMMISSION LOGIC
+        if (booking.createdByModel === 'Agent') {
+            try {
+                const agent = await Agent.findById(booking.createdBy);
+                if (agent) {
+                    const commissionPercent = agent.bulkCommissionPercentage || 5;
+                    const commissionAmount = Math.round(booking.offeredPrice * (commissionPercent / 100));
+                    
+                    agent.walletBalance += commissionAmount;
+                    agent.totalEarnings += commissionAmount;
+                    await agent.save();
+
+                    booking.agentCommissionPaid = true;
+                    booking.agentCommissionAmount = commissionAmount;
+
+                    await Transaction.create({
+                        user: agent._id, userModel: 'Agent', amount: commissionAmount,
+                        type: 'Credit', category: 'Commission', status: 'Completed',
+                        relatedBooking: booking._id, description: `Bulk deal commission (${commissionPercent}%)`
+                    });
+                }
+            } catch (err) {
+                console.error("Bulk Agent Commission Error:", err.message);
+            }
+        }
+
         await booking.save();
 
         // Notify Creator

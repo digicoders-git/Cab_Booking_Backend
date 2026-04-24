@@ -22,7 +22,7 @@ const transactionSchema = new mongoose.Schema({
     },
     category: {
         type: String,
-        enum: ['Ride Earning', 'Commission', 'Withdrawal', 'Refund', 'Admin Adjustment'],
+        enum: ['Ride Earning', 'Commission', 'Withdrawal', 'Refund', 'Admin Adjustment', 'Bulk Advance', 'Bulk Security'],
         required: true
     },
     status: {

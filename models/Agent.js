@@ -28,7 +28,12 @@ const agentSchema = new mongoose.Schema({
     default: 10,
     min: 0,
     max: 100
-
+  },
+  bulkCommissionPercentage: {
+    type: Number,
+    default: 5, // Default 5% for bulk deals
+    min: 0,
+    max: 100
   },
   walletBalance: {
     type: Number,

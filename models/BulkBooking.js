@@ -77,8 +77,8 @@ const bulkBookingSchema = new mongoose.Schema({
     // 🚀 Marketplace Status
     status: {
         type: String,
-        enum: ['Marketplace', 'Accepted', 'Ongoing', 'Completed', 'Cancelled'],
-        default: 'Marketplace'
+        enum: ['PendingPayment', 'Marketplace', 'Accepted', 'Ongoing', 'Completed', 'Cancelled'],
+        default: 'PendingPayment'
     },
 
     // 🏢 Assignment
@@ -100,6 +100,28 @@ const bulkBookingSchema = new mongoose.Schema({
     startOtp: {
         type: String,
         default: null
+    },
+    
+    // 💳 Payment Tracking
+    advancePayment: {
+        amount: { type: Number, default: 0 },
+        isPaid: { type: Boolean, default: false },
+        razorpayOrderId: { type: String, default: null },
+        razorpayPaymentId: { type: String, default: null }
+    },
+    fleetSecurityPayment: {
+        amount: { type: Number, default: 0 },
+        isPaid: { type: Boolean, default: false },
+        razorpayOrderId: { type: String, default: null },
+        razorpayPaymentId: { type: String, default: null }
+    },
+    agentCommissionPaid: {
+        type: Boolean,
+        default: false
+    },
+    agentCommissionAmount: {
+        type: Number,
+        default: 0
     }
 
 
