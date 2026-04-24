@@ -100,6 +100,9 @@ const initSocket = (server) => {
         // 2. Driver Update Location (Live Stream Optimization)
         socket.on("update_location", async (data) => {
             const { driverId, latitude, longitude, heading } = data;
+            
+            // debugging ke liye heading check kar rahe hain
+            console.log(`📡 Incoming Location: Driver ${driverId} -> Heading: ${heading}`);
 
             try {
                 // Fetch driver to get latest status/info for broadcast
