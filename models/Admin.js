@@ -38,6 +38,14 @@ const adminSchema = new mongoose.Schema({
         type: Number,
         default: 10 // Global platform fee % for individual drivers
     },
+    bulkAdvancePercentage: {
+        type: Number,
+        default: 25
+    },
+    bulkSecurityPercentage: {
+        type: Number,
+        default: 20
+    },
     role: {
         type: String,
         enum: ["SuperAdmin", "SubAdmin"],

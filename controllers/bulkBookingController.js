@@ -52,7 +52,10 @@ exports.createBulkBooking = async (req, res) => {
             ? ((offeredPrice - systemEstimatedPrice) / systemEstimatedPrice) * 100 
             : 0;
 
-        const advanceAmount = Math.round(offeredPrice * 0.25);
+        // Fetch dynamic percentages from Admin
+        const adminSettings = await Admin.findOne({ role: 'SuperAdmin' });
+        const advancePct = adminSettings?.bulkAdvancePercentage || 25;
+        const advanceAmount = Math.round(offeredPrice * (advancePct / 100));
 
         const newBooking = await BulkBooking.create({
             createdBy: req.user.id,
@@ -247,7 +250,10 @@ exports.acceptBulkBooking = async (req, res) => {
             return res.status(400).json({ success: false, message: "Sorry, this deal is already taken or unavailable." });
         }
 
-        const securityAmount = Math.round(booking.offeredPrice * 0.20);
+        // Fetch dynamic percentages from Admin
+        const adminSettings = await Admin.findOne({ role: 'SuperAdmin' });
+        const securityPct = adminSettings?.bulkSecurityPercentage || 20;
+        const securityAmount = Math.round(booking.offeredPrice * (securityPct / 100));
         
         booking.fleetSecurityPayment = {
             amount: securityAmount,

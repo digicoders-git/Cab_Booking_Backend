@@ -548,9 +548,53 @@ exports.getLiveDriversTracking = async (req, res) => {
 
     } catch (error) {
         res.status(500).json({
-            success: false,
             message: "Error fetching live tracking data",
             error: error.message
         });
     }
 }
+
+// NEW: Get Global Bulk Booking Settings
+exports.getBulkSettings = async (req, res) => {
+    try {
+        const admin = await Admin.findOne({ role: "SuperAdmin" });
+        if (!admin) return res.status(404).json({ success: false, message: "SuperAdmin not found" });
+
+        res.json({
+            success: true,
+            advancePercentage: admin.bulkAdvancePercentage || 25,
+            securityPercentage: admin.bulkSecurityPercentage || 20
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// NEW: Update Global Bulk Booking Settings
+exports.updateBulkSettings = async (req, res) => {
+    try {
+        const { advancePercentage, securityPercentage } = req.body;
+
+        // Only SuperAdmin should be allowed to change global financial settings
+        const admin = await Admin.findById(req.user.id);
+        if (!admin || admin.role !== "SuperAdmin") {
+            return res.status(403).json({ success: false, message: "Unauthorized: Only SuperAdmin can change global settings" });
+        }
+
+        if (advancePercentage !== undefined) admin.bulkAdvancePercentage = advancePercentage;
+        if (securityPercentage !== undefined) admin.bulkSecurityPercentage = securityPercentage;
+
+        await admin.save();
+
+        res.json({
+            success: true,
+            message: "Bulk Booking settings updated successfully",
+            settings: {
+                advancePercentage: admin.bulkAdvancePercentage,
+                securityPercentage: admin.bulkSecurityPercentage
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};

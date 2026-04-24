@@ -13,7 +13,9 @@ const {
     getAllAdmins,
     updateAdminPermissions,
     deleteAdmin,
-    getSingleAdmin
+    getSingleAdmin,
+    getBulkSettings,
+    updateBulkSettings
 } = require("../controllers/adminController")
 const { registerAgent } = require("../controllers/agentController")
 const { createFleet } = require("../controllers/fleetController")
@@ -43,5 +45,9 @@ router.get("/subadmin/all", auth, checkPermission("STAFF_VIEW"), getAllAdmins)
 router.get("/subadmin/:id", auth, checkPermission("STAFF_VIEW"), getSingleAdmin)
 router.put("/subadmin/permissions/:id", auth, checkPermission("STAFF_MANAGE"), updateAdminPermissions)
 router.delete("/subadmin/:id", auth, checkPermission("STAFF_MANAGE"), deleteAdmin)
+
+// Global Bulk Settings
+router.get("/bulk-settings", auth, adminOnly, getBulkSettings)
+router.put("/bulk-settings", auth, adminOnly, updateBulkSettings)
 
 module.exports = router
