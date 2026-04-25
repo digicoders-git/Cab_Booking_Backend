@@ -685,7 +685,6 @@ exports.updateFcmToken = async (req, res) => {
             const { subscribeToTopic } = require("../utils/fcmNotification");
             await subscribeToTopic(fcmToken, "all");
             await subscribeToTopic(fcmToken, "fleet");
-            await subscribeToTopic(fcmToken, "agent");
         } catch (topicErr) {
             console.error("Topic Sync Error:", topicErr.message);
         }

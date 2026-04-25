@@ -91,93 +91,11 @@ exports.createBulkBooking = async (req, res) => {
         });
 
 
-        // 🛰️ STRICT TARGETED NOTIFICATION LOGIC
-        // Find Fleets that have ENOUGH quantity of required approved cars
-        const fleets = await Fleet.find({ isActive: true });
-        console.log(`[BULK-DEBUG] Total Active Fleets found: ${fleets.length}`);
-
-        let eligibleFleetIds = [];
-
-        for (const fleet of fleets) {
-            let isEveryRequirementMet = true;
-            console.log(`[BULK-DEBUG] Checking eligibility for Fleet: ${fleet.companyName} (${fleet._id})`);
-
-            for (const reqItem of carsRequired) {
-                const availableCount = await FleetCar.countDocuments({
-                    fleetId: fleet._id,
-                    carType: reqItem.category,
-                    isApproved: true,
-                    isActive: true
-                });
-
-                console.log(`  - Category ${reqItem.category}: Needs ${reqItem.quantity}, Has ${availableCount}`);
-
-                if (availableCount < (reqItem.quantity || 1)) {
-                    isEveryRequirementMet = false;
-                    console.log(`  - ❌ Requirement not met for this category.`);
-                    break;
-                }
-            }
-
-            if (isEveryRequirementMet) {
-                eligibleFleetIds.push(fleet._id);
-                console.log(`  - ✅ Fleet ${fleet.companyName} is ELIGIBLE.`);
-            }
-        }
-
-        if (eligibleFleetIds.length > 0) {
-            try {
-                const io = getIO();
-                eligibleFleetIds.forEach(fleetId => {
-                    io.to(`fleet_${fleetId.toString()}`).emit("new_bulk_deal", {
-                        bookingId: newBooking._id,
-                        pickup: pickup.address,
-                        drop: drop.address,
-                        dateTime: pickupDateTime,
-                        tripType: newBooking.tripType,
-                        returnDateTime: newBooking.returnDateTime,
-                        offeredPrice: offeredPrice,
-                        cars: carsRequired.length
-                    });
-                });
-                console.log(`[BULK-DEBUG] Socket events emitted to ${eligibleFleetIds.length} Fleets.`);
-                
-                // --- FCM PUSH NOTIFICATION ---
-                for (const fleetId of eligibleFleetIds) {
-                    const fleet = await Fleet.findById(fleetId);
-                    if (fleet && fleet.fcmToken) {
-                        console.log(`[BULK-DEBUG] Sending FCM to ${fleet.companyName}. Token: ${fleet.fcmToken.substring(0, 10)}...`);
-                        try {
-                            const fcmResult = await sendPushNotification(fleet.fcmToken, {
-                                title: `📦 New Bulk Deal: ₹${offeredPrice}`,
-                                body: `New bulk request at ${pickup.address.split(',')[0]}. Check marketplace!`,
-                                data: {
-                                    bookingId: newBooking._id.toString(),
-                                    type: "NEW_BULK_DEAL"
-                                }
-                            });
-                            console.log(`[BULK-DEBUG] FCM Success for ${fleet.companyName}:`, fcmResult);
-                        } catch (fcmErr) {
-                            console.error(`[BULK-DEBUG] FCM Error for ${fleet.companyName}:`, fcmErr.message);
-                        }
-                    } else {
-                        console.log(`[BULK-DEBUG] ⚠️ Skipping FCM for ${fleet?.companyName || fleetId} - Token Missing!`);
-                    }
-                }
-
-            } catch (err) {
-                console.error("[BULK-DEBUG] Major Socket/FCM Error:", err.message);
-            }
-        } else {
-            console.log("[BULK-DEBUG] ⚠️ No eligible fleets found for this requirement.");
-        }
-
-
-        res.status(201).json({
-            success: true,
-            message: "Bulk booking request created in Marketplace",
-            booking: newBooking
-        });
+        // res.status(201).json({
+        //     success: true,
+        //     message: "Bulk booking request created in Marketplace",
+        //     booking: newBooking
+        // });
 
     } catch (error) {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
@@ -299,18 +217,60 @@ exports.verifyBulkPayment = async (req, res) => {
                 });
             }
 
-            // 🛰️ NOTIFY FLEETS (Original Logic)
+            // 🛰️ NOTIFY FLEETS (Targeted Logic)
             try {
                 const io = getIO();
                 const fleets = await Fleet.find({ isActive: true });
-                fleets.forEach(fleet => {
-                    io.to(`fleet_${fleet._id}`).emit("new_bulk_deal", {
-                        bookingId: booking._id,
-                        pickup: booking.pickup.address,
-                        offeredPrice: booking.offeredPrice
+                let eligibleFleetIds = [];
+
+                for (const fleet of fleets) {
+                    let isEveryRequirementMet = true;
+                    for (const reqItem of booking.carsRequired) {
+                        const availableCount = await FleetCar.countDocuments({
+                            fleetId: fleet._id,
+                            carType: reqItem.category,
+                            isApproved: true,
+                            isActive: true
+                        });
+                        if (availableCount < (reqItem.quantity || 1)) {
+                            isEveryRequirementMet = false;
+                            break;
+                        }
+                    }
+                    if (isEveryRequirementMet) eligibleFleetIds.push(fleet._id);
+                }
+
+                if (eligibleFleetIds.length > 0) {
+                    eligibleFleetIds.forEach(fleetId => {
+                        io.to(`fleet_${fleetId.toString()}`).emit("new_bulk_deal", {
+                            bookingId: booking._id,
+                            pickup: booking.pickup.address,
+                            drop: booking.drop.address,
+                            dateTime: booking.pickupDateTime,
+                            tripType: booking.tripType,
+                            offeredPrice: booking.offeredPrice,
+                            cars: booking.carsRequired.length
+                        });
                     });
-                });
-            } catch (err) {}
+
+                    // --- FCM PUSH NOTIFICATION ---
+                    for (const fleetId of eligibleFleetIds) {
+                        const fleet = await Fleet.findById(fleetId);
+                        if (fleet?.fcmToken) {
+                            await sendPushNotification(fleet.fcmToken, {
+                                title: `📦 New Bulk Deal: ₹${booking.offeredPrice}`,
+                                body: `New bulk request at ${booking.pickup.address.split(',')[0]}. Check marketplace!`,
+                                data: {
+                                    bookingId: booking._id.toString(),
+                                    type: "NEW_BULK_DEAL"
+                                }
+                            });
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("FCM/Socket Error during Bulk Advance Payment:", err.message);
+            }
 
             return res.json({ success: true, message: "Advance paid! Published to Marketplace." });
 
