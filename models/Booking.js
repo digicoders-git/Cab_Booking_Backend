@@ -112,6 +112,14 @@ const bookingSchema = new mongoose.Schema({
     enum: ["Cash", "Online", "Wallet"],
     default: "Cash"
   },
+  razorpayOrderId: {
+    type: String,
+    default: null
+  },
+  razorpayPaymentId: {
+    type: String,
+    default: null
+  },
 
   // Assignment / Execution (Phase 3 elements)
   assignedDriver: {

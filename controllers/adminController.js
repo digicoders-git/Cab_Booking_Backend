@@ -6,6 +6,10 @@ const Agent = require("../models/Agent")
 const Fleet = require("../models/Fleet")
 const Booking = require("../models/Booking")
 const Transaction = require("../models/Transaction")
+const Vendor = require("../models/Vendor")
+const ServiceArea = require("../models/ServiceArea")
+const CarCategory = require("../models/CarCategory")
+const Support = require("../models/Support")
 const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness")
 
 exports.registerAdmin = async (req, res) => {
@@ -310,9 +314,16 @@ exports.getSingleAdmin = async (req, res) => {
 
 exports.getDashboardStats = async (req, res) => {
     try {
+        const admin = await Admin.findById(req.user.id);
+        const driverLiabilities = (await Driver.aggregate([{ $group: { _id: null, total: { $sum: "$walletBalance" } } }]))[0]?.total || 0;
+        const agentLiabilities = (await Agent.aggregate([{ $group: { _id: null, total: { $sum: "$walletBalance" } } }]))[0]?.total || 0;
+        const fleetLiabilities = (await Fleet.aggregate([{ $group: { _id: null, total: { $sum: "$walletBalance" } } }]))[0]?.total || 0;
+        const vendorLiabilities = (await Vendor.aggregate([{ $group: { _id: null, total: { $sum: "$walletBalance" } } }]))[0]?.total || 0;
+
         const stats = {
             counts: {
                 users: await User.countDocuments(),
+                admins: await Admin.countDocuments({ role: { $ne: "SuperAdmin" } }),
                 drivers: {
                     total: await Driver.countDocuments(),
                     approved: await Driver.countDocuments({ isApproved: true }),
@@ -321,17 +332,75 @@ exports.getDashboardStats = async (req, res) => {
                 },
                 agents: await Agent.countDocuments(),
                 fleets: await Fleet.countDocuments(),
+                vendors: await Vendor.countDocuments(),
+                serviceAreas: await ServiceArea.countDocuments({ isActive: true }),
+                carCategories: await CarCategory.countDocuments({ isActive: true }),
+                supportTickets: {
+                    total: await Support.countDocuments(),
+                    pending: await Support.countDocuments({ status: "Open" })
+                },
                 bookings: {
                     total: await Booking.countDocuments(),
                     completed: await Booking.countDocuments({ bookingStatus: "Completed" }),
                     pending: await Booking.countDocuments({ bookingStatus: "Pending" }),
                     cancelled: await Booking.countDocuments({ bookingStatus: "Cancelled" }),
-                    ongoing: await Booking.countDocuments({ bookingStatus: "Ongoing" })
+                    ongoing: await Booking.countDocuments({ bookingStatus: "Ongoing" }),
+                    onlinePayments: await Booking.countDocuments({ paymentMethod: "Online" }),
+                    cashPayments: await Booking.countDocuments({ paymentMethod: "Cash" }),
+                    sharedRides: await Booking.countDocuments({ rideType: "Shared" }),
+                    privateRides: await Booking.countDocuments({ rideType: "Private" }),
+                    todayBookings: await Booking.countDocuments({ createdAt: { $gte: new Date().setHours(0,0,0,0) } })
+                },
+                users: {
+                    total: await User.countDocuments(),
+                    today: await User.countDocuments({ createdAt: { $gte: new Date().setHours(0,0,0,0) } })
                 }
             },
+            driverStats: {
+                total: await Driver.countDocuments(),
+                online: await Driver.countDocuments({ isApproved: true, isOnline: true }),
+                offline: await Driver.countDocuments({ isApproved: true, isOnline: false }),
+                busy: await Driver.countDocuments({ isApproved: true, isAvailable: false }),
+                idle: await Driver.countDocuments({ isApproved: true, isOnline: true, isAvailable: true }),
+                rejected: await Driver.countDocuments({ isRejected: true }),
+                today: await Driver.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0,0,0,0)) } })
+            },
+            partnerStats: {
+                todayAgents: await Agent.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0,0,0,0)) } }),
+                todayFleets: await Fleet.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0,0,0,0)) } }),
+                todayVendors: await Vendor.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0,0,0,0)) } })
+            },
+            payoutStats: {
+                totalPayouts: (await Transaction.aggregate([
+                    { $match: { category: "Withdrawal", status: "Completed" } },
+                    { $group: { _id: null, total: { $sum: "$amount" } } }
+                ]))[0]?.total || 0,
+                pendingPayoutsCount: await Transaction.countDocuments({ category: "Withdrawal", status: "Pending" })
+            },
+            infrastructure: {
+                totalAreas: await ServiceArea.countDocuments(),
+                activeAreas: await ServiceArea.countDocuments({ isActive: true }),
+                inactiveAreas: await ServiceArea.countDocuments({ isActive: false })
+            },
             earnings: {
-                adminWallet: 0,
-                totalEarnings: 0
+                adminWallet: admin ? admin.walletBalance : 0,
+                totalEarnings: admin ? admin.totalEarnings : 0,
+                partnerLiabilities: driverLiabilities + agentLiabilities + fleetLiabilities + vendorLiabilities
+            },
+            todayFinancials: {
+                revenue: (await Booking.aggregate([
+                    { $match: { bookingStatus: "Completed", createdAt: { $gte: new Date(new Date().setHours(0,0,0,0)) } } },
+                    { $group: { _id: null, total: { $sum: "$actualFare" } } }
+                ]))[0]?.total || 0,
+                profit: (await Transaction.aggregate([
+                    { $match: { userModel: "Admin", category: "Commission", createdAt: { $gte: new Date(new Date().setHours(0,0,0,0)) } } },
+                    { $group: { _id: null, total: { $sum: "$amount" } } }
+                ]))[0]?.total || 0
+            },
+            verifications: {
+                pendingDrivers: await Driver.countDocuments({ isApproved: false, isRejected: false }),
+                pendingFleets: await Fleet.countDocuments({ isActive: true }), // Fleets don't have isApproved yet, just active
+                pendingVendors: await Vendor.countDocuments({ isApproved: false })
             },
             recentBookings: await Booking.find()
                 .limit(5)
@@ -596,5 +665,71 @@ exports.updateBulkSettings = async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// NEW: Radius-based Driver Search for Admin
+exports.getDriversByRadius = async (req, res) => {
+    try {
+        const { lat, lng, radius } = req.query;
+
+        if (!lat || !lng || !radius) {
+            return res.status(400).json({
+                success: false,
+                message: "Latitude, Longitude aur Radius zaroori hain bhai."
+            });
+        }
+
+        const centerLat = parseFloat(lat);
+        const centerLng = parseFloat(lng);
+        const searchRadius = parseFloat(radius);
+
+        // Fetch all approved drivers with ALL necessary fields for the table
+        const drivers = await Driver.find({ isApproved: true })
+            .select("name phone email isOnline isAvailable currentLocation carDetails image address city state pincode password")
+            .populate("carDetails.carType", "name");
+
+        // Use Haversine formula to filter
+        const filteredDrivers = drivers.filter(driver => {
+            if (!driver.currentLocation || driver.currentLocation.latitude === null || driver.currentLocation.longitude === null) {
+                return false;
+            }
+
+            const dLat = driver.currentLocation.latitude;
+            const dLng = driver.currentLocation.longitude;
+
+            const R = 6371; // Earth's radius in KM
+            const dLatRad = (dLat - centerLat) * Math.PI / 180;
+            const dLonRad = (dLng - centerLng) * Math.PI / 180;
+            
+            const a =
+                Math.sin(dLatRad / 2) * Math.sin(dLatRad / 2) +
+                Math.cos(centerLat * Math.PI / 180) * Math.cos(dLat * Math.PI / 180) *
+                Math.sin(dLonRad / 2) * Math.sin(dLonRad / 2);
+            
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            const distance = R * c;
+
+            // Attach distance to the driver object for frontend display
+            driver._doc.distanceFromCenter = distance.toFixed(2);
+            
+            return distance <= searchRadius;
+        });
+
+        res.json({
+            success: true,
+            count: filteredDrivers.length,
+            center: { lat: centerLat, lng: centerLng },
+            radius: searchRadius,
+            drivers: filteredDrivers
+        });
+
+    } catch (error) {
+        console.error("Radius Search Error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Radius search fail ho gaya bhai.",
+            error: error.message
+        });
     }
 };

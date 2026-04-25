@@ -164,10 +164,14 @@ exports.rejectWithdrawal = async (req, res) => {
     }
 };
 
-// 5. Admin: Get All Transactions in System
+// 5. Admin: Get All Transactions (Filtered to Admin by default for Wallet Center)
 exports.getAllTransactions = async (req, res) => {
     try {
-        const transactions = await Transaction.find()
+        // Default filter to only show Admin's own transactions for the Wallet Command Center
+        // But allowing an optional query param if we ever need to see everything
+        const filter = req.query.all === 'true' ? {} : { userModel: 'Admin' };
+
+        const transactions = await Transaction.find(filter)
             .populate("user", "name phone image")
             .sort({ createdAt: -1 })
             .limit(100);

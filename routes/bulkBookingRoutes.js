@@ -15,6 +15,9 @@ router.post("/create", auth, bulkBookingController.createBulkBooking);
 // 4. View Own (Fleet)
 router.get("/my-bulk-rides", auth, fleetOnly, bulkBookingController.getMyBulkBookings);
 
+// 4.1. Assign Driver to Bulk Booking
+router.post("/assign-driver/:bookingId", auth, fleetOnly, bulkBookingController.assignDriversToBulk);
+
 // 5. View Own (Creator/Admin)
 router.get("/my-requests", auth, bulkBookingController.getMyCreatedRequests);
 
@@ -32,6 +35,13 @@ router.post("/end/:bookingId", auth, bulkBookingController.endBulkBooking);
 
 // 10. Verify Payment (Advance/Security)
 router.post("/verify-payment", auth, bulkBookingController.verifyBulkPayment);
+
+// 11. Driver specific: My assigned bulk trips
+router.get("/driver/my-assignments", auth, bulkBookingController.getDriverBulkAssignments);
+
+// 12. Driver specific: Start/End individual assignment
+router.post("/driver/start/:bookingId", auth, bulkBookingController.startIndividualDriverBulkTrip);
+router.post("/driver/end/:bookingId", auth, bulkBookingController.endIndividualDriverBulkTrip);
 
 module.exports = router;
 

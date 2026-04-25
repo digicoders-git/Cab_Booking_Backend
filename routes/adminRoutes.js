@@ -15,7 +15,8 @@ const {
     deleteAdmin,
     getSingleAdmin,
     getBulkSettings,
-    updateBulkSettings
+    updateBulkSettings,
+    getDriversByRadius
 } = require("../controllers/adminController")
 const { registerAgent } = require("../controllers/agentController")
 const { createFleet } = require("../controllers/fleetController")
@@ -34,6 +35,7 @@ router.put("/profile-update", auth, adminOnly, upload.single("image"), updatePro
 router.get("/dashboard-stats", auth, checkPermission("DASHBOARD_READ"), getDashboardStats)
 router.get("/full-report", auth, checkPermission("REPORT_READ"), getSystemReport)
 router.get("/live-tracking", auth, checkPermission("TRACKING_READ"), getLiveDriversTracking)
+router.get("/radius-search", auth, checkPermission("TRACKING_READ"), getDriversByRadius)
 
 // Admin creates Agent / Fleet (Redundant but kept for compatibility)
 router.post("/create-agent", auth, checkPermission("AGENT_CREATE"), upload.single("image"), registerAgent)

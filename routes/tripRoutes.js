@@ -12,7 +12,9 @@ const {
     completeStop,
     cancelTripByDriver,
     getDriverLocation,
-    getDriverTrips
+    getDriverTrips,
+    initiateTripPayment,
+    verifyTripPayment
 } = require("../controllers/tripController");
 
 const { auth, driverOnly } = require("../middleware/auth"); 
@@ -47,5 +49,9 @@ router.get("/track/:bookingId", auth, getDriverLocation);
 
 // 7. Driver's Own Bookings
 router.get("/driver/my-trips", auth, driverOnly, getDriverTrips);
+
+// 8. Payments for Normal Trips
+router.post("/execute/:bookingId/initiate-payment", auth, driverOnly, initiateTripPayment);
+router.post("/execute/verify-payment", auth, driverOnly, verifyTripPayment);
 
 module.exports = router;

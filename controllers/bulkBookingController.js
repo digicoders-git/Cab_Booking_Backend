@@ -1,6 +1,7 @@
 const BulkBooking = require("../models/BulkBooking");
 const CarCategory = require("../models/CarCategory");
 const FleetCar = require("../models/FleetCar");
+const FleetDriver = require("../models/FleetDriver");
 const Fleet = require("../models/Fleet");
 const { getIO } = require("../socket/socket");
 const serviceAreaController = require("./serviceAreaController");
@@ -9,6 +10,14 @@ const Transaction = require("../models/Transaction");
 const Admin = require("../models/Admin");
 const Agent = require("../models/Agent");
 const User = require("../models/User");
+const Driver = require("../models/Driver");
+const Razorpay = require("razorpay");
+
+// Initialize Razorpay
+const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET
+});
 
 
 // 1. Create Bulk Booking Request
@@ -107,7 +116,10 @@ exports.getMarketplace = async (req, res) => {
     try {
         const { id, role } = req.user;
 
-        let query = { status: 'Marketplace' };
+        let query = { 
+            status: 'Marketplace',
+            pickupDateTime: { $gte: new Date() } // Only show future bookings
+        };
 
         // If it's a Fleet Owner, only show deals relevant to their approved cars
         if (role === 'fleet') {
@@ -209,11 +221,20 @@ exports.verifyBulkPayment = async (req, res) => {
             // Credit Admin Wallet
             if (admin) {
                 admin.walletBalance += booking.advancePayment.amount;
-                await admin.save();
+                // Record Admin Credit (for advance received)
                 await Transaction.create({
                     user: admin._id, userModel: 'Admin', amount: booking.advancePayment.amount,
                     type: 'Credit', category: 'Bulk Advance', status: 'Completed',
-                    relatedBooking: booking._id, description: `Advance for Bulk Booking ${booking._id}`
+                    relatedBooking: booking._id, description: `Advance received for Bulk Booking #${booking._id.toString().slice(-6)}`
+                });
+            }
+
+            // 💰 NEW: Record User Debit (for payment made)
+            if (booking.createdByModel === 'User') {
+                await Transaction.create({
+                    user: booking.createdBy, userModel: 'User', amount: booking.advancePayment.amount,
+                    type: 'Debit', category: 'Bulk Advance', status: 'Completed',
+                    relatedBooking: booking._id, description: `Advance paid for Bulk Booking #${booking._id.toString().slice(-6)}`
                 });
             }
 
@@ -293,6 +314,19 @@ exports.verifyBulkPayment = async (req, res) => {
                 });
             }
 
+            // --- NEW: Debit Fleet Wallet Balance & History ---
+            const fleet = await Fleet.findById(req.user.id);
+            if (fleet) {
+                fleet.walletBalance -= booking.fleetSecurityPayment.amount;
+                await fleet.save();
+            }
+
+            await Transaction.create({
+                user: req.user.id, userModel: 'Fleet', amount: booking.fleetSecurityPayment.amount,
+                type: 'Debit', category: 'Bulk Security', status: 'Completed',
+                relatedBooking: booking._id, description: `Security paid to accept Bulk Deal #${booking._id.toString().slice(-6)}`
+            });
+
             // 🛰️ NOTIFY CREATOR & REMOVE FROM MARKETPLACE
             try {
                 const io = getIO();
@@ -349,12 +383,137 @@ exports.verifyBulkPayment = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// 3. Assign Drivers & Cars to Bulk Booking (Fleet Only)
+exports.assignDriversToBulk = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const { assignments } = req.body; // Expecting [{ driverId, carId }, ...]
+        const fleetId = req.user.id;
+
+        if (!assignments || !Array.isArray(assignments)) {
+            return res.status(400).json({ success: false, message: "Invalid assignments format." });
+        }
+
+        const booking = await BulkBooking.findById(bookingId);
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        // Security Check
+        if (booking.assignedFleet?.toString() !== fleetId) {
+            return res.status(403).json({ success: false, message: "You are not authorized to assign drivers to this booking." });
+        }
+
+        // 🛡️ SECURITY CHECK: Don't allow re-assignment if any trip has already started or completed
+        const activeAssignment = booking.assignedDrivers.find(d => d.status !== 'Pending');
+        if (activeAssignment) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Cannot change drivers because one or more trips have already started or completed." 
+            });
+        }
+
+        // Clear existing assignments for this fleet to allow a clean update
+        booking.assignedDrivers = [];
+
+        const results = [];
+        const errors = [];
+
+        for (const item of assignments) {
+            const { driverId, carId } = item;
+
+            // Verify Driver
+            let driver = await Driver.findById(driverId);
+            if (!driver) {
+                const fleetDriver = await FleetDriver.findById(driverId);
+                if (fleetDriver) driver = await Driver.findOne({ email: fleetDriver.email });
+            }
+
+            if (!driver || (driver.createdBy?.toString() !== fleetId && driver.createdByModel !== "Fleet")) {
+                errors.push(`Driver ${driverId} not found or not in your fleet.`);
+                continue;
+            }
+
+            const actualDriverId = driver._id;
+
+            // Verify Car
+            const car = await FleetCar.findById(carId);
+            if (!car || car.fleetId?.toString() !== fleetId) {
+                errors.push(`Car ${carId} not found or not in your fleet.`);
+                continue;
+            }
+
+            // Clash Detector
+            const bufferHours = 4;
+            const tripStartTime = new Date(booking.pickupDateTime);
+            const bufferStart = new Date(tripStartTime.getTime() - bufferHours * 60 * 60 * 1000);
+            const bufferEnd = new Date(tripStartTime.getTime() + bufferHours * 60 * 60 * 1000);
+
+            const conflictingBooking = await BulkBooking.findOne({
+                "assignedDrivers.driver": actualDriverId,
+                status: { $in: ['Accepted', 'Ongoing'] },
+                _id: { $ne: bookingId },
+                pickupDateTime: { $gte: bufferStart, $lte: bufferEnd }
+            });
+
+            if (conflictingBooking) {
+                errors.push(`Clash! Driver ${driver.name} is busy with another booking at ${conflictingBooking.pickupDateTime.toLocaleString()}.`);
+                continue;
+            }
+
+            // Already assigned to this booking?
+            const isAlready = (booking.assignedDrivers || []).some(d => d.driver.toString() === actualDriverId.toString());
+            if (isAlready) {
+                errors.push(`Driver ${driver.name} is already assigned to this booking.`);
+                continue;
+            }
+
+            // Add to array
+            booking.assignedDrivers.push({ driver: actualDriverId, car: carId });
+            results.push(driver.name);
+
+            // Notify Driver
+            try {
+                const { getIO } = require("../socket/socket");
+                const io = getIO();
+                io.to(actualDriverId.toString()).emit("new_bulk_assignment", {
+                    bookingId: booking._id,
+                    pickup: booking.pickup.address,
+                    dateTime: booking.pickupDateTime
+                });
+
+                if (driver.fcmToken) {
+                    await sendPushNotification(driver.fcmToken, {
+                        title: "📦 New Bulk Assignment",
+                        body: `You are assigned to a bulk trip at ${booking.pickup.address.split(',')[0]}.`,
+                        data: { bookingId: booking._id.toString(), type: "BULK_ASSIGNMENT" }
+                    });
+                }
+            } catch (err) {}
+        }
+
+        await booking.save();
+
+        res.json({
+            success: true,
+            message: errors.length > 0 
+                ? `Assigned: ${results.join(", ")}. Errors: ${errors.join(" | ")}`
+                : `Successfully assigned ${results.length} drivers!`,
+            assignedDrivers: booking.assignedDrivers
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 exports.getMyBulkBookings = async (req, res) => {
     try {
         const fleetId = req.user.id;
         const bookings = await BulkBooking.find({ assignedFleet: fleetId })
             .populate("carsRequired.category", "name image")
-            .populate("createdBy", "name phone image") // 🟢 Added this line
+            .populate("createdBy", "name phone image")
+            .populate("assignedDrivers.driver", "name phone image")
+            .populate("assignedDrivers.car", "carNumber carModel")
             .sort({ acceptedAt: -1 });
 
 
@@ -369,7 +528,8 @@ exports.getMyCreatedRequests = async (req, res) => {
     try {
         const bookings = await BulkBooking.find({ createdBy: req.user.id })
             .populate("carsRequired.category", "name image")
-            .populate("assignedFleet", "companyName phone")
+            .populate("assignedFleet", "companyName phone name image")
+            .populate("assignedDrivers.driver", "name phone image")
             .sort({ createdAt: -1 });
 
         res.json({ success: true, count: bookings.length, bookings });
@@ -425,13 +585,11 @@ exports.deleteBulkBooking = async (req, res) => {
             return res.status(404).json({ success: false, message: "Booking not found" });
         }
 
-        // Optional: Check if trip is ongoing
-        if (['Ongoing', 'Accepted'].includes(booking.status)) {
-            // Agar aap chahte hain ki Accepted rides bhi delete ho jayein, toh ye condition hata sakte hain.
-            // Lekin safety ke liye main ise rakha hai.
+        // Strict Rule: Only Marketplace or Accepted rides can be deleted
+        if (!['Marketplace', 'Accepted'].includes(booking.status)) {
             return res.status(400).json({ 
                 success: false, 
-                message: `Cannot delete a ${booking.status} ride. Please cancel it first or wait for completion.` 
+                message: `Cannot delete a ${booking.status} ride. Admin can only delete Marketplace or Accepted rides.` 
             });
         }
 
@@ -547,6 +705,358 @@ exports.endBulkBooking = async (req, res) => {
 
     } catch (error) {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// 10. Get Bulk Assignments for a Specific Driver
+exports.getDriverBulkAssignments = async (req, res) => {
+    try {
+        const driverId = req.user.id;
+        
+        // Find bulk bookings where this driver is in the assignedDrivers array
+        const assignments = await BulkBooking.find({
+            "assignedDrivers.driver": driverId,
+            status: { $in: ["Accepted", "Ongoing"] }
+        })
+        .populate("assignedDrivers.car", "carNumber carModel")
+        .populate("createdBy", "name phone image")
+        .sort({ pickupDateTime: 1 });
+
+        // Transform results to only show the relevant assignment for this driver
+        const myAssignments = assignments.map(ride => {
+            const myPair = ride.assignedDrivers.find(d => d.driver.toString() === driverId.toString());
+            return {
+                ...ride.toObject(),
+                myCar: myPair?.car,
+                myStatus: myPair?.status || 'Pending'
+            };
+        });
+
+        res.json({ success: true, count: myAssignments.length, assignments: myAssignments });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// 11. Individual Driver Start for Bulk Trip
+exports.startIndividualDriverBulkTrip = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const { otp } = req.body;
+        const driverId = req.user.id;
+
+        const booking = await BulkBooking.findById(bookingId);
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        // Verify main OTP
+        if (booking.startOtp !== otp) {
+            return res.status(400).json({ success: false, message: "Invalid OTP! Please check with the customer." });
+        }
+
+        // Find this driver's assignment
+        const assignment = booking.assignedDrivers.find(d => d.driver.toString() === driverId.toString());
+        if (!assignment) return res.status(403).json({ success: false, message: "You are not assigned to this booking." });
+
+        if (assignment.status !== 'Pending') {
+            return res.status(400).json({ success: false, message: `Trip is already ${assignment.status}` });
+        }
+
+        // Update individual status
+        assignment.status = 'Ongoing';
+        assignment.startedAt = new Date();
+
+        // If it's the first driver to start, update overall booking status
+        if (booking.status === 'Accepted') {
+            booking.status = 'Ongoing';
+        }
+
+        await booking.save();
+
+        res.json({ success: true, message: "Trip started successfully! Have a safe drive.", booking });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// 12. Individual Driver End for Bulk Trip
+exports.endIndividualDriverBulkTrip = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const { paymentMode } = req.body; // 'Cash' or 'Online' - only required for last driver
+        const driverId = req.user.id;
+
+        const booking = await BulkBooking.findById(bookingId);
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        const assignment = booking.assignedDrivers.find(d => d.driver.toString() === driverId.toString());
+        if (!assignment) return res.status(403).json({ success: false, message: "Not assigned." });
+
+        if (assignment.status !== 'Ongoing') {
+            return res.status(400).json({ success: false, message: "Trip is not ongoing." });
+        }
+
+        // Check if this is the LAST driver
+        const completedCount = booking.assignedDrivers.filter(d => d.status === 'Completed').length;
+        const totalDrivers = booking.assignedDrivers.length;
+        const isLastDriver = (completedCount === totalDrivers - 1);
+
+        const remainingBalance = booking.offeredPrice - (booking.advancePayment?.amount || 0);
+
+        if (isLastDriver && !paymentMode && remainingBalance > 0) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Last driver must specify payment mode.", 
+                isLastDriver: true,
+                remainingBalance 
+            });
+        }
+
+        // Update driver specific status
+        assignment.status = 'Completed';
+        assignment.endedAt = new Date();
+
+        // If it's the last driver, handle payment mode
+        if (isLastDriver) {
+            if (paymentMode === 'Online' && remainingBalance > 0) {
+                // Create Razorpay Order for Final Balance
+                try {
+                    const options = {
+                        amount: remainingBalance * 100, // paise
+                        currency: "INR",
+                        receipt: `bulk_final_${bookingId.slice(-6)}`
+                    };
+                    const order = await razorpay.orders.create(options);
+                    return res.json({ 
+                        success: true, 
+                        isOnlinePayment: true,
+                        razorpayOrderId: order.id,
+                        amount: remainingBalance,
+                        key_id: process.env.RAZORPAY_KEY_ID,
+                        bookingId: booking._id
+                    });
+                } catch (err) {
+                    return res.status(500).json({ success: false, message: "Razorpay Error", error: err.message });
+                }
+            }
+
+            booking.status = 'Completed';
+            
+            // Record final payment info (Cash case)
+            booking.finalPayment = {
+                amount: remainingBalance,
+                method: paymentMode || 'Cash',
+                isPaid: true,
+                at: new Date()
+            };
+            
+            // 💰 AUTOMATIC SETTLEMENT LOGIC 💰
+            // (Imports like Admin, Agent, Transaction are already at the top of the file)
+
+            // 1. Credit Agent Commission
+            if (booking.createdByModel === 'Agent' && booking.createdBy) {
+                try {
+                    const agent = await Agent.findById(booking.createdBy);
+                    if (agent) {
+                        const commissionPercent = agent.bulkCommissionPercentage || 5;
+                        const totalDealPrice = booking.offeredPrice || 0;
+                        const commissionAmount = Math.round(totalDealPrice * (commissionPercent / 100));
+                        
+                        if (commissionAmount > 0) {
+                            agent.walletBalance += commissionAmount;
+                            agent.totalEarnings += commissionAmount;
+                            await agent.save();
+
+                            booking.agentCommissionPaid = true;
+                            booking.agentCommissionAmount = commissionAmount;
+
+                            await Transaction.create({
+                                user: agent._id, userModel: 'Agent', amount: commissionAmount,
+                                type: 'Credit', category: 'Commission', status: 'Completed',
+                                relatedBooking: booking._id, description: `Bulk deal commission (${commissionPercent}%)`
+                            });
+                        }
+                    }
+                } catch (err) { console.error("Agent Commission Error:", err.message); }
+            }
+
+            // 2. Settlement with Fleet Owner (Refund part of Advance)
+            try {
+                if (booking.assignedFleet && booking.advancePayment?.isPaid) {
+                    const fleet = await Fleet.findById(booking.assignedFleet);
+                    if (fleet) {
+                        const advanceAmount = booking.advancePayment.amount || 0;
+                        const agentComm = booking.agentCommissionAmount || 0;
+                        const refundToFleet = advanceAmount - agentComm;
+
+                        if (refundToFleet > 0) {
+                            fleet.walletBalance += refundToFleet;
+                            await fleet.save();
+
+                            await Transaction.create({
+                                user: fleet._id, userModel: 'Fleet', amount: refundToFleet,
+                                type: 'Credit', category: 'Refund', status: 'Completed',
+                                relatedBooking: booking._id, description: `Advance refund (Deal #${booking._id.toString().slice(-6)})`
+                            });
+
+                            // 🔴 Debit Admin (Payout to Fleet)
+                            const admin = await Admin.findOne();
+                            if (admin) {
+                                admin.walletBalance -= refundToFleet;
+                                await admin.save();
+                                await Transaction.create({
+                                    user: admin._id, userModel: 'Admin', amount: refundToFleet,
+                                    type: 'Debit', category: 'Bulk Payout', status: 'Completed',
+                                    relatedBooking: booking._id, description: `Refunded advance to Fleet Owner (Deal #${booking._id.toString().slice(-6)})`
+                                });
+                            }
+                        }
+                    }
+                }
+            } catch (err) { console.error("Fleet Settlement Error:", err.message); }
+        }
+
+        await booking.save();
+        res.json({ 
+            success: true, 
+            message: isLastDriver ? "Whole booking completed and settled!" : "Your individual trip completed!",
+            booking 
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// Update verifyBulkPayment to handle 'final'
+const originalVerifyBulkPayment = exports.verifyBulkPayment;
+exports.verifyBulkPayment = async (req, res) => {
+    try {
+        const { bookingId, paymentId, type } = req.body;
+        if (type !== 'final') {
+            return originalVerifyBulkPayment(req, res);
+        }
+
+        const booking = await BulkBooking.findById(bookingId);
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        const remainingBalance = booking.offeredPrice - (booking.advancePayment?.amount || 0);
+
+        booking.status = 'Completed';
+        booking.finalPayment = {
+            amount: remainingBalance,
+            method: 'Online',
+            isPaid: true,
+            at: new Date(),
+            razorpayPaymentId: paymentId
+        };
+
+        // 💰 NEW: Record Admin Credit for the Final Balance Received
+        const admin = await Admin.findOne();
+        if (admin) {
+            admin.walletBalance += remainingBalance;
+            await admin.save();
+            await Transaction.create({
+                user: admin._id, userModel: 'Admin', amount: remainingBalance,
+                type: 'Credit', category: 'Bulk Advance', status: 'Completed',
+                relatedBooking: booking._id, description: `Final balance received for Bulk Booking #${booking._id.toString().slice(-6)}`
+            });
+        }
+
+        // 💰 NEW: Record User Debit (for final payment made)
+        if (booking.createdByModel === 'User') {
+            await Transaction.create({
+                user: booking.createdBy, userModel: 'User', amount: remainingBalance,
+                type: 'Debit', category: 'Bulk Advance', status: 'Completed',
+                relatedBooking: booking._id, description: `Final balance paid for Bulk Booking #${booking._id.toString().slice(-6)}`
+            });
+        }
+
+        // Logic for Agent Commission and Fleet Settlement (Same as endIndividualDriverBulkTrip)
+        // 1. Agent
+        if (booking.createdByModel === 'Agent' && booking.createdBy) {
+            try {
+                const agent = await Agent.findById(booking.createdBy);
+                if (agent) {
+                    const commissionPercent = agent.bulkCommissionPercentage || 5;
+                    const commissionAmount = Math.round((booking.offeredPrice || 0) * (commissionPercent / 100));
+                    
+                    if (commissionAmount > 0) {
+                        agent.walletBalance += commissionAmount;
+                        agent.totalEarnings += commissionAmount;
+                        await agent.save();
+                        
+                        booking.agentCommissionAmount = commissionAmount;
+                        booking.agentCommissionPaid = true;
+
+                        await Transaction.create({
+                            user: agent._id, userModel: 'Agent', amount: commissionAmount,
+                            type: 'Credit', category: 'Commission', status: 'Completed',
+                            relatedBooking: booking._id, description: `Bulk deal commission (Final Online)`
+                        });
+                    }
+                }
+            } catch (err) { console.error("Agent Verification Settlement Error:", err.message); }
+        }
+
+        // 2. Fleet
+        if (booking.assignedFleet) {
+            try {
+                const fleet = await Fleet.findById(booking.assignedFleet);
+                if (fleet) {
+                    const totalPayToFleet = (booking.offeredPrice || 0) - (booking.agentCommissionAmount || 0);
+                    if (totalPayToFleet > 0) {
+                        fleet.walletBalance += totalPayToFleet;
+                        await fleet.save();
+                        await Transaction.create({
+                            user: fleet._id, userModel: 'Fleet', amount: totalPayToFleet,
+                            type: 'Credit', category: 'Bulk Earnings', status: 'Completed',
+                            relatedBooking: booking._id, description: `Bulk deal earnings (Deal #${booking._id.toString().slice(-6)})`
+                        });
+
+                        // 🔴 Debit Admin (Payout to Fleet)
+                        const admin = await Admin.findOne();
+                        if (admin) {
+                            admin.walletBalance -= totalPayToFleet;
+                            await admin.save();
+                            await Transaction.create({
+                                user: admin._id, userModel: 'Admin', amount: totalPayToFleet,
+                                type: 'Debit', category: 'Bulk Payout', status: 'Completed',
+                                relatedBooking: booking._id, description: `Final Payout to Fleet Owner (Deal #${booking._id.toString().slice(-6)})`
+                            });
+                        }
+                    }
+                }
+            } catch (err) { console.error("Fleet Verification Settlement Error:", err.message); }
+        }
+
+        await booking.save();
+        res.json({ success: true, message: "Payment verified and booking completed!", booking });
+
+    } catch (error) {
+        console.error("Critical Verification Error:", error.message);
+        res.status(500).json({ success: false, message: "Verification error", error: error.message });
+    }
+};
+
+// 13. Auto-Expire Old Marketplace Bookings
+exports.autoExpireBookings = async () => {
+    try {
+        const now = new Date();
+        const result = await BulkBooking.updateMany(
+            {
+                status: 'Marketplace',
+                pickupDateTime: { $lt: now }
+            },
+            {
+                $set: { status: 'Expired' }
+            }
+        );
+
+        if (result.modifiedCount > 0) {
+            console.log(`[Auto-Expire] ${result.modifiedCount} bulk bookings marked as Expired.`);
+        }
+    } catch (error) {
+        console.error("[Auto-Expire Error]", error.message);
     }
 };
 

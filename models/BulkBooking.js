@@ -77,7 +77,7 @@ const bulkBookingSchema = new mongoose.Schema({
     // 🚀 Marketplace Status
     status: {
         type: String,
-        enum: ['PendingPayment', 'Marketplace', 'Accepted', 'Ongoing', 'Completed', 'Cancelled'],
+        enum: ['PendingPayment', 'Marketplace', 'Accepted', 'Ongoing', 'Completed', 'Cancelled', 'Expired'],
         default: 'PendingPayment'
     },
 
@@ -87,6 +87,19 @@ const bulkBookingSchema = new mongoose.Schema({
         ref: "Fleet",
         default: null
     },
+    // 🚗 Multiple Driver/Car Assignments for the deal
+    assignedDrivers: [{
+        driver: { type: mongoose.Schema.Types.ObjectId, ref: "Driver" },
+        car: { type: mongoose.Schema.Types.ObjectId, ref: "FleetCar" },
+        status: { 
+            type: String, 
+            enum: ['Pending', 'Ongoing', 'Completed'], 
+            default: 'Pending' 
+        },
+        startedAt: { type: Date, default: null },
+        endedAt: { type: Date, default: null },
+        assignedAt: { type: Date, default: Date.now }
+    }],
     acceptedAt: {
         type: Date,
         default: null
@@ -122,6 +135,12 @@ const bulkBookingSchema = new mongoose.Schema({
     agentCommissionAmount: {
         type: Number,
         default: 0
+    },
+    finalPayment: {
+        amount: { type: Number, default: 0 },
+        method: { type: String, enum: ['Cash', 'Online'], default: null },
+        isPaid: { type: Boolean, default: false },
+        at: { type: Date, default: null }
     }
 
 

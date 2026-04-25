@@ -23,6 +23,7 @@ const vendorRoutes = require("./routes/vendorRoutes"); // NEW: Vendor Panel
 const areaPricingRoutes = require("./routes/areaPricingRoutes"); // NEW: Area Wise Pricing
 const serviceAreaRoutes = require("./routes/serviceAreaRoutes"); // NEW: Service Availability Check
 const bulkBookingRoutes = require("./routes/bulkBookingRoutes"); // NEW: Bulk Booking Marketplace
+const { autoExpireBookings } = require("./controllers/bulkBookingController");
 
 const app = express();
 const server = http.createServer(app);
@@ -65,4 +66,12 @@ const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    
+    // Automation: Check and Expire past bulk bookings every 30 minutes
+    setInterval(() => {
+        autoExpireBookings();
+    }, 30 * 60 * 1000); 
+
+    // Run once immediately on start
+    autoExpireBookings();
 });
