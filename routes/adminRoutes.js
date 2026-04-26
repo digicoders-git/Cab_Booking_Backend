@@ -16,7 +16,9 @@ const {
     getSingleAdmin,
     getBulkSettings,
     updateBulkSettings,
-    getDriversByRadius
+    getDriversByRadius,
+    updateFcmToken,
+    toggleDriverOnlineByAdmin
 } = require("../controllers/adminController")
 const { registerAgent } = require("../controllers/agentController")
 const { createFleet } = require("../controllers/fleetController")
@@ -30,6 +32,7 @@ router.post("/login", loginAdmin)
 
 router.get("/profile", auth, adminOnly, getProfile)
 router.put("/profile-update", auth, adminOnly, upload.single("image"), updateProfile)
+router.put("/update-fcm-token", auth, adminOnly, updateFcmToken)
 
 // Admin Dashboard & Reports
 router.get("/dashboard-stats", auth, checkPermission("DASHBOARD_READ"), getDashboardStats)
@@ -51,5 +54,8 @@ router.delete("/subadmin/:id", auth, checkPermission("STAFF_MANAGE"), deleteAdmi
 // Global Bulk Settings
 router.get("/bulk-settings", auth, adminOnly, getBulkSettings)
 router.put("/bulk-settings", auth, adminOnly, updateBulkSettings)
+
+// Force Driver Online/Offline
+router.put("/driver/toggle-online", auth, adminOnly, toggleDriverOnlineByAdmin)
 
 module.exports = router

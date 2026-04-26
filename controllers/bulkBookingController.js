@@ -528,6 +528,7 @@ exports.getMyCreatedRequests = async (req, res) => {
     try {
         const bookings = await BulkBooking.find({ createdBy: req.user.id })
             .populate("carsRequired.category", "name image")
+            .populate("createdBy", "name phone email")
             .populate("assignedFleet", "companyName phone name image")
             .populate("assignedDrivers.driver", "name phone image")
             .sort({ createdAt: -1 });

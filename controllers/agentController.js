@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const PDFDocument = require("pdfkit");
 const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness");
 const { Parser } = require("json2csv");
+const { sendPushNotification } = require("../utils/fcmNotification");
 
 // Create Agent (Admin Only)
 exports.registerAgent = async (req, res) => {
@@ -767,7 +768,7 @@ exports.getSingleAgent = async (req, res) => {
 // Delete Agent (Admin Only)
 exports.deleteAgent = async (req, res) => {
     try {
-        const agent = await Agent.findByIdAndDelete(req.params.id);
+        const agent = await Agent.findById(req.params.id);
 
         if (!agent) {
             return res.status(404).json({
@@ -775,6 +776,23 @@ exports.deleteAgent = async (req, res) => {
                 message: "Agent not found"
             });
         }
+
+        // 🔔 NOTIFY AGENT: Account Deleted
+        if (agent.fcmToken) {
+            try {
+                await sendPushNotification(agent.fcmToken, {
+                    title: "🗑️ Account Deleted",
+                    body: `Your Booking Agent account has been deleted by the Administrator.`,
+                    data: {
+                        type: "AGENT_ACCOUNT_DELETED"
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (Agent Deletion):", fcmErr.message);
+            }
+        }
+
+        await Agent.findByIdAndDelete(req.params.id);
 
         res.json({
             success: true,
@@ -810,6 +828,22 @@ exports.toggleAgentStatus = async (req, res) => {
             message: `Agent is now ${agent.isActive ? 'Active' : 'Deactivated'}`,
             isActive: agent.isActive
         });
+
+        // 🔔 NOTIFY AGENT: Status Update
+        if (agent.fcmToken) {
+            try {
+                await sendPushNotification(agent.fcmToken, {
+                    title: `🛡️ Account Status Update`,
+                    body: `Your Agent account has been ${agent.isActive ? 'ACTIVATED' : 'DEACTIVATED'} by the Administrator.`,
+                    data: {
+                        type: "AGENT_STATUS_TOGGLE",
+                        isActive: agent.isActive.toString()
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (Agent Status Toggle):", fcmErr.message);
+            }
+        }
 
     } catch (error) {
         res.status(500).json({
@@ -933,6 +967,21 @@ exports.adminUpdateAgent = async (req, res) => {
             message: "Agent updated successfully by Admin",
             agent
         });
+
+        // 🔔 NOTIFY AGENT: Profile Updated
+        if (agent.fcmToken) {
+            try {
+                await sendPushNotification(agent.fcmToken, {
+                    title: "📝 Profile Updated by Admin",
+                    body: `Your Agent profile details have been updated by the Administrator.`,
+                    data: {
+                        type: "AGENT_PROFILE_UPDATED"
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (Agent Admin Update):", fcmErr.message);
+            }
+        }
 
     } catch (error) {
         res.status(500).json({

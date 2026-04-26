@@ -5,6 +5,7 @@ const FleetAssignment = require("../models/FleetAssignment");
 const Transaction = require("../models/Transaction");
 const jwt = require("jsonwebtoken");
 const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness");
+const { sendPushNotification } = require("../utils/fcmNotification");
 
 // Create Fleet (Admin Only)
 exports.createFleet = async (req, res) => {
@@ -296,7 +297,7 @@ exports.getSingleFleet = async (req, res) => {
 // Delete Fleet (Admin Only)
 exports.deleteFleet = async (req, res) => {
     try {
-        const fleet = await Fleet.findByIdAndDelete(req.params.id);
+        const fleet = await Fleet.findById(req.params.id);
 
         if (!fleet) {
             return res.status(404).json({
@@ -304,6 +305,23 @@ exports.deleteFleet = async (req, res) => {
                 message: "Fleet not found"
             });
         }
+
+        // 🔔 NOTIFY FLEET: Account Deleted
+        if (fleet.fcmToken) {
+            try {
+                await sendPushNotification(fleet.fcmToken, {
+                    title: "🗑️ Account Deleted",
+                    body: `Your Fleet Partner account has been deleted by the Administrator.`,
+                    data: {
+                        type: "FLEET_ACCOUNT_DELETED"
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (Fleet Deletion):", fcmErr.message);
+            }
+        }
+
+        await Fleet.findByIdAndDelete(req.params.id);
 
         res.json({
             success: true,
@@ -339,6 +357,22 @@ exports.toggleFleetStatus = async (req, res) => {
             message: `Fleet is now ${fleet.isActive ? 'Active' : 'Deactivated'}`,
             isActive: fleet.isActive
         });
+
+        // 🔔 NOTIFY FLEET: Status Update
+        if (fleet.fcmToken) {
+            try {
+                await sendPushNotification(fleet.fcmToken, {
+                    title: `🛡️ Account Status Update`,
+                    body: `Your Fleet account has been ${fleet.isActive ? 'ACTIVATED' : 'DEACTIVATED'} by the Administrator.`,
+                    data: {
+                        type: "FLEET_STATUS_TOGGLE",
+                        isActive: fleet.isActive.toString()
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (Fleet Status Toggle):", fcmErr.message);
+            }
+        }
 
     } catch (error) {
         res.status(500).json({
@@ -627,6 +661,21 @@ exports.adminUpdateFleet = async (req, res) => {
             message: "Fleet updated successfully by Admin",
             fleet
         });
+
+        // 🔔 NOTIFY FLEET: Profile Updated by Admin
+        if (fleet.fcmToken) {
+            try {
+                await sendPushNotification(fleet.fcmToken, {
+                    title: "📝 Profile Updated by Admin",
+                    body: `Your Fleet profile details have been updated by the Administrator.`,
+                    data: {
+                        type: "FLEET_PROFILE_UPDATED"
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (Fleet Admin Update):", fcmErr.message);
+            }
+        }
 
     } catch (error) {
         res.status(500).json({

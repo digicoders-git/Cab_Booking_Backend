@@ -6,6 +6,8 @@ const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness");
 const bcrypt = require("bcryptjs");
 const FleetCar = require("../models/FleetCar");
 const FleetDriver = require("../models/FleetDriver");
+const Admin = require("../models/Admin");
+const { sendPushNotification } = require("../utils/fcmNotification");
 
 // Register Driver (Open Registration - Pending Admin Approval)
 // Driver can register with car details
@@ -118,6 +120,25 @@ exports.registerDriver = async (req, res) => {
             message: "Driver registration submitted successfully. Waiting for admin approval.",
             driver
         });
+
+        // 🔔 NOTIFY ADMINS: New Driver Registration
+        try {
+            const admins = await Admin.find({ fcmToken: { $ne: null } });
+            if (admins.length > 0) {
+                for (const admin of admins) {
+                    await sendPushNotification(admin.fcmToken, {
+                        title: "🆕 New Driver Registration",
+                        body: `${name} has registered and is waiting for approval.`,
+                        data: {
+                            type: "NEW_DRIVER_REGISTRATION",
+                            driverId: driver._id.toString()
+                        }
+                    });
+                }
+            }
+        } catch (fcmErr) {
+            console.error("FCM Error (New Driver Notification):", fcmErr.message);
+        }
 
     } catch (error) {
         res.status(500).json({
@@ -575,7 +596,7 @@ exports.getSingleDriver = async (req, res) => {
 // Delete Driver (Admin Only)
 exports.deleteDriver = async (req, res) => {
     try {
-        const driver = await Driver.findByIdAndDelete(req.params.id);
+        const driver = await Driver.findById(req.params.id);
 
         if (!driver) {
             return res.status(404).json({
@@ -583,6 +604,23 @@ exports.deleteDriver = async (req, res) => {
                 message: "Driver not found"
             });
         }
+
+        // 🔔 NOTIFY DRIVER: Account Deleted
+        if (driver.fcmToken) {
+            try {
+                await sendPushNotification(driver.fcmToken, {
+                    title: "🗑️ Account Deleted",
+                    body: `Your account has been deleted by the Administrator. Please contact support if you have questions.`,
+                    data: {
+                        type: "ACCOUNT_DELETED"
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (Driver Deletion):", fcmErr.message);
+            }
+        }
+
+        await Driver.findByIdAndDelete(req.params.id);
 
         res.json({
             success: true,
@@ -618,6 +656,22 @@ exports.toggleDriverStatus = async (req, res) => {
             message: `Driver is now ${driver.isActive ? 'Active' : 'Deactivated'}`,
             isActive: driver.isActive
         });
+
+        // 🔔 NOTIFY DRIVER: Account Status Change (Active/Inactive)
+        if (driver.fcmToken) {
+            try {
+                await sendPushNotification(driver.fcmToken, {
+                    title: `🛡️ Account Status Update`,
+                    body: `Your account has been ${driver.isActive ? 'ACTIVATED' : 'DEACTIVATED'} by the Administrator.`,
+                    data: {
+                        type: "ACCOUNT_STATUS_TOGGLE",
+                        isActive: driver.isActive.toString()
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (Account Status Toggle):", fcmErr.message);
+            }
+        }
 
     } catch (error) {
         res.status(500).json({
@@ -778,6 +832,22 @@ exports.approveDriver = async (req, res) => {
             }
         });
 
+        // 🔔 NOTIFY DRIVER: Approval Message
+        if (driver.fcmToken) {
+            try {
+                await sendPushNotification(driver.fcmToken, {
+                    title: "🎉 Account Approved!",
+                    body: `Congratulations ${driver.name}! Admin has approved your account. You can now start accepting rides.`,
+                    data: {
+                        type: "DRIVER_APPROVAL",
+                        driverId: driver._id.toString()
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (Driver Approval):", fcmErr.message);
+            }
+        }
+
     } catch (error) {
         res.status(500).json({
             success: false,
@@ -818,6 +888,22 @@ exports.rejectDriver = async (req, res) => {
                 rejectionReason: driver.rejectionReason
             }
         });
+
+        // 🔔 NOTIFY DRIVER: Rejection Message
+        if (driver.fcmToken) {
+            try {
+                await sendPushNotification(driver.fcmToken, {
+                    title: "⚠️ Registration Rejected",
+                    body: `Your account registration was rejected. Reason: ${driver.rejectionReason}`,
+                    data: {
+                        type: "DRIVER_REJECTION",
+                        reason: driver.rejectionReason
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (Driver Rejection):", fcmErr.message);
+            }
+        }
 
     } catch (error) {
         res.status(500).json({
@@ -950,6 +1036,21 @@ exports.adminUpdateDriver = async (req, res) => {
             message: "Driver updated successfully by Admin",
             driver
         });
+
+        // 🔔 NOTIFY DRIVER: Profile Updated by Admin
+        if (driver.fcmToken) {
+            try {
+                await sendPushNotification(driver.fcmToken, {
+                    title: "📝 Profile Updated by Admin",
+                    body: `Your profile details have been updated by the Administrator. Please check your app for changes.`,
+                    data: {
+                        type: "PROFILE_UPDATED_BY_ADMIN"
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (Admin Profile Update):", fcmErr.message);
+            }
+        }
 
     } catch (error) {
         res.status(500).json({

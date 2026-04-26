@@ -110,6 +110,14 @@ const bulkBookingSchema = new mongoose.Schema({
         type: String,
         trim: true
     },
+    customerName: {
+        type: String,
+        default: null
+    },
+    customerPhone: {
+        type: String,
+        default: null
+    },
     startOtp: {
         type: String,
         default: null

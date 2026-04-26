@@ -11,6 +11,7 @@ const ServiceArea = require("../models/ServiceArea")
 const CarCategory = require("../models/CarCategory")
 const Support = require("../models/Support")
 const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness")
+const { sendPushNotification } = require("../utils/fcmNotification")
 
 exports.registerAdmin = async (req, res) => {
     try {
@@ -259,6 +260,21 @@ exports.updateAdminPermissions = async (req, res) => {
             admin
         });
 
+        // 🔔 NOTIFY SUB-ADMIN: Permissions/Status Updated
+        if (admin.fcmToken) {
+            try {
+                await sendPushNotification(admin.fcmToken, {
+                    title: `🛡️ Staff Account Update`,
+                    body: `Your staff account details or permissions have been updated by the Super Admin.`,
+                    data: {
+                        type: "STAFF_UPDATE"
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (Sub-Admin Update):", fcmErr.message);
+            }
+        }
+
     } catch (error) {
         res.status(500).json({ success: false, message: "Server error" });
     }
@@ -279,6 +295,21 @@ exports.deleteAdmin = async (req, res) => {
 
         if (admin.role === "SuperAdmin") {
             return res.status(400).json({ success: false, message: "SuperAdmin cannot be deleted" });
+        }
+
+        // 🔔 NOTIFY SUB-ADMIN: Account Deleted
+        if (admin.fcmToken) {
+            try {
+                await sendPushNotification(admin.fcmToken, {
+                    title: "🗑️ Account Deleted",
+                    body: `Your staff account has been deleted by the Super Admin.`,
+                    data: {
+                        type: "STAFF_DELETED"
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (Sub-Admin Deletion):", fcmErr.message);
+            }
         }
 
         await Admin.findByIdAndDelete(id);
@@ -686,8 +717,8 @@ exports.getDriversByRadius = async (req, res) => {
 
         // Fetch all approved drivers with ALL necessary fields for the table
         const drivers = await Driver.find({ isApproved: true })
-            .select("name phone email isOnline isAvailable currentLocation carDetails image address city state pincode password")
-            .populate("carDetails.carType", "name");
+            .select("name phone email isOnline isAvailable currentLocation carDetails image address city state pincode password currentRideType availableSeats currentHeading")
+            .lean();
 
         // Use Haversine formula to filter
         const filteredDrivers = drivers.filter(driver => {
@@ -711,17 +742,62 @@ exports.getDriversByRadius = async (req, res) => {
             const distance = R * c;
 
             // Attach distance to the driver object for frontend display
-            driver._doc.distanceFromCenter = distance.toFixed(2);
+            driver.distanceFromCenter = distance.toFixed(2);
             
             return distance <= searchRadius;
         });
 
+        // 2. Fetch all car categories for manual mapping (more robust)
+        const CarCategory = require("../models/CarCategory");
+        const allCategories = await CarCategory.find().select("name image _id");
+        const categoryMap = {};
+        allCategories.forEach(cat => {
+            categoryMap[cat._id.toString()] = {
+                name: cat.name,
+                image: cat.image
+            };
+        });
+
+        // Map drivers to consistent tracking format
+        const trackingData = await Promise.all(filteredDrivers.map(async driver => {
+            let activityStatus = "Offline"; 
+            if (driver.isOnline) {
+                if (driver.isAvailable) {
+                    activityStatus = "Idle";
+                } else {
+                    activityStatus = driver.currentRideType === "Shared" ? "On Shared Ride" : "On Private Ride";
+                }
+            }
+
+            const rawCatId = driver.carDetails?.carType ? driver.carDetails.carType.toString() : "N/A";
+            const catData = categoryMap[rawCatId] || { name: "Unknown Category", image: null };
+
+            return {
+                ...driver,
+                _id: driver._id,
+                driverId: driver._id, 
+                carInfo: {
+                    carNumber: driver.carDetails?.carNumber || "N/A",
+                    carModel: driver.carDetails?.carModel || "N/A",
+                    carCategoryName: catData.name,
+                    carCategoryId: rawCatId, 
+                    carCategoryImage: catData.image 
+                },
+                location: driver.currentLocation, 
+                heading: driver.currentHeading, 
+                status: activityStatus,
+                rideType: driver.currentRideType,
+                availableSeats: driver.availableSeats,
+                distanceFromCenter: driver.distanceFromCenter
+            };
+        }));
+
         res.json({
             success: true,
-            count: filteredDrivers.length,
+            count: trackingData.length,
             center: { lat: centerLat, lng: centerLng },
             radius: searchRadius,
-            drivers: filteredDrivers
+            drivers: trackingData
         });
 
     } catch (error) {
@@ -731,5 +807,88 @@ exports.getDriversByRadius = async (req, res) => {
             message: "Radius search fail ho gaya bhai.",
             error: error.message
         });
+    }
+};
+
+// Update Admin FCM Token
+exports.updateFcmToken = async (req, res) => {
+    try {
+        const { fcmToken } = req.body;
+        if (!fcmToken) {
+            return res.status(400).json({ success: false, message: "FCM token is required" });
+        }
+
+        await Admin.findByIdAndUpdate(req.user.id, { fcmToken });
+
+        res.json({
+            success: true,
+            message: "Admin FCM token updated successfully"
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error updating FCM token",
+            error: error.message
+        });
+    }
+};
+
+// Toggle Driver Online/Offline by Admin
+exports.toggleDriverOnlineByAdmin = async (req, res) => {
+    try {
+        const { driverId, status } = req.body; // status: true for online, false for offline
+        
+        const driver = await Driver.findById(driverId);
+        if (!driver) {
+            return res.status(404).json({ success: false, message: "Driver not found" });
+        }
+
+        driver.isOnline = status;
+        await driver.save();
+
+        // 🔔 NOTIFY DRIVER: Admin changed your status
+        if (driver.fcmToken) {
+            const statusText = status ? "ONLINE" : "OFFLINE";
+            try {
+                await sendPushNotification(driver.fcmToken, {
+                    title: `🔄 Status Updated by Admin`,
+                    body: `Your status has been set to ${statusText} by the Administrator.`,
+                    data: {
+                        type: "ADMIN_STATUS_UPDATE",
+                        status: statusText,
+                        isOnline: status.toString()
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (Admin Status Update):", fcmErr.message);
+            }
+        }
+
+        // 🎯 SYNC: Update Admin Panel Map (Socket)
+        try {
+            const { getIO } = require("../socket/socket");
+            const io = getIO();
+            
+            let activityStatus = status ? (driver.isAvailable ? "Idle" : "Busy") : "Offline";
+
+            io.to('admin_room').emit("driver_location_update", {
+                driverId: driver._id.toString(),
+                status: activityStatus,
+                latitude: driver.currentLocation?.latitude,
+                longitude: driver.currentLocation?.longitude,
+                heading: driver.currentHeading || 0
+            });
+        } catch (socketErr) {
+            console.error("Socket Error (Admin toggleStatus):", socketErr.message);
+        }
+
+        res.json({
+            success: true,
+            message: `Driver status updated to ${status ? 'Online' : 'Offline'}`,
+            isOnline: driver.isOnline
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };

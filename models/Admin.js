@@ -57,6 +57,10 @@ const adminSchema = new mongoose.Schema({
     isActive: {
         type: Boolean,
         default: true
+    },
+    fcmToken: {
+        type: String,
+        default: null
     }
 }, { timestamps: true })
 

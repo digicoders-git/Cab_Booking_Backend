@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness");
+const { sendPushNotification } = require("../utils/fcmNotification");
 
 // 1. Send OTP Placeholder API (For Frontend Flow)
 exports.sendOtp = async (req, res) => {
@@ -160,13 +161,32 @@ exports.getUserProfile = async (req, res) => {
 // Delete User
 exports.deleteUser = async (req, res) => {
     try {
-        const user = await User.findByIdAndDelete(req.params.id);
+        const user = await User.findById(req.params.id);
+
         if (!user) {
             return res.status(404).json({
                 success: false,
                 message: "User not found to delete"
             });
         }
+
+        // 🔔 NOTIFY USER: Account Deleted
+        if (user.fcmToken) {
+            try {
+                await sendPushNotification(user.fcmToken, {
+                    title: "🗑️ Account Deleted",
+                    body: `Your account has been deleted by the Administrator.`,
+                    data: {
+                        type: "USER_ACCOUNT_DELETED"
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (User Deletion):", fcmErr.message);
+            }
+        }
+
+        await User.findByIdAndDelete(req.params.id);
+
         res.status(200).json({
             success: true,
             message: "User deleted successfully"
@@ -200,6 +220,22 @@ exports.toggleUserStatus = async (req, res) => {
             message: `User is now ${user.isActive ? 'Active' : 'Deactivated'}`,
             isActive: user.isActive
         });
+
+        // 🔔 NOTIFY USER: Status Update
+        if (user.fcmToken) {
+            try {
+                await sendPushNotification(user.fcmToken, {
+                    title: `🛡️ Account Status Update`,
+                    body: `Your account has been ${user.isActive ? 'ACTIVATED' : 'DEACTIVATED'} by the Administrator.`,
+                    data: {
+                        type: "USER_STATUS_TOGGLE",
+                        isActive: user.isActive.toString()
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (User Status Toggle):", fcmErr.message);
+            }
+        }
     } catch (error) {
         res.status(500).json({
             success: false,
