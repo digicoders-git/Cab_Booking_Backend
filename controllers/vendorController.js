@@ -546,6 +546,20 @@ exports.updateVendor = async (req, res) => {
 
         await vendor.save();
 
+        // --- FCM Notification for Update ---
+        try {
+            if (vendor.fcmToken) {
+                const { sendPushNotification } = require("../utils/fcmNotification");
+                await sendPushNotification(vendor.fcmToken, {
+                    title: "Profile Updated",
+                    body: "Your profile details have been updated by Admin.",
+                    data: { type: "PROFILE_UPDATE" }
+                });
+            }
+        } catch (fcmErr) {
+            console.error("FCM Update Notification Error:", fcmErr.message);
+        }
+
         res.json({ success: true, message: "Vendor update ho gaya", vendor });
 
     } catch (error) {
@@ -565,6 +579,20 @@ exports.toggleVendorStatus = async (req, res) => {
 
         vendor.isActive = !vendor.isActive;
         await vendor.save();
+
+        // --- FCM Notification for Status Toggle ---
+        try {
+            if (vendor.fcmToken) {
+                const { sendPushNotification } = require("../utils/fcmNotification");
+                await sendPushNotification(vendor.fcmToken, {
+                    title: vendor.isActive ? "Account Activated" : "Account Deactivated",
+                    body: `Your account has been ${vendor.isActive ? "Activated" : "Deactivated"} by Admin.`,
+                    data: { type: "STATUS_UPDATE", isActive: vendor.isActive.toString() }
+                });
+            }
+        } catch (fcmErr) {
+            console.error("FCM Status Notification Error:", fcmErr.message);
+        }
 
         res.json({
             success: true,

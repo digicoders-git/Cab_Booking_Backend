@@ -293,6 +293,22 @@ exports.updateUserProfile = async (req, res) => {
 
         await user.save();
 
+        // 🔔 NOTIFY USER: Profile Updated
+        if (user.fcmToken) {
+            try {
+                const { sendPushNotification } = require("../utils/fcmNotification");
+                await sendPushNotification(user.fcmToken, {
+                    title: "📝 Profile Updated",
+                    body: `Your profile details have been updated by the Administrator.`,
+                    data: {
+                        type: "USER_PROFILE_UPDATED"
+                    }
+                });
+            } catch (fcmErr) {
+                console.error("FCM Error (User Profile Update):", fcmErr.message);
+            }
+        }
+
         res.status(200).json({
             success: true,
             message: "Profile updated successfully",

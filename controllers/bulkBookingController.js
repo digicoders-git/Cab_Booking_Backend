@@ -133,7 +133,7 @@ exports.getMarketplace = async (req, res) => {
         
         // Admins see everything in Marketplace, Fleets see relevant with enough quantity
         const allBookings = await BulkBooking.find(query)
-            .populate("carsRequired.category", "name image")
+            .populate("carsRequired.category", "name image bulkBookingBasePrice")
             .populate("createdBy", "name phone image")
             .sort({ createdAt: -1 });
 
@@ -220,7 +220,10 @@ exports.verifyBulkPayment = async (req, res) => {
 
             // Credit Admin Wallet
             if (admin) {
-                admin.walletBalance += booking.advancePayment.amount;
+                admin.walletBalance += (booking.advancePayment?.amount || 0);
+                admin.totalEarnings += (booking.advancePayment?.amount || 0);
+                await admin.save();
+
                 // Record Admin Credit (for advance received)
                 await Transaction.create({
                     user: admin._id, userModel: 'Admin', amount: booking.advancePayment.amount,
@@ -229,12 +232,17 @@ exports.verifyBulkPayment = async (req, res) => {
                 });
             }
 
-            // 💰 NEW: Record User Debit (for payment made)
-            if (booking.createdByModel === 'User') {
+            // 💰 Record Payer Debit (User or Agent)
+            if (['User', 'Agent'].includes(booking.createdByModel)) {
                 await Transaction.create({
-                    user: booking.createdBy, userModel: 'User', amount: booking.advancePayment.amount,
-                    type: 'Debit', category: 'Bulk Advance', status: 'Completed',
-                    relatedBooking: booking._id, description: `Advance paid for Bulk Booking #${booking._id.toString().slice(-6)}`
+                    user: booking.createdBy, 
+                    userModel: booking.createdByModel, 
+                    amount: booking.advancePayment.amount,
+                    type: 'Debit', 
+                    category: 'Bulk Advance', 
+                    status: 'Completed',
+                    relatedBooking: booking._id, 
+                    description: `Advance paid for Bulk Booking #${booking._id.toString().slice(-6)}`
                 });
             }
 
@@ -305,8 +313,10 @@ exports.verifyBulkPayment = async (req, res) => {
 
             // Credit Admin Wallet
             if (admin) {
-                admin.walletBalance += booking.fleetSecurityPayment.amount;
+                admin.walletBalance += (booking.fleetSecurityPayment?.amount || 0);
+                admin.totalEarnings += (booking.fleetSecurityPayment?.amount || 0);
                 await admin.save();
+
                 await Transaction.create({
                     user: admin._id, userModel: 'Admin', amount: booking.fleetSecurityPayment.amount,
                     type: 'Credit', category: 'Bulk Security', status: 'Completed',
@@ -510,7 +520,7 @@ exports.getMyBulkBookings = async (req, res) => {
     try {
         const fleetId = req.user.id;
         const bookings = await BulkBooking.find({ assignedFleet: fleetId })
-            .populate("carsRequired.category", "name image")
+            .populate("carsRequired.category", "name image bulkBookingBasePrice")
             .populate("createdBy", "name phone image")
             .populate("assignedDrivers.driver", "name phone image")
             .populate("assignedDrivers.car", "carNumber carModel")
@@ -527,7 +537,7 @@ exports.getMyBulkBookings = async (req, res) => {
 exports.getMyCreatedRequests = async (req, res) => {
     try {
         const bookings = await BulkBooking.find({ createdBy: req.user.id })
-            .populate("carsRequired.category", "name image")
+            .populate("carsRequired.category", "name image bulkBookingBasePrice")
             .populate("createdBy", "name phone email")
             .populate("assignedFleet", "companyName phone name image")
             .populate("assignedDrivers.driver", "name phone image")

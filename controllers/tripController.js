@@ -1312,9 +1312,9 @@ exports.verifyTripPayment = async (req, res) => {
                 driver.isAvailable = true; 
             }
         }
-        await driver.save();
 
         await exports.processTripSettlement(booking, driver);
+        await driver.save();
 
         // Notify Rider & Admin
         try {
@@ -1418,6 +1418,7 @@ exports.processTripSettlement = async (booking, driver) => {
             if (fleet) {
                 if (isCash) {
                     fleet.walletBalance -= commissionTotal;
+                    fleet.totalEarnings += driverProfit; // Record earnings even if collected as cash
                     await Transaction.create({
                         user: fleet._id, userModel: 'Fleet', amount: commissionTotal, type: 'Debit',
                         category: 'Commission', status: 'Completed', relatedBooking: booking._id,
@@ -1437,6 +1438,7 @@ exports.processTripSettlement = async (booking, driver) => {
         } else {
             if (isCash) {
                 driver.walletBalance -= commissionTotal;
+                driver.totalEarnings += driverProfit; // Record earnings even if collected as cash
                 await Transaction.create({
                     user: driver._id, userModel: 'Driver', amount: commissionTotal, type: 'Debit',
                     category: 'Commission', status: 'Completed', relatedBooking: booking._id,
