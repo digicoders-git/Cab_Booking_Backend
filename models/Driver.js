@@ -200,6 +200,14 @@ const driverSchema = new mongoose.Schema({
     type: String,
     default: ""
   },
+  addressLatitude: {
+    type: Number,
+    default: null
+  },
+  addressLongitude: {
+    type: Number,
+    default: null
+  },
   bankDetails: {
     accountNumber: {
       type: String,

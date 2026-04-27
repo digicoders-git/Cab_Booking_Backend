@@ -18,6 +18,7 @@ exports.registerDriver = async (req, res) => {
             name, email, phone, password, licenseNumber, licenseExpiry, 
             address, city, state, pincode,
             aadharNumber, panNumber,
+            addressLatitude, addressLongitude,
             accountNumber, ifscCode, accountHolderName, bankName,
             
             // Car Details (Optional for direct registration)
@@ -95,6 +96,8 @@ exports.registerDriver = async (req, res) => {
             city,
             state,
             pincode,
+            addressLatitude,
+            addressLongitude,
             aadharNumber,
             panNumber,
             documents: {
@@ -275,6 +278,7 @@ exports.updateDriverProfile = async (req, res) => {
             licenseNumber, licenseExpiry,
             address, city, state, pincode,
             aadharNumber, panNumber,
+            addressLatitude, addressLongitude,
             accountNumber, ifscCode, accountHolderName, bankName,
             license, aadhar, pan,
             
@@ -312,7 +316,9 @@ exports.updateDriverProfile = async (req, res) => {
             state,
             pincode,
             aadharNumber,
-            panNumber
+            panNumber,
+            addressLatitude,
+            addressLongitude
         };
 
         if (password) {
@@ -921,6 +927,7 @@ exports.adminUpdateDriver = async (req, res) => {
         const { 
             name, email, phone, password, licenseNumber, licenseExpiry, 
             address, city, state, pincode, aadharNumber, panNumber,
+            addressLatitude, addressLongitude,
             carNumber, carModel, carBrand, carType, seatCapacity, carColor,
             manufacturingYear, insuranceExpiry, permitExpiry, pucExpiry,
             lastServiceDate, nextServiceDate, debtLimit,
@@ -967,6 +974,8 @@ exports.adminUpdateDriver = async (req, res) => {
         if (pincode) driver.pincode = pincode;
         if (aadharNumber !== undefined) driver.aadharNumber = aadharNumber;
         if (panNumber !== undefined) driver.panNumber = panNumber;
+        if (addressLatitude !== undefined) driver.addressLatitude = addressLatitude;
+        if (addressLongitude !== undefined) driver.addressLongitude = addressLongitude;
         if (debtLimit !== undefined) driver.debtLimit = debtLimit;
 
         if (password) {

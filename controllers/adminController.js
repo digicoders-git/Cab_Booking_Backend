@@ -810,6 +810,115 @@ exports.getDriversByRadius = async (req, res) => {
     }
 };
 
+// NEW: Home Address-based Driver Search for Admin
+exports.getDriversByHomeRadius = async (req, res) => {
+    try {
+        const { lat, lng, radius } = req.query;
+
+        if (!lat || !lng || !radius) {
+            return res.status(400).json({
+                success: false,
+                message: "Latitude, Longitude aur Radius zaroori hain bhai."
+            });
+        }
+
+        const centerLat = parseFloat(lat);
+        const centerLng = parseFloat(lng);
+        const searchRadius = parseFloat(radius);
+
+        // Fetch all drivers (Approved, Pending, etc.) to see all home locations
+        const drivers = await Driver.find({}).lean();
+
+        // Use Haversine formula to filter based on Home Address (addressLatitude, addressLongitude)
+        const filteredDrivers = drivers.filter(driver => {
+            if (driver.addressLatitude === null || driver.addressLongitude === null) {
+                return false;
+            }
+
+            const dLat = driver.addressLatitude;
+            const dLng = driver.addressLongitude;
+
+            const R = 6371; // Earth's radius in KM
+            const dLatRad = (dLat - centerLat) * Math.PI / 180;
+            const dLonRad = (dLng - centerLng) * Math.PI / 180;
+            
+            const a =
+                Math.sin(dLatRad / 2) * Math.sin(dLatRad / 2) +
+                Math.cos(centerLat * Math.PI / 180) * Math.cos(dLat * Math.PI / 180) *
+                Math.sin(dLonRad / 2) * Math.sin(dLonRad / 2);
+            
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            const distance = R * c;
+
+            // Attach distance for UI
+            driver.distanceFromCenter = distance.toFixed(2);
+            
+            return distance <= searchRadius;
+        });
+
+        // 2. Fetch all car categories for manual mapping (more robust)
+        const CarCategory = require("../models/CarCategory");
+        const allCategories = await CarCategory.find().select("name image _id");
+        const categoryMap = {};
+        allCategories.forEach(cat => {
+            categoryMap[cat._id.toString()] = {
+                name: cat.name,
+                image: cat.image
+            };
+        });
+
+        // Map drivers to consistent format
+        const trackingData = await Promise.all(filteredDrivers.map(async driver => {
+            let activityStatus = "Offline"; 
+            if (driver.isOnline) {
+                if (driver.isAvailable) {
+                    activityStatus = "Idle";
+                } else {
+                    activityStatus = driver.currentRideType === "Shared" ? "On Shared Ride" : "On Private Ride";
+                }
+            }
+
+            const rawCatId = driver.carDetails?.carType ? driver.carDetails.carType.toString() : "N/A";
+            const catData = categoryMap[rawCatId] || { name: "Unknown Category", image: null };
+
+            return {
+                ...driver,
+                _id: driver._id,
+                driverId: driver._id, 
+                carInfo: {
+                    carNumber: driver.carDetails?.carNumber || "N/A",
+                    carModel: driver.carDetails?.carModel || "N/A",
+                    carCategoryName: catData.name,
+                    carCategoryId: rawCatId, 
+                    carCategoryImage: catData.image 
+                },
+                location: driver.currentLocation, 
+                heading: driver.currentHeading, 
+                status: activityStatus,
+                rideType: driver.currentRideType,
+                availableSeats: driver.availableSeats,
+                distanceFromCenter: driver.distanceFromCenter
+            };
+        }));
+
+        res.json({
+            success: true,
+            count: trackingData.length,
+            center: { lat: centerLat, lng: centerLng },
+            radius: searchRadius,
+            drivers: trackingData
+        });
+
+    } catch (error) {
+        console.error("Home Radius Search Error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Home radius search fail ho gaya bhai.",
+            error: error.message
+        });
+    }
+};
+
 // Update Admin FCM Token
 exports.updateFcmToken = async (req, res) => {
     try {

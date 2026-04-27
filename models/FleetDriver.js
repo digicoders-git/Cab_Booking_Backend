@@ -62,6 +62,16 @@ const fleetDriverSchema = new mongoose.Schema({
     default: ""
   },
   
+  addressLatitude: {
+    type: Number,
+    default: null
+  },
+  
+  addressLongitude: {
+    type: Number,
+    default: null
+  },
+  
   // Fleet Reference
   fleetId: {
     type: mongoose.Schema.Types.ObjectId,

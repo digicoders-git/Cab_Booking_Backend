@@ -8,7 +8,8 @@ exports.createDriver = async (req, res) => {
     try {
         const {
             name, email, phone, password, licenseNumber, licenseExpiry,
-            address, city, state, pincode
+            address, city, state, pincode,
+            addressLatitude, addressLongitude
         } = req.body;
 
         const image = req.file ? req.file.filename : null;
@@ -35,6 +36,8 @@ exports.createDriver = async (req, res) => {
             city,
             state,
             pincode,
+            addressLatitude,
+            addressLongitude,
             fleetId: req.user.id,  // Fleet ID
             isActive: false,
             isApproved: false
@@ -307,7 +310,8 @@ exports.updateDriver = async (req, res) => {
     try {
         const {
             name, email, phone, password, licenseNumber, licenseExpiry,
-            address, city, state, pincode
+            address, city, state, pincode,
+            addressLatitude, addressLongitude
         } = req.body;
 
         const driver = await FleetDriver.findById(req.params.driverId);
@@ -336,7 +340,9 @@ exports.updateDriver = async (req, res) => {
             address: address || driver.address,
             city: city || driver.city,
             state: state || driver.state,
-            pincode: pincode || driver.pincode
+            pincode: pincode || driver.pincode,
+            addressLatitude: addressLatitude || driver.addressLatitude,
+            addressLongitude: addressLongitude || driver.addressLongitude
         };
 
         if (password) {
