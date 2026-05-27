@@ -8,6 +8,7 @@ const { getIO } = require("../socket/socket");
 const AreaPricing = require("../models/AreaPricing");
 const serviceAreaController = require("./serviceAreaController");
 const { sendPushNotification } = require("../utils/fcmNotification");
+const Agent = require("../models/Agent");
 
 // Helper: Calculate Area-specific pricing overrides (GEO-SPATIAL VERSION)
 const getAreaSpecificRates = async (pickupLat, pickupLng, defaultBase, defaultPrivateRate, defaultSharedRate) => {
@@ -402,8 +403,18 @@ exports.createBooking = async (req, res) => {
         if (req.user && req.user.role === "agent") {
             bookingData.agent = req.user.id;
 
-            // Example logic: Agent gets a flat 5% commission of the fare
-            const commission = Math.round(fareEstimate * 0.05);
+            // Fetch real commission from Agent's DB record
+            let commissionPercent = 5; // Default fallback
+            try {
+                const agentData = await Agent.findById(req.user.id);
+                if (agentData && agentData.commissionPercentage !== undefined) {
+                    commissionPercent = agentData.commissionPercentage;
+                }
+            } catch (err) {
+                console.error("Error fetching agent for commission calculation:", err.message);
+            }
+
+            const commission = Math.round(fareEstimate * (commissionPercent / 100));
             bookingData.agentCommission = commission;
         }
 

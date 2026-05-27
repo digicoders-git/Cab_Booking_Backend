@@ -112,11 +112,11 @@ const bookingSchema = new mongoose.Schema({
     enum: ["Cash", "Online", "Wallet"],
     default: "Cash"
   },
-  razorpayOrderId: {
+  hdfcOrderId: {
     type: String,
     default: null
   },
-  razorpayPaymentId: {
+  hdfcTransactionId: {
     type: String,
     default: null
   },

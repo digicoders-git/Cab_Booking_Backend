@@ -538,9 +538,10 @@ exports.getAllDrivers = async (req, res) => {
         // Pehle saare drivers lo bina populate ke
         const drivers = await Driver.find().lean();
 
-        // Phir sirf Admin/Fleet wale drivers ko populate karo
+        // Phir sirf Admin/Fleet/Vendor wale drivers ko populate karo
         const Admin = require("../models/Admin");
         const Fleet = require("../models/Fleet");
+        const Vendor = require("../models/Vendor");
 
         const populatedDrivers = await Promise.all(
             drivers.map(async (driver) => {
@@ -549,6 +550,9 @@ exports.getAllDrivers = async (req, res) => {
                     return { ...driver, createdBy: creator };
                 } else if (driver.createdByModel === "Fleet" && driver.createdBy) {
                     const creator = await Fleet.findById(driver.createdBy).select("name email").lean();
+                    return { ...driver, createdBy: creator };
+                } else if (driver.createdByModel === "Vendor" && driver.createdBy) {
+                    const creator = await Vendor.findById(driver.createdBy).select("name email").lean();
                     return { ...driver, createdBy: creator };
                 }
                 // createdByModel === "Self" → createdBy null hi rahega

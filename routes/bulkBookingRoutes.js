@@ -43,6 +43,10 @@ router.get("/driver/my-assignments", auth, bulkBookingController.getDriverBulkAs
 router.post("/driver/start/:bookingId", auth, bulkBookingController.startIndividualDriverBulkTrip);
 router.post("/driver/end/:bookingId", auth, bulkBookingController.endIndividualDriverBulkTrip);
 
+// 10.5 HDFC Payment Return Webhook/Redirect
+router.post("/payment-return", bulkBookingController.paymentReturn);
+router.get("/payment-return", bulkBookingController.paymentReturn);
+
 module.exports = router;
 
 

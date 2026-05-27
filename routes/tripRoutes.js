@@ -53,5 +53,6 @@ router.get("/driver/my-trips", auth, driverOnly, getDriverTrips);
 // 8. Payments for Normal Trips
 router.post("/execute/:bookingId/initiate-payment", auth, driverOnly, initiateTripPayment);
 router.post("/execute/verify-payment", auth, driverOnly, verifyTripPayment);
+router.all("/execute/payment-return", require("../controllers/tripController").paymentReturn);
 
 module.exports = router;

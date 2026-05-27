@@ -1,0 +1,9 @@
+{
+  "status": "CHARGED",
+  "signature_algorithm": "HMAC-SHA256",
+  "status_id": "21",
+  "redirect": "http://localhost:5178/bulk-marketplace",
+  "signature": "sbsgXJ2F1btDf1oMmwR4weYyQ/c1dQY9tcA38Qrj3D0=",
+  "order_id": "bulk_sec_ca31c4_1779861942639"
+}
+Parsed Status: CHARGED, StatusID: 21, OrderID: bulk_sec_ca31c4_1779861942639

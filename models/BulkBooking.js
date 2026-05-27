@@ -127,14 +127,23 @@ const bulkBookingSchema = new mongoose.Schema({
     advancePayment: {
         amount: { type: Number, default: 0 },
         isPaid: { type: Boolean, default: false },
-        razorpayOrderId: { type: String, default: null },
-        razorpayPaymentId: { type: String, default: null }
+        hdfcOrderId: { type: String } // Save HDFC order ID to track webhook
     },
     fleetSecurityPayment: {
         amount: { type: Number, default: 0 },
         isPaid: { type: Boolean, default: false },
-        razorpayOrderId: { type: String, default: null },
-        razorpayPaymentId: { type: String, default: null }
+        hdfcOrderId: { type: String, default: null },
+        hdfcTransactionId: { type: String, default: null },
+        fleetId: { type: mongoose.Schema.Types.ObjectId, ref: "Fleet", default: null }
+    },
+    hdfcFinalOrderId: { type: String }, // For tracking final bulk payment webhook
+    finalPayment: {
+        amount: { type: Number, default: 0 },
+        method: { type: String, enum: ['Cash', 'Online'], default: 'Cash' },
+        hdfcOrderId: { type: String, default: null },
+        hdfcTransactionId: { type: String, default: null },
+        isPaid: { type: Boolean, default: false },
+        at: { type: Date, default: null }
     },
     agentCommissionPaid: {
         type: Boolean,
@@ -144,12 +153,7 @@ const bulkBookingSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
-    finalPayment: {
-        amount: { type: Number, default: 0 },
-        method: { type: String, enum: ['Cash', 'Online'], default: null },
-        isPaid: { type: Boolean, default: false },
-        at: { type: Date, default: null }
-    }
+    // duplicate removed
 
 
 }, { timestamps: true });

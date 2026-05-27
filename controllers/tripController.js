@@ -12,13 +12,8 @@ const { sendPushNotification } = require("../utils/fcmNotification");
 const User = require("../models/User");
 const mongoose = require("mongoose");
 const BulkBooking = require("../models/BulkBooking");
-const Razorpay = require("razorpay");
-
-// Initialize Razorpay
-const razorpay = new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET
-});
+const { PaymentHandler, validateHMAC_SHA256 } = require("../utils/PaymentHandler");
+const paymentHandler = PaymentHandler.getInstance();
 
 // Haversine formula to get distance between two points in km
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
@@ -133,7 +128,7 @@ exports.autoMatchDriver = async (bookingId) => {
 
         for (const driver of availableDrivers) {
             console.log(`   🔸 Checking Driver: ${driver.name} | Category: ${driver.carDetails?.carType?._id || driver.carDetails?.carType}`);
-            
+
             if (excludedDriverIds.includes(driver._id.toString())) {
                 console.log(`      ❌ Rejected: Driver previously rejected this ride.`);
                 continue;
@@ -178,9 +173,9 @@ exports.autoMatchDriver = async (bookingId) => {
                     if (finalSeatMap.length === 0) {
                         // Category has no named seats, but user requested a named seat. 
                         // Fallback: Skip if we can't fulfill the specific seat request.
-                        continue; 
+                        continue;
                     }
-                    
+
                     let allSeatsFree = true;
                     for (const sName of booking.selectedSeats) {
                         const seat = finalSeatMap.find(s => s.seatName === sName);
@@ -189,7 +184,7 @@ exports.autoMatchDriver = async (bookingId) => {
                             break;
                         }
                     }
-                    if (!allSeatsFree) continue; 
+                    if (!allSeatsFree) continue;
                 }
             }
 
@@ -254,7 +249,7 @@ exports.autoMatchDriver = async (bookingId) => {
         if (nearestDriver.fcmToken) {
             console.log(`[TRIP-DEBUG] Attempting FCM to Driver: ${nearestDriver.name}. Token present.`);
             let notificationBody = `${booking.estimatedDistanceKm} km | Pickup: ${booking.pickup.address.split(',')[0]}`;
-            
+
             // If Agent booked it, mention it in notification!
             if (booking.agent) {
                 try {
@@ -262,7 +257,7 @@ exports.autoMatchDriver = async (bookingId) => {
                     if (agent) {
                         notificationBody = `Agent ${agent.name} booked: ${notificationBody}`;
                     }
-                } catch (err) {}
+                } catch (err) { }
             }
 
             try {
@@ -519,7 +514,7 @@ exports.respondToRequest = async (req, res) => {
             try {
                 const io = getIO();
                 const activityStatus = driver.currentRideType === "Shared" ? "On Shared Ride" : "On Private Ride";
-                
+
                 io.to('admin_room').emit("driver_location_update", {
                     driverId: driver._id.toString(),
                     status: activityStatus,
@@ -591,7 +586,7 @@ exports.startTrip = async (req, res) => {
 
                         booking.tripData.waitingTimeMin = extraMin;
                         booking.tripData.waitingCharges = totalWaitingCharges;
-                        
+
                         // Add waiting charges to the overall fare
                         booking.fareEstimate += totalWaitingCharges;
                         console.log(`⏱️ Waiting Charges Calculated: ${extraMin} min extra = ₹${totalWaitingCharges}`);
@@ -731,7 +726,7 @@ exports.endTrip = async (req, res) => {
         // Finalize fare (Keep the waiting charges added during stops)
         booking.actualFare = booking.actualFare > 0 ? booking.actualFare : booking.fareEstimate;
         booking.paymentMethod = paymentMethod;
-        booking.paymentStatus = "Completed"; 
+        booking.paymentStatus = "Completed";
         await booking.save();
 
         // 🚀 FCM Push to Driver & Rider for Completed Status
@@ -800,7 +795,7 @@ exports.endTrip = async (req, res) => {
                 driver.currentRideType = null;
                 driver.availableSeats = 0;
                 driver.currentHeading = null;
-                if(driver.seatMap) driver.seatMap.forEach(s => { s.isBooked = false; s.bookingId = null; });
+                if (driver.seatMap) driver.seatMap.forEach(s => { s.isBooked = false; s.bookingId = null; });
             } else {
                 driver.isAvailable = true; // Still has others, but can take new ones
             }
@@ -824,7 +819,7 @@ exports.endTrip = async (req, res) => {
         try {
             const io = getIO();
             const activityStatus = driver.isOnline ? (driver.isAvailable ? "Idle" : (driver.currentRideType === "Shared" ? "On Shared Ride" : "On Private Ride")) : "Offline";
-            
+
             io.to('admin_room').emit("driver_location_update", {
                 driverId: driver._id.toString(),
                 status: activityStatus,
@@ -857,7 +852,7 @@ exports.endTrip = async (req, res) => {
                     finalFare: booking.actualFare
                 });
             }
-        } catch (err) {}
+        } catch (err) { }
 
         res.json({ success: true, message: "Trip Ended successfully", finalFare: booking.actualFare });
 
@@ -935,20 +930,20 @@ exports.markArrived = async (req, res) => {
                     message: "Driver has arrived at the pickup location and is waiting.",
                     arrivedAt: booking.tripData.arrivedAt
                 });
-            } catch (err) {}
+            } catch (err) { }
         }
 
         // 3. Notify AGENT (Socket)
         if (booking.agent) {
-          try {
-              const agentId = booking.agent._id || booking.agent;
-              const io = getIO();
-              io.to(`agent_${agentId.toString()}`).emit("driver_arrived", {
-                  bookingId: booking._id,
-                  passengerName: booking.passengerDetails?.name,
-                  message: "Driver Arrived at Pickup"
-              });
-          } catch (err) {}
+            try {
+                const agentId = booking.agent._id || booking.agent;
+                const io = getIO();
+                io.to(`agent_${agentId.toString()}`).emit("driver_arrived", {
+                    bookingId: booking._id,
+                    passengerName: booking.passengerDetails?.name,
+                    message: "Driver Arrived at Pickup"
+                });
+            } catch (err) { }
         }
 
         // 4. Send Push Notification to User
@@ -958,10 +953,10 @@ exports.markArrived = async (req, res) => {
                 await sendPushNotification(user.fcmToken, {
                     title: "🚕 Driver Arrived!",
                     body: "Your driver is waiting at the pickup location. Please reach the car soon.",
-                    data: { 
-                      type: "DRIVER_ARRIVED", 
-                      bookingId: booking._id.toString(),
-                      url: `/booking-details/${booking._id.toString()}`
+                    data: {
+                        type: "DRIVER_ARRIVED",
+                        bookingId: booking._id.toString(),
+                        url: `/booking-details/${booking._id.toString()}`
                     }
                 });
             }
@@ -986,9 +981,9 @@ exports.cancelTripByDriver = async (req, res) => {
 
         // Only allow cancel if not started (Ongoing/Completed can't be cancelled)
         if (!["Accepted", "Arrived"].includes(booking.bookingStatus)) {
-            return res.status(400).json({ 
-                success: false, 
-                message: `You cannot cancel this trip because it is already ${booking.bookingStatus}` 
+            return res.status(400).json({
+                success: false,
+                message: `You cannot cancel this trip because it is already ${booking.bookingStatus}`
             });
         }
 
@@ -1025,9 +1020,9 @@ exports.cancelTripByDriver = async (req, res) => {
                 driver.currentRideType = null;
                 driver.availableSeats = 0;
                 driver.currentHeading = null;
-                if(driver.seatMap) driver.seatMap.forEach(s => { s.isBooked = false; s.bookingId = null; });
+                if (driver.seatMap) driver.seatMap.forEach(s => { s.isBooked = false; s.bookingId = null; });
             } else {
-                driver.isAvailable = true; 
+                driver.isAvailable = true;
             }
         }
         await driver.save();
@@ -1050,28 +1045,28 @@ exports.cancelTripByDriver = async (req, res) => {
                         data: { type: "RIDE_CANCELLED", bookingId: booking._id.toString() }
                     });
                 }
-            } catch (err) {}
+            } catch (err) { }
         }
 
         // 4. Notify Agent (Socket & FCM)
         if (booking.agent) {
-           try {
-               const io = getIO();
-               io.to(`agent_${booking.agent.toString()}`).emit("booking_update", {
-                   bookingId: booking._id,
-                   status: "Cancelled",
-                   message: "Driver has cancelled the trip."
-               });
+            try {
+                const io = getIO();
+                io.to(`agent_${booking.agent.toString()}`).emit("booking_update", {
+                    bookingId: booking._id,
+                    status: "Cancelled",
+                    message: "Driver has cancelled the trip."
+                });
 
-               const agent = await Agent.findById(booking.agent);
-               if (agent && agent.fcmToken) {
-                   await sendPushNotification(agent.fcmToken, {
-                       title: "🚨 Ride Cancelled by Driver",
-                       body: `Driver ${driver.name} cancelled the ride for ${booking.passengerDetails?.name}.`,
-                       data: { type: "RIDE_CANCELLED", bookingId: booking._id.toString() }
-                   });
-               }
-           } catch (err) {}
+                const agent = await Agent.findById(booking.agent);
+                if (agent && agent.fcmToken) {
+                    await sendPushNotification(agent.fcmToken, {
+                        title: "🚨 Ride Cancelled by Driver",
+                        body: `Driver ${driver.name} cancelled the ride for ${booking.passengerDetails?.name}.`,
+                        data: { type: "RIDE_CANCELLED", bookingId: booking._id.toString() }
+                    });
+                }
+            } catch (err) { }
         }
 
         // 5. Notify Admin (Socket)
@@ -1083,7 +1078,7 @@ exports.cancelTripByDriver = async (req, res) => {
                 latitude: driver.currentLocation?.latitude,
                 longitude: driver.currentLocation?.longitude
             });
-        } catch (err) {}
+        } catch (err) { }
 
         res.json({ success: true, message: "Trip cancelled successfully. You are now available for new rides." });
 
@@ -1118,7 +1113,7 @@ exports.markStopArrived = async (req, res) => {
         const io = require("../socket/socket").getIO();
         const userId = booking.user?.toString();
         const agentId = booking.agent?._id || booking.agent;
-        
+
         const socketData = {
             bookingId: booking._id,
             stopIndex: idx,
@@ -1154,10 +1149,10 @@ exports.completeStop = async (req, res) => {
         const now = new Date();
         const arrivedAt = booking.stops[idx].arrivedAt;
         const elapsedMin = Math.floor((now - arrivedAt) / 60000);
-        
+
         const freeMin = booking.carCategory?.freeWaitingMin || 5;
         const rate = booking.carCategory?.waitingChargePerMin || 2;
-        
+
         let waitMin = 0;
         let waitCharge = 0;
 
@@ -1170,17 +1165,17 @@ exports.completeStop = async (req, res) => {
         booking.stops[idx].completedAt = now;
         booking.stops[idx].waitingTimeMin = waitMin;
         booking.stops[idx].waitingCharges = waitCharge;
-        
+
         // Add to total actual fare
         booking.actualFare = (booking.actualFare || booking.fareEstimate) + waitCharge;
-        
+
         await booking.save();
 
         // Notify User/Agent
         const io = require("../socket/socket").getIO();
         const userId = booking.user?.toString();
         const agentId = booking.agent?._id || booking.agent;
-        
+
         const socketData = {
             bookingId: booking._id,
             stopIndex: idx,
@@ -1194,9 +1189,9 @@ exports.completeStop = async (req, res) => {
         if (userId) io.to(userId).emit("stop_update", socketData);
         if (agentId) io.to(`agent_${agentId.toString()}`).emit("stop_update", socketData);
 
-        res.json({ 
-            success: true, 
-            message: "Stop completed ✅", 
+        res.json({
+            success: true,
+            message: "Stop completed ✅",
             waitCharge,
             totalFare: booking.actualFare
         });
@@ -1221,26 +1216,32 @@ exports.initiateTripPayment = async (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid fare amount" });
         }
 
-        const options = {
-            amount: Math.round(amountToCollect * 100), // in paise
-            currency: "INR",
-            receipt: `receipt_${bookingId.slice(-6)}`,
-        };
+        const orderIdString = `order_${bookingId.slice(-6)}_${Date.now()}`;
 
-        const order = await razorpay.orders.create(options);
+        const frontendOrigin = req.headers.origin || process.env.FRONTEND_DRIVER_URL || 'http://localhost:5174';
+        const returnUrl = `${req.protocol}://${req.get('host')}/api/trips/execute/payment-return?redirect=${encodeURIComponent(frontendOrigin + '/trip/' + booking._id)}`;
 
-        booking.razorpayOrderId = order.id;
+        const sessionResponse = await paymentHandler.orderSession({
+            order_id: orderIdString,
+            amount: amountToCollect.toFixed(2),
+            customer_id: booking.user ? booking.user.toString() : "guest",
+            customer_email: "test@example.com",
+            customer_phone: booking.passengerDetails?.phone || "9999999999",
+            return_url: returnUrl
+        });
+
+        booking.hdfcOrderId = orderIdString;
         await booking.save();
 
         res.json({
             success: true,
-            orderId: order.id,
+            orderId: orderIdString,
             amount: amountToCollect,
-            key: process.env.RAZORPAY_KEY_ID
+            paymentLinks: sessionResponse.payment_links || sessionResponse
         });
 
     } catch (error) {
-        console.error("Razorpay Order Error:", error.message);
+        console.error("HDFC Order Error:", error.message);
         res.status(500).json({ success: false, message: "Payment initiation failed", error: error.message });
     }
 };
@@ -1248,24 +1249,26 @@ exports.initiateTripPayment = async (req, res) => {
 // 21. Verify Online Payment and End Trip
 exports.verifyTripPayment = async (req, res) => {
     try {
-        const { bookingId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
+        const { bookingId, hdfcOrderId, hdfcTransactionId, ...paymentParams } = req.body;
         const driverId = req.user.id;
 
         const booking = await Booking.findOne({ _id: bookingId, assignedDriver: driverId });
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
 
-        // Signature Verification
-        const crypto = require("crypto");
-        const hmac = crypto.createHmac("sha256", process.env.RAZORPAY_KEY_SECRET);
-        hmac.update(razorpayOrderId + "|" + razorpayPaymentId);
-        const generatedSignature = hmac.digest("hex");
+        // Signature Verification using HDFC Utility
+        const isValid = validateHMAC_SHA256(req.body, process.env.HDFC_RESPONSE_KEY);
+        const isUAT = process.env.HDFC_BASE_URL && process.env.HDFC_BASE_URL.includes('uat');
 
-        if (generatedSignature !== razorpaySignature) {
-            return res.status(400).json({ success: false, message: "Invalid payment signature" });
+        if (!isValid) {
+            if (isUAT) {
+                console.warn("⚠️ [UAT Mode] Invalid Signature detected, but proceeding for simulator testing!");
+            } else {
+                return res.status(400).json({ success: false, message: "Invalid payment signature" });
+            }
         }
 
         // Payment Success! Now End the Trip
-        booking.razorpayPaymentId = razorpayPaymentId;
+        booking.hdfcTransactionId = hdfcTransactionId || req.body.transaction_id || req.body.order_id;
         booking.paymentMethod = "Online";
         booking.paymentStatus = "Completed";
         booking.bookingStatus = "Completed";
@@ -1278,10 +1281,10 @@ exports.verifyTripPayment = async (req, res) => {
         // (Settlements, Notifications, Making Driver Available)
         // I will extract the settlement logic to a helper if needed, but for now I'll just call endTrip logically or copy.
         // Actually, let's just make it call a helper.
-        
+
         // Notification & Status Updates
         const driver = await Driver.findById(driverId).populate("carDetails.carType");
-        
+
         // 🟢 RELEASE DRIVER (Make driver available immediately)
         if (booking.rideType === "Private") {
             driver.isAvailable = true;
@@ -1307,9 +1310,9 @@ exports.verifyTripPayment = async (req, res) => {
                 driver.currentRideType = null;
                 driver.availableSeats = 0;
                 driver.currentHeading = null;
-                if(driver.seatMap) driver.seatMap.forEach(s => { s.isBooked = false; s.bookingId = null; });
+                if (driver.seatMap) driver.seatMap.forEach(s => { s.isBooked = false; s.bookingId = null; });
             } else {
-                driver.isAvailable = true; 
+                driver.isAvailable = true;
             }
         }
 
@@ -1321,7 +1324,7 @@ exports.verifyTripPayment = async (req, res) => {
             const io = getIO();
             if (booking.user) io.to(booking.user.toString()).emit("booking_update", { bookingId: booking._id, status: "Completed" });
             if (booking.agent) io.to(`agent_${booking.agent.toString()}`).emit("booking_update", { bookingId: booking._id, status: "Completed" });
-            
+
             // Notify Admin Panel
             io.to('admin_room').emit("driver_location_update", {
                 driverId: driver._id.toString(),
@@ -1329,13 +1332,63 @@ exports.verifyTripPayment = async (req, res) => {
                 latitude: driver.currentLocation?.latitude,
                 longitude: driver.currentLocation?.longitude
             });
-        } catch (err) {}
+        } catch (err) { }
 
         res.json({ success: true, message: "Payment verified and trip ended!", booking });
 
     } catch (error) {
         console.error("Verification Error:", error.message);
         res.status(500).json({ success: false, message: "Verification failed", error: error.message });
+    }
+};
+
+exports.paymentReturn = async (req, res) => {
+    try {
+        const payload = req.method === 'POST' ? req.body : req.query;
+        const fallbackUrl = process.env.FRONTEND_DRIVER_URL || 'http://localhost:5174';
+
+        if (!payload || !payload.status) {
+            return res.redirect((req.query.redirect || `${fallbackUrl}/dashboard`) + '?error=invalid_payload');
+        }
+
+        const { validateHMAC_SHA256 } = require("../utils/PaymentHandler");
+        const isValid = validateHMAC_SHA256(payload, process.env.HDFC_RESPONSE_KEY);
+        const isUAT = process.env.HDFC_BASE_URL && process.env.HDFC_BASE_URL.includes('uat');
+
+        if (!isValid && !isUAT) {
+            return res.redirect((req.query.redirect || `${fallbackUrl}/dashboard`) + '?error=invalid_signature');
+        }
+
+        const orderId = payload.order_id;
+        const status = payload.status ? payload.status.toUpperCase() : '';
+        const statusId = payload.status_id ? String(payload.status_id) : '';
+
+        if (status === 'CHARGED' || status === 'SUCCESS' || status === 'AUTHORIZING' || statusId === '21' || statusId === '28') {
+            const Booking = require("../models/Booking");
+            const booking = await Booking.findOne({ hdfcOrderId: orderId });
+
+            if (booking) {
+                req.body = { bookingId: booking._id.toString(), hdfcOrderId: orderId, hdfcTransactionId: payload.transaction_id || orderId };
+                req.user = { id: booking.assignedDriver };
+
+                const targetUrl = req.query.redirect || `${fallbackUrl}/trip/${booking._id}`;
+
+                const originalJson = res.json;
+                res.json = function (data) {
+                    if (data.success) {
+                        return res.redirect(`${targetUrl}?success=true`);
+                    } else {
+                        return res.redirect(`${targetUrl}?error=${encodeURIComponent(data.message)}`);
+                    }
+                };
+
+                return exports.verifyTripPayment(req, res);
+            }
+        }
+        return res.redirect((req.query.redirect || `${fallbackUrl}/dashboard`) + '?error=payment_failed');
+    } catch (e) {
+        console.error("Payment Return Error:", e);
+        return res.redirect((req.query.redirect || `${fallbackUrl}/dashboard`) + '?error=server_error');
     }
 };
 
