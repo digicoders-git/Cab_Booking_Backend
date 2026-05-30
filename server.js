@@ -26,6 +26,7 @@ const bulkBookingRoutes = require("./routes/bulkBookingRoutes"); // NEW: Bulk Bo
 const { autoExpireBookings } = require("./controllers/bulkBookingController");
 
 const app = express();
+app.set('trust proxy', true);
 const server = http.createServer(app);
 
 // Initialize Socket.io with the http server
