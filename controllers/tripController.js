@@ -1220,7 +1220,7 @@ exports.initiateTripPayment = async (req, res) => {
 
         const frontendOrigin = req.headers.origin || process.env.FRONTEND_DRIVER_URL || 'http://localhost:5174';
         const protocol = req.get('host').includes('localhost') || req.get('host').includes('127.0.0.1') ? req.protocol : 'https';
-        const returnUrl = `${protocol}://${req.get('host')}/api/trips/execute/payment-return?redirect=${encodeURIComponent(frontendOrigin + '/trip/' + booking._id)}`;
+        const returnUrl = `${protocol}://${req.get('host')}/api/trips/execute/payment-return?redirect=${encodeURIComponent(frontendOrigin + '/driver/trip/' + booking._id)}`;
 
         const sessionResponse = await paymentHandler.orderSession({
             order_id: orderIdString,
@@ -1372,7 +1372,7 @@ exports.paymentReturn = async (req, res) => {
                 req.body = { bookingId: booking._id.toString(), hdfcOrderId: orderId, hdfcTransactionId: payload.transaction_id || orderId };
                 req.user = { id: booking.assignedDriver };
 
-                const targetUrl = req.query.redirect || `${fallbackUrl}/trip/${booking._id}`;
+                const targetUrl = req.query.redirect || `${fallbackUrl}/driver/trip/${booking._id}`;
 
                 const originalJson = res.json;
                 res.json = function (data) {
