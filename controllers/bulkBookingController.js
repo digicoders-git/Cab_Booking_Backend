@@ -103,7 +103,8 @@ exports.createBulkBooking = async (req, res) => {
         const finalPath = req.user.role === 'agent' ? '/agent/my-bulk-bookings' : '/bulk-booking';
         const fullRedirectUrl = `${frontendOrigin}${finalPath}`;
 
-        const returnUrl = `${req.protocol}://${req.get('host')}/api/bulk-bookings/payment-return?redirect=${encodeURIComponent(fullRedirectUrl)}`;
+        const protocol = req.get('host').includes('localhost') || req.get('host').includes('127.0.0.1') ? req.protocol : 'https';
+        const returnUrl = `${protocol}://${req.get('host')}/api/bulk-bookings/payment-return?redirect=${encodeURIComponent(fullRedirectUrl)}`;
 
         const sessionResponse = await paymentHandler.orderSession({
             order_id: orderIdString,
@@ -214,7 +215,8 @@ exports.acceptBulkBooking = async (req, res) => {
         const orderIdString = `bulk_sec_${booking._id.toString().slice(-6)}_${Date.now()}`;
 
         const frontendOrigin = req.headers.origin || process.env.FRONTEND_FLEET_URL || 'http://localhost:5178';
-        const returnUrl = `${req.protocol}://${req.get('host')}/api/bulk-bookings/payment-return?redirect=${encodeURIComponent(frontendOrigin + '/bulk-marketplace')}`;
+        const protocol = req.get('host').includes('localhost') || req.get('host').includes('127.0.0.1') ? req.protocol : 'https';
+        const returnUrl = `${protocol}://${req.get('host')}/api/bulk-bookings/payment-return?redirect=${encodeURIComponent(frontendOrigin + '/bulk-marketplace')}`;
 
         const sessionResponse = await paymentHandler.orderSession({
             order_id: orderIdString,
@@ -884,7 +886,7 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
                         customer_id: booking.createdBy ? booking.createdBy.toString() : "guest",
                         customer_email: "test@example.com",
                         customer_phone: "9999999999",
-                        return_url: `${req.protocol}://${req.get('host')}/api/bulk-bookings/payment-return?redirect=${encodeURIComponent(frontendOrigin + '/scheduled-jobs')}`
+                        return_url: `${req.get('host').includes('localhost') || req.get('host').includes('127.0.0.1') ? req.protocol : 'https'}://${req.get('host')}/api/bulk-bookings/payment-return?redirect=${encodeURIComponent(frontendOrigin + '/scheduled-jobs')}`
                     });
 
                     // Save temporary orderId for webhook to find it

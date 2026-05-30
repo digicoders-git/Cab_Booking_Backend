@@ -1219,7 +1219,8 @@ exports.initiateTripPayment = async (req, res) => {
         const orderIdString = `order_${bookingId.slice(-6)}_${Date.now()}`;
 
         const frontendOrigin = req.headers.origin || process.env.FRONTEND_DRIVER_URL || 'http://localhost:5174';
-        const returnUrl = `${req.protocol}://${req.get('host')}/api/trips/execute/payment-return?redirect=${encodeURIComponent(frontendOrigin + '/trip/' + booking._id)}`;
+        const protocol = req.get('host').includes('localhost') || req.get('host').includes('127.0.0.1') ? req.protocol : 'https';
+        const returnUrl = `${protocol}://${req.get('host')}/api/trips/execute/payment-return?redirect=${encodeURIComponent(frontendOrigin + '/trip/' + booking._id)}`;
 
         const sessionResponse = await paymentHandler.orderSession({
             order_id: orderIdString,
