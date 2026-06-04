@@ -210,6 +210,8 @@ exports.getAllFareEstimates = async (req, res) => {
             );
 
             // Find the absolute nearest driver's distance to the pickup location
+            // And collect drivers with their distances for the map display
+            let driversWithDistance = [];
             if (categoryDrivers.length > 0 && pickupLat && pickupLng) {
                 categoryDrivers.forEach(driver => {
                     if (driver.currentLocation && driver.currentLocation.latitude && driver.currentLocation.longitude) {
@@ -220,9 +222,17 @@ exports.getAllFareEstimates = async (req, res) => {
                         if (distToPickup < minDriverDist) {
                             minDriverDist = distToPickup;
                         }
+                        
+                        // Add to our list for the map if within 10km radius
+                        if (distToPickup <= 10) {
+                            driversWithDistance.push({ driver, distToPickup });
+                        }
                     }
                 });
             }
+            
+            // Sort nearby drivers from nearest to farthest
+            driversWithDistance.sort((a, b) => a.distToPickup - b.distToPickup);
 
             // Calculate time based on nearest driver distance (assume driver approaches at an avg city speed of 20 km/h)
             if (minDriverDist !== Infinity) {
@@ -253,12 +263,12 @@ exports.getAllFareEstimates = async (req, res) => {
                 dropTime: `Drop ${dropTimeStr}`,
                 description: category.name === "Auto" ? "Hassle-free Auto rides" : `Affordable ${category.name} rides`,
                 tag: category.name === "Bike" ? "FASTEST" : (category.name === "Premium" ? "PREMIUM" : null),
-                // NEW: Added nearby drivers locations for Map display (Uber/Rapido style)
-                nearbyDrivers: categoryDrivers.map(d => ({
-                    id: d._id,
-                    latitude: d.currentLocation.latitude,
-                    longitude: d.currentLocation.longitude
-                })).slice(0, 10) // Limit to 10 for map performance
+                // NEW: Added nearby drivers locations for Map display (Filtered within 10km radius & Sorted)
+                nearbyDrivers: driversWithDistance.map(d => ({
+                    id: d.driver._id,
+                    latitude: d.driver.currentLocation.latitude,
+                    longitude: d.driver.currentLocation.longitude
+                })).slice(0, 10) // Limit to 10 nearest drivers for map performance
             };
 
             // Only show the specific fare user asked for
