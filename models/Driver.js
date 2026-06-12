@@ -79,6 +79,10 @@ const driverSchema = new mongoose.Schema({
       default: null,
       uppercase: true
     },
+    carImage: {
+      type: String,
+      default: null
+    },
     carModel: {
       type: String,
       default: null

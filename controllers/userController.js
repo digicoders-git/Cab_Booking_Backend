@@ -2,6 +2,8 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness");
 const { sendPushNotification } = require("../utils/fcmNotification");
+const Otp = require("../models/Otp");
+const { sendOtpSms } = require("../utils/sendSms");
 
 // 1. Send OTP Placeholder API (For Frontend Flow)
 exports.sendOtp = async (req, res) => {
@@ -16,14 +18,24 @@ exports.sendOtp = async (req, res) => {
             return res.status(400).json({ success: false, message: "Please enter a valid 10-digit phone number" });
         }
 
-        // In production, you would trigger SMS here.
-        // For now, we just return success for testing.
+        // Generate a 4-digit random OTP
+        const generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
+
+        // Delete any existing OTP for this phone to avoid conflicts
+        await Otp.deleteMany({ phone });
+
+        // Save new OTP to database (will auto-expire in 5 mins due to TTL index)
+        await Otp.create({ phone, otp: generatedOtp });
+
+        // Trigger live SMS via BulkSMSPlans
+        await sendOtpSms(phone, generatedOtp);
+
         res.status(200).json({
             success: true,
-            message: "OTP sent successfully (Dummy)",
+            message: "OTP sent successfully to your mobile number",
             phone,
-            otpMode: "FIXED_TESTING",
-            otp: "123456" // Showing for testing ease
+            otpMode: "LIVE",
+            // otp: generatedOtp // Uncomment for extreme debugging, but NEVER expose OTP in production response!
         });
     } catch (error) {
         res.status(500).json({ success: false, message: "Failed to process OTP request" });
@@ -44,11 +56,17 @@ exports.loginUser = async (req, res) => {
             return res.status(400).json({ success: false, message: "Please enter a valid 10-digit phone number" });
         }
 
-        // Using a fixed OTP for testing
-        const FIX_OTP = "123456";
+        // Check against the database OTP
+        const dbOtp = await Otp.findOne({ phone }).sort({ createdAt: -1 });
 
-        if (otp !== FIX_OTP) {
-            return res.status(400).json({ success: false, message: "Invalid OTP" });
+        // Validation logic: allow ONLY the real generated OTP
+        if (!dbOtp || dbOtp.otp !== otp) {
+            return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+        }
+
+        // OTP is valid, delete it so it can't be reused
+        if (dbOtp) {
+            await Otp.deleteMany({ phone });
         }
 
         let user = await User.findOne({ phone });

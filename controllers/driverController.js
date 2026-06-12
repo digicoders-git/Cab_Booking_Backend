@@ -31,6 +31,7 @@ exports.registerDriver = async (req, res) => {
         const insuranceImage = req.files?.insuranceImage ? req.files.insuranceImage[0].filename : null;
         const permitImage    = req.files?.permitImage    ? req.files.permitImage[0].filename    : null;
         const pucImage       = req.files?.pucImage       ? req.files.pucImage[0].filename       : null;
+        const carImage       = req.files?.carImage       ? req.files.carImage[0].filename       : null;
 
         const aadhar = req.files?.aadhar ? req.files.aadhar[0].filename : null;
         const pan = req.files?.pan ? req.files.pan[0].filename : null;
@@ -75,6 +76,7 @@ exports.registerDriver = async (req, res) => {
             insuranceExpiry,
             permitExpiry,
             pucExpiry,
+            carImage,
             carDocuments: {
                 rc:        rcImage,
                 insurance: insuranceImage,
@@ -367,12 +369,14 @@ exports.updateDriverProfile = async (req, res) => {
         if (req.files?.insuranceImage) updateData["carDetails.carDocuments.insurance"] = req.files.insuranceImage[0].filename;
         if (req.files?.permitImage)    updateData["carDetails.carDocuments.permit"]    = req.files.permitImage[0].filename;
         if (req.files?.pucImage)       updateData["carDetails.carDocuments.puc"]       = req.files.pucImage[0].filename;
+        if (req.files?.carImage)       updateData["carDetails.carImage"]               = req.files.carImage[0].filename;
 
         // Fallback: text-based document paths (if sent as strings, not files)
         if (!req.files?.rcImage        && rcDocument)        updateData["carDetails.carDocuments.rc"]        = rcDocument;
         if (!req.files?.insuranceImage && insuranceDocument) updateData["carDetails.carDocuments.insurance"] = insuranceDocument;
         if (!req.files?.permitImage    && permitDocument)    updateData["carDetails.carDocuments.permit"]    = permitDocument;
         if (!req.files?.pucImage       && pucDocument)       updateData["carDetails.carDocuments.puc"]       = pucDocument;
+        if (!req.files?.carImage       && req.body.carImageText) updateData["carDetails.carImage"]       = req.body.carImageText;
 
         const driver = await Driver.findByIdAndUpdate(
             req.user.id,
