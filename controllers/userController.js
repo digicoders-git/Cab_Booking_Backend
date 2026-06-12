@@ -18,8 +18,8 @@ exports.sendOtp = async (req, res) => {
             return res.status(400).json({ success: false, message: "Please enter a valid 10-digit phone number" });
         }
 
-        // Generate a 4-digit random OTP
-        const generatedOtp = Math.floor(1000 + Math.random() * 9000).toString();
+        // Generate a 6-digit random OTP
+        const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
 
         // Delete any existing OTP for this phone to avoid conflicts
         await Otp.deleteMany({ phone });
