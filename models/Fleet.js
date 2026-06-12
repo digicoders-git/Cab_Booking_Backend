@@ -9,6 +9,7 @@ const fleetSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true
+    // wnjws
   },
   phone: {
     type: String,
@@ -23,7 +24,7 @@ const fleetSchema = new mongoose.Schema({
     type: String,
     default: null
   },
-  
+
   // Business Details
   companyName: {
     type: String,
@@ -37,7 +38,7 @@ const fleetSchema = new mongoose.Schema({
     type: String,
     default: ""
   },
-  
+
   // Address
   address: {
     type: String,
@@ -55,7 +56,7 @@ const fleetSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  
+
   // Bank Details
   bankDetails: {
     accountNumber: {
@@ -75,7 +76,7 @@ const fleetSchema = new mongoose.Schema({
       default: ""
     }
   },
-  
+
   // Business Stats
   totalCars: {
     type: Number,
@@ -97,7 +98,7 @@ const fleetSchema = new mongoose.Schema({
     type: Number,
     default: 10 // Admin can set specific % for each fleet
   },
-  
+
   // Documents
   documents: {
     gstCertificate: {
@@ -113,18 +114,18 @@ const fleetSchema = new mongoose.Schema({
       default: null
     }
   },
-  
+
   // Status
   isActive: {
     type: Boolean,
     default: true
   },
-  
+
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     refPath: "createdByModel" // Dynamic reference
   },
-  
+
   createdByModel: {
     type: String,
     enum: ["Admin", "Vendor"],
