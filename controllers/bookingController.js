@@ -16,8 +16,19 @@ const getAreaSpecificRates = async (pickupLat, pickupLng, defaultBase, defaultPr
         if (!pickupLat || !pickupLng) return { baseFare: defaultBase, privateRate: defaultPrivateRate, sharedRate: defaultSharedRate, isSpecial: false };
 
         // 🚀 SMART GEO SEARCH: Find zones near the rider (Max 50KM buffer)
+        const now = new Date();
         const activeAreas = await AreaPricing.find({
             isActive: true,
+            $or: [
+                { validFrom: { $exists: false } },
+                { validFrom: null },
+                { validFrom: { $lte: now } }
+            ],
+            $or: [
+                { validUntil: { $exists: false } },
+                { validUntil: null },
+                { validUntil: { $gte: now } }
+            ],
             location: {
                 $nearSphere: {
                     $geometry: {

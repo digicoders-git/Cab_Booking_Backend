@@ -41,3 +41,25 @@ exports.deleteAreaPricing = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+// 5. Auto-Expire Background Task
+exports.autoExpireAreaPricing = async () => {
+    try {
+        const now = new Date();
+        const result = await AreaPricing.updateMany(
+            { 
+                isActive: true, 
+                validUntil: { $ne: null, $lte: now } 
+            },
+            { 
+                $set: { isActive: false } 
+            }
+        );
+        
+        if (result.modifiedCount > 0) {
+            console.log(`⏰ [CRON] Auto-expired ${result.modifiedCount} Area Pricing rule(s).`);
+        }
+    } catch (error) {
+        console.error("Error auto-expiring area pricing:", error.message);
+    }
+};

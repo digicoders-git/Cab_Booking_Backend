@@ -24,6 +24,7 @@ const areaPricingRoutes = require("./routes/areaPricingRoutes"); // NEW: Area Wi
 const serviceAreaRoutes = require("./routes/serviceAreaRoutes"); // NEW: Service Availability Check
 const bulkBookingRoutes = require("./routes/bulkBookingRoutes"); // NEW: Bulk Booking Marketplace
 const { autoExpireBookings } = require("./controllers/bulkBookingController");
+const { autoExpireAreaPricing } = require("./controllers/areaPricingController");
 
 const app = express();
 app.set('trust proxy', true);
@@ -74,6 +75,12 @@ server.listen(PORT, () => {
         autoExpireBookings();
     }, 30 * 60 * 1000); 
 
+    // Automation: Check and Expire time-bound area pricing every 5 minutes
+    setInterval(() => {
+        autoExpireAreaPricing();
+    }, 5 * 60 * 1000);
+
     // Run once immediately on start
     autoExpireBookings();
+    autoExpireAreaPricing();
 });

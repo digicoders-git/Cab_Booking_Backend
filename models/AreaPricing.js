@@ -50,6 +50,15 @@ const areaPricingSchema = new mongoose.Schema({
     isActive: {
         type: Boolean,
         default: true
+    },
+    // 📅 Time-Bound Validity
+    validFrom: {
+        type: Date,
+        default: null
+    },
+    validUntil: {
+        type: Date,
+        default: null
     }
 }, { timestamps: true });
 
