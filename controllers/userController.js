@@ -64,11 +64,6 @@ exports.loginUser = async (req, res) => {
             return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
         }
 
-        // OTP is valid, delete it so it can't be reused
-        if (dbOtp) {
-            await Otp.deleteMany({ phone });
-        }
-
         let user = await User.findOne({ phone });
 
         let isNewUser = false;
@@ -110,6 +105,9 @@ exports.loginUser = async (req, res) => {
         if (!user.isActive) {
             return res.status(403).json({ success: false, message: "Your account has been deactivated by Admin." });
         }
+
+        // OTP is successfully verified and user is registered/logged in, now delete it
+        await Otp.deleteMany({ phone });
 
         // Generate JWT Token
         const token = jwt.sign(
