@@ -662,8 +662,19 @@ exports.getBulkSettings = async (req, res) => {
 
         res.json({
             success: true,
-            advancePercentage: admin.bulkAdvancePercentage || 25,
-            securityPercentage: admin.bulkSecurityPercentage || 20
+            settings: {
+                userBulkAdvancePct: admin.userBulkAdvancePct ?? 25,
+                userPayViaBank: admin.userPayViaBank ?? true,
+                agentBulkAdvancePct: admin.agentBulkAdvancePct ?? 5,
+                agentPayViaBank: admin.agentPayViaBank ?? false,
+                vendorBulkAdvancePct: admin.vendorBulkAdvancePct ?? 15,
+                vendorPayViaBank: admin.vendorPayViaBank ?? true,
+                adminBulkAdvancePct: admin.adminBulkAdvancePct ?? 0,
+                adminPayViaBank: admin.adminPayViaBank ?? false,
+                fleetBulkSecurityPct: admin.fleetBulkSecurityPct ?? 20,
+                fleetSecurityPayViaBank: admin.fleetSecurityPayViaBank ?? true,
+                maxNegativeWalletLimit: admin.maxNegativeWalletLimit ?? 3000
+            }
         });
     } catch (error) {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
@@ -673,7 +684,7 @@ exports.getBulkSettings = async (req, res) => {
 // NEW: Update Global Bulk Booking Settings
 exports.updateBulkSettings = async (req, res) => {
     try {
-        const { advancePercentage, securityPercentage } = req.body;
+        const updates = req.body; // Expecting the full settings object
 
         // Only SuperAdmin should be allowed to change global financial settings
         const admin = await Admin.findById(req.user.id);
@@ -681,8 +692,20 @@ exports.updateBulkSettings = async (req, res) => {
             return res.status(403).json({ success: false, message: "Unauthorized: Only SuperAdmin can change global settings" });
         }
 
-        if (advancePercentage !== undefined) admin.bulkAdvancePercentage = advancePercentage;
-        if (securityPercentage !== undefined) admin.bulkSecurityPercentage = securityPercentage;
+        const validKeys = [
+            'userBulkAdvancePct', 'userPayViaBank',
+            'agentBulkAdvancePct', 'agentPayViaBank',
+            'vendorBulkAdvancePct', 'vendorPayViaBank',
+            'adminBulkAdvancePct', 'adminPayViaBank',
+            'fleetBulkSecurityPct', 'fleetSecurityPayViaBank',
+            'maxNegativeWalletLimit'
+        ];
+
+        validKeys.forEach(key => {
+            if (updates[key] !== undefined) {
+                admin[key] = updates[key];
+            }
+        });
 
         await admin.save();
 
@@ -690,8 +713,17 @@ exports.updateBulkSettings = async (req, res) => {
             success: true,
             message: "Bulk Booking settings updated successfully",
             settings: {
-                advancePercentage: admin.bulkAdvancePercentage,
-                securityPercentage: admin.bulkSecurityPercentage
+                userBulkAdvancePct: admin.userBulkAdvancePct,
+                userPayViaBank: admin.userPayViaBank,
+                agentBulkAdvancePct: admin.agentBulkAdvancePct,
+                agentPayViaBank: admin.agentPayViaBank,
+                vendorBulkAdvancePct: admin.vendorBulkAdvancePct,
+                vendorPayViaBank: admin.vendorPayViaBank,
+                adminBulkAdvancePct: admin.adminBulkAdvancePct,
+                adminPayViaBank: admin.adminPayViaBank,
+                fleetBulkSecurityPct: admin.fleetBulkSecurityPct,
+                fleetSecurityPayViaBank: admin.fleetSecurityPayViaBank,
+                maxNegativeWalletLimit: admin.maxNegativeWalletLimit
             }
         });
     } catch (error) {

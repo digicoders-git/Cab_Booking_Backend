@@ -59,6 +59,20 @@ const areaPricingSchema = new mongoose.Schema({
     validUntil: {
         type: Date,
         default: null
+    },
+    // ⏰ Recurring Peak Time Scheduling
+    daysOfWeek: {
+        type: [String],
+        enum: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+        default: [] // Empty means all days
+    },
+    startTime: {
+        type: String, // format "HH:mm" (24-hour), e.g. "17:00"
+        default: null
+    },
+    endTime: {
+        type: String, // format "HH:mm", e.g. "21:00"
+        default: null
     }
 }, { timestamps: true });
 

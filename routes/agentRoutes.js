@@ -15,7 +15,11 @@ const {
     getAgentReport, // Detail report including 7 days earnings
     downloadAgentReport, // Download report as PDF or CSV
     adminUpdateAgent,
-    updateFcmToken
+    updateFcmToken,
+    selfRegisterAgent,
+    getPendingAgents,
+    approveAgent,
+    rejectAgent
 } = require("../controllers/agentController");
 
 const { auth, adminOnly, agentOnly } = require("../middleware/auth");
@@ -28,6 +32,13 @@ router.post("/create", auth, checkPermission("AGENT_CREATE"), upload.fields([
     { name: "aadhar", maxCount: 1 },
     { name: "pan", maxCount: 1 }
 ]), registerAgent);
+
+// Agent Self Registration (Open)
+router.post("/self-register", upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "aadhar", maxCount: 1 },
+    { name: "pan", maxCount: 1 }
+]), selfRegisterAgent);
 
 // Agent Login
 router.post("/login", loginAgent);
@@ -53,6 +64,15 @@ router.put("/profile-update", auth, agentOnly, upload.fields([
 
 // Get All Agents (Admin Only)
 router.get("/all", auth, checkPermission("AGENT_READ"), getAllAgents);
+
+// Get Pending Agents (Admin Only)
+router.get("/pending", auth, checkPermission("AGENT_READ"), getPendingAgents);
+
+// Approve Agent (Admin Only)
+router.put("/approve/:id", auth, checkPermission("AGENT_EDIT"), approveAgent);
+
+// Reject Agent (Admin Only)
+router.put("/reject/:id", auth, checkPermission("AGENT_DELETE"), rejectAgent);
 
 // Delete Agent (Admin Only)
 router.delete("/delete/:id", auth, checkPermission("AGENT_DELETE"), deleteAgent);

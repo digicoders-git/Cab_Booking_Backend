@@ -72,6 +72,85 @@ exports.registerAgent = async (req, res) => {
     }
 };
 
+// Self Register Agent (Open)
+exports.selfRegisterAgent = async (req, res) => {
+    try {
+        const { 
+            name, email, phone, password,
+            address, city, state, pincode,
+            aadharNumber, panNumber,
+            accountNumber, ifscCode, accountHolderName, bankName 
+        } = req.body;
+
+        const image = req.files?.image ? req.files.image[0].filename : null;
+        const aadhar = req.files?.aadhar ? req.files.aadhar[0].filename : null;
+        const pan = req.files?.pan ? req.files.pan[0].filename : null;
+
+        // Check global uniqueness
+        const emailTakenBy = await isEmailTaken(email);
+        if (emailTakenBy) return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+
+        const phoneTakenBy = await isPhoneTaken(phone);
+        if (phoneTakenBy) return res.status(400).json({ success: false, message: `Phone number is already registered as ${phoneTakenBy}` });
+
+        const agent = await Agent.create({
+            name,
+            email,
+            phone,
+            password,
+            image,
+            commissionPercentage: 10, // Default 10%
+            bulkCommissionPercentage: 5, // Default 5%
+            address,
+            city,
+            state,
+            pincode,
+            aadharNumber,
+            panNumber,
+            documents: { aadhar, pan },
+            bankDetails: {
+                accountNumber,
+                ifscCode,
+                accountHolderName,
+                bankName
+            },
+            isActive: false,
+            isApproved: false,
+            createdBy: null // self-registered
+        });
+
+        res.status(201).json({
+            success: true,
+            message: "Registration submitted successfully. Waiting for Admin approval.",
+            agent
+        });
+
+        // NOTIFY ADMINS
+        try {
+            const Admin = require("../models/Admin");
+            const admins = await Admin.find({ fcmToken: { $ne: null } });
+            if (admins.length > 0) {
+                for (const admin of admins) {
+                    await sendPushNotification(admin.fcmToken, {
+                        title: "🆕 New Agent Registration",
+                        body: `${name} has registered as an Agent and is waiting for approval.`,
+                        data: { type: "NEW_AGENT_REGISTRATION", agentId: agent._id.toString() }
+                    });
+                }
+            }
+        } catch (fcmErr) {
+            console.error("FCM Error:", fcmErr.message);
+        }
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Server error",
+            error: error.message
+        });
+    }
+};
+
 // Login Agent
 exports.loginAgent = async (req, res) => {
     try {
@@ -90,6 +169,13 @@ exports.loginAgent = async (req, res) => {
             return res.status(404).json({
                 success: false,
                 message: "Agent not found"
+            });
+        }
+
+        if (!agent.isApproved) {
+            return res.status(403).json({
+                success: false,
+                message: "Your account is pending admin approval"
             });
         }
 
@@ -734,6 +820,102 @@ exports.getAllAgents = async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Error fetching agents",
+            error: error.message
+        });
+    }
+};
+
+// Get Pending Agents (Admin Only)
+exports.getPendingAgents = async (req, res) => {
+    try {
+        const agents = await Agent.find({ isApproved: false }).sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            count: agents.length,
+            agents
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error fetching pending agents",
+            error: error.message
+        });
+    }
+};
+
+// Approve Agent (Admin Only)
+exports.approveAgent = async (req, res) => {
+    try {
+        const agent = await Agent.findById(req.params.id);
+        if (!agent) {
+            return res.status(404).json({ success: false, message: "Agent not found" });
+        }
+
+        const { commissionPercentage, bulkCommissionPercentage } = req.body;
+
+        agent.isApproved = true;
+        agent.isActive = true; // Auto activate on approval
+        
+        if (commissionPercentage !== undefined) agent.commissionPercentage = commissionPercentage;
+        if (bulkCommissionPercentage !== undefined) agent.bulkCommissionPercentage = bulkCommissionPercentage;
+
+        await agent.save();
+
+        res.json({
+            success: true,
+            message: "Agent approved successfully",
+            agent
+        });
+
+        // NOTIFY AGENT
+        if (agent.fcmToken) {
+            try {
+                await sendPushNotification(agent.fcmToken, {
+                    title: "✅ Account Approved!",
+                    body: "Your agent account has been approved. You can now login.",
+                    data: { type: "AGENT_APPROVED" }
+                });
+            } catch (err) {}
+        }
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error approving agent",
+            error: error.message
+        });
+    }
+};
+
+// Reject Agent (Admin Only)
+exports.rejectAgent = async (req, res) => {
+    try {
+        const agent = await Agent.findById(req.params.id);
+        if (!agent) {
+            return res.status(404).json({ success: false, message: "Agent not found" });
+        }
+
+        const fcmToken = agent.fcmToken;
+        await Agent.findByIdAndDelete(req.params.id);
+
+        res.json({
+            success: true,
+            message: "Agent application rejected and removed."
+        });
+
+        if (fcmToken) {
+            try {
+                await sendPushNotification(fcmToken, {
+                    title: "❌ Account Rejected",
+                    body: "Your agent application has been rejected by the admin.",
+                    data: { type: "AGENT_REJECTED" }
+                });
+            } catch (err) {}
+        }
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error rejecting agent",
             error: error.message
         });
     }

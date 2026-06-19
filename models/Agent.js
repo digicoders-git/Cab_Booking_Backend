@@ -41,7 +41,11 @@ const agentSchema = new mongoose.Schema({
   },
   isActive: {
     type: Boolean,
-    default: true
+    default: false // Requires admin approval to become true
+  },
+  isApproved: {
+    type: Boolean,
+    default: false
   },
   documents: {
     aadhar: {

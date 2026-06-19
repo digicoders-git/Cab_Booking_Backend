@@ -41,6 +41,22 @@ const getAreaSpecificRates = async (pickupLat, pickupLng, defaultBase, defaultPr
         }).sort({ priority: -1 }); // Priority is still King for overlapping zones
 
         for (const area of activeAreas) {
+            // --- NEW: Recurring Schedule Check ---
+            const currentDayStr = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][now.getDay()];
+            
+            if (area.daysOfWeek && area.daysOfWeek.length > 0) {
+                if (!area.daysOfWeek.includes(currentDayStr)) {
+                    continue; // Skip this area rule because today is not a peak day
+                }
+            }
+
+            if (area.startTime && area.endTime) {
+                const currentHourMin = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+                if (currentHourMin < area.startTime || currentHourMin > area.endTime) {
+                    continue; // Skip because current time is outside the peak hours
+                }
+            }
+
             // Calculate actual distance again to verify against custom Radius
             const distanceToCenter = getDistanceFromLatLonInKm(
                 pickupLat, pickupLng, 
@@ -442,7 +458,7 @@ exports.createBooking = async (req, res) => {
         const newBooking = await Booking.create(bookingData);
 
         // --- SEQUENTIAL MATCHING LOGIC (The Waterfall) ---
-        const matchInterval = 11000; // 11 seconds (1s buffer for frontend timer sync)
+        const matchInterval = 16000; // 16 seconds (1s buffer for frontend timer sync)
         const maxTime = 240000;      // 4 minutes total wait time 
         let timeElapsed = 0;
 

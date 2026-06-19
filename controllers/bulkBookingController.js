@@ -63,37 +63,159 @@ exports.createBulkBooking = async (req, res) => {
             ? ((offeredPrice - systemEstimatedPrice) / systemEstimatedPrice) * 100
             : 0;
 
-        // Fetch dynamic percentages from Admin
+        // --- NEW: Fetch dynamic percentages from Admin & Handle Wallet Bypass ---
         const adminSettings = await Admin.findOne({ role: 'SuperAdmin' });
-        const advancePct = adminSettings?.bulkAdvancePercentage || 25;
+        
+        let advancePct = 25;
+        let payViaBank = true;
+        let maxNegativeWalletLimit = adminSettings?.maxNegativeWalletLimit ?? 3000;
+        
+        const userRole = req.user.role;
+        const creatorModel = userRole === 'admin' ? 'Admin' :
+                             userRole === 'agent' ? 'Agent' :
+                             userRole === 'vendor' ? 'Vendor' :
+                             userRole === 'fleet' ? 'Fleet' : 'User';
+
+        if (adminSettings) {
+            if (userRole === 'user') {
+                advancePct = adminSettings.userBulkAdvancePct ?? 25;
+                payViaBank = adminSettings.userPayViaBank ?? true;
+            } else if (userRole === 'agent') {
+                advancePct = adminSettings.agentBulkAdvancePct ?? 5;
+                payViaBank = adminSettings.agentPayViaBank ?? false;
+            } else if (userRole === 'vendor') {
+                advancePct = adminSettings.vendorBulkAdvancePct ?? 15;
+                payViaBank = adminSettings.vendorPayViaBank ?? true;
+            } else if (userRole === 'admin') {
+                advancePct = adminSettings.adminBulkAdvancePct ?? 0;
+                payViaBank = adminSettings.adminPayViaBank ?? false;
+            }
+        }
+
         const advanceAmount = Math.round(offeredPrice * (advancePct / 100));
 
+        // Create Booking DB Record (Initially PendingPayment)
         const newBooking = await BulkBooking.create({
             createdBy: req.user.id,
-            createdByModel: req.user.role === 'admin' ? 'Admin' :
-                req.user.role === 'agent' ? 'Agent' :
-                    req.user.role === 'vendor' ? 'Vendor' :
-                        req.user.role === 'fleet' ? 'Fleet' : 'User',
-            pickup,
-            drop,
-            pickupDateTime,
+            createdByModel: creatorModel,
+            pickup, drop, pickupDateTime,
             tripType: tripType || 'OneWay',
             returnDateTime: tripType === 'RoundTrip' ? returnDateTime : null,
             numberOfDays: numberOfDays || 1,
             totalDistance: totalDistance || 0,
-            carsRequired,
-            systemEstimatedPrice,
-            offeredPrice,
-            priceModifiedPercentage,
-            notes,
+            carsRequired, systemEstimatedPrice, offeredPrice, priceModifiedPercentage, notes,
             status: 'PendingPayment',
-            advancePayment: {
-                amount: advanceAmount,
-                isPaid: false
-            },
+            advancePayment: { amount: advanceAmount, isPaid: false },
             startOtp: Math.floor(1000 + Math.random() * 9000).toString()
         });
 
+        // --- BYPASS LOGIC: Wallet Deduction instead of Bank Gateway ---
+        if (!payViaBank) {
+            // Check Wallet Balance & Limit
+            let userRecord;
+            if (creatorModel === 'User') userRecord = await require('../models/User').findById(req.user.id);
+            else if (creatorModel === 'Agent') userRecord = await require('../models/Agent').findById(req.user.id);
+            else if (creatorModel === 'Vendor') userRecord = await require('../models/Vendor').findById(req.user.id);
+            else if (creatorModel === 'Admin') userRecord = await require('../models/Admin').findById(req.user.id);
+            else if (creatorModel === 'Fleet') userRecord = await require('../models/Fleet').findById(req.user.id);
+
+            if (userRecord) {
+                const currentBalance = userRecord.walletBalance || 0;
+                
+                // If this deduction pushes them below the max negative limit
+                if (currentBalance - advanceAmount < -maxNegativeWalletLimit) {
+                    await BulkBooking.findByIdAndDelete(newBooking._id); // Revert booking creation
+                    return res.status(400).json({ 
+                        success: false, 
+                        message: `Limit Reached! You cannot make this booking as it exceeds your wallet credit limit of -${maxNegativeWalletLimit}. Please clear your dues first.` 
+                    });
+                }
+
+                // Proceed with Wallet Deduction
+                userRecord.walletBalance = currentBalance - advanceAmount;
+                await userRecord.save();
+
+                // Credit Admin Wallet
+                if (adminSettings) {
+                    adminSettings.walletBalance = (adminSettings.walletBalance || 0) + advanceAmount;
+                    adminSettings.totalEarnings = (adminSettings.totalEarnings || 0) + advanceAmount;
+                    await adminSettings.save();
+
+                    // Transaction: Admin Credit
+                    await Transaction.create({
+                        user: adminSettings._id, userModel: 'Admin', amount: advanceAmount,
+                        type: 'Credit', category: 'Bulk Advance', status: 'Completed',
+                        relatedBooking: newBooking._id, description: `Advance received (Wallet bypass) for Bulk Booking #${newBooking._id.toString().slice(-6)}`
+                    });
+                }
+
+                // Transaction: User/Agent Debit
+                await Transaction.create({
+                    user: userRecord._id, userModel: creatorModel, amount: advanceAmount,
+                    type: 'Debit', category: 'Bulk Advance', status: 'Completed',
+                    relatedBooking: newBooking._id, description: `Advance paid from Wallet for Bulk Booking #${newBooking._id.toString().slice(-6)}`
+                });
+
+                // Update Booking Status to Marketplace
+                newBooking.advancePayment.isPaid = true;
+                newBooking.advancePayment.hdfcTransactionId = "WALLET_BYPASS";
+                newBooking.status = 'Marketplace';
+                await newBooking.save();
+
+                // Notify Fleets (Socket + FCM)
+                try {
+                    const io = getIO();
+                    const fleets = await require('../models/Fleet').find({ isActive: true });
+                    let eligibleFleetIds = [];
+
+                    for (const fleet of fleets) {
+                        let isEveryRequirementMet = true;
+                        for (const reqItem of newBooking.carsRequired) {
+                            const availableCount = await require('../models/FleetCar').countDocuments({
+                                fleetId: fleet._id, carType: reqItem.category, isApproved: true, isActive: true
+                            });
+                            if (availableCount < (reqItem.quantity || 1)) {
+                                isEveryRequirementMet = false; break;
+                            }
+                        }
+                        if (isEveryRequirementMet) eligibleFleetIds.push(fleet._id);
+                    }
+
+                    if (eligibleFleetIds.length > 0) {
+                        eligibleFleetIds.forEach(fleetId => {
+                            io.to(`fleet_${fleetId.toString()}`).emit("new_bulk_deal", {
+                                bookingId: newBooking._id, pickup: newBooking.pickup.address, drop: newBooking.drop.address,
+                                dateTime: newBooking.pickupDateTime, tripType: newBooking.tripType,
+                                offeredPrice: newBooking.offeredPrice, cars: newBooking.carsRequired.length
+                            });
+                        });
+
+                        for (const fleetId of eligibleFleetIds) {
+                            const fleet = await require('../models/Fleet').findById(fleetId);
+                            if (fleet?.fcmToken) {
+                                await sendPushNotification(fleet.fcmToken, {
+                                    title: `📦 New Bulk Deal: ₹${newBooking.offeredPrice}`,
+                                    body: `New bulk request at ${newBooking.pickup.address.split(',')[0]}. Check marketplace!`,
+                                    data: { bookingId: newBooking._id.toString(), type: "NEW_BULK_DEAL" }
+                                });
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error("FCM/Socket Error during Bulk Advance Payment Bypass:", err.message);
+                }
+
+                return res.status(201).json({
+                    success: true,
+                    message: "Bulk request created & published directly to Marketplace (Wallet Deduction).",
+                    bookingId: newBooking._id,
+                    advanceAmount: advanceAmount,
+                    walletDeducted: true
+                });
+            }
+        }
+
+        // --- NORMAL BANK PAYMENT FLOW ---
         const orderIdString = `bulk_adv_${newBooking._id.toString().slice(-6)}_${Date.now()}`;
 
         const fallbackUserUrl = process.env.FRONTEND_USER_URL || 'http://localhost:5173';
@@ -126,14 +248,8 @@ exports.createBulkBooking = async (req, res) => {
             paymentLinks: sessionResponse.payment_links || sessionResponse
         });
 
-
-        // res.status(201).json({
-        //     success: true,
-        //     message: "Bulk booking request created in Marketplace",
-        //     booking: newBooking
-        // });
-
     } catch (error) {
+        require('fs').writeFileSync('bulk_err.log', error.stack || error.message);
         res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
@@ -207,11 +323,107 @@ exports.acceptBulkBooking = async (req, res) => {
             return res.status(400).json({ success: false, message: "Sorry, this deal is already taken or unavailable." });
         }
 
-        // Fetch dynamic percentages from Admin
+        // --- NEW: Fetch dynamic percentages from Admin & Handle Wallet Bypass ---
         const adminSettings = await Admin.findOne({ role: 'SuperAdmin' });
-        const securityPct = adminSettings?.bulkSecurityPercentage || 20;
+        const securityPct = adminSettings?.fleetBulkSecurityPct ?? 20;
+        const payViaBank = adminSettings?.fleetSecurityPayViaBank ?? true;
+        const maxNegativeWalletLimit = adminSettings?.maxNegativeWalletLimit ?? 3000;
+        
         const securityAmount = Math.round(booking.offeredPrice * (securityPct / 100));
 
+        // --- BYPASS LOGIC: Wallet Deduction instead of Bank Gateway ---
+        if (!payViaBank) {
+            const fleet = await Fleet.findById(fleetId);
+            if (fleet) {
+                const currentBalance = fleet.walletBalance || 0;
+                
+                // If deduction pushes below limit
+                if (currentBalance - securityAmount < -maxNegativeWalletLimit) {
+                    return res.status(400).json({ 
+                        success: false, 
+                        message: `Limit Reached! You cannot accept this deal as it exceeds your wallet credit limit of -${maxNegativeWalletLimit}. Please clear your dues first.` 
+                    });
+                }
+
+                // Proceed with Wallet Deduction
+                fleet.walletBalance = currentBalance - securityAmount;
+                await fleet.save();
+
+                // Credit Admin Wallet
+                if (adminSettings) {
+                    adminSettings.walletBalance = (adminSettings.walletBalance || 0) + securityAmount;
+                    adminSettings.totalEarnings = (adminSettings.totalEarnings || 0) + securityAmount;
+                    await adminSettings.save();
+
+                    await Transaction.create({
+                        user: adminSettings._id, userModel: 'Admin', amount: securityAmount,
+                        type: 'Credit', category: 'Bulk Security', status: 'Completed',
+                        relatedBooking: booking._id, description: `Security received (Wallet bypass) for Bulk Booking ${booking._id}`
+                    });
+                }
+
+                // Debit Fleet Wallet
+                await Transaction.create({
+                    user: fleet._id, userModel: 'Fleet', amount: securityAmount,
+                    type: 'Debit', category: 'Bulk Security', status: 'Completed',
+                    relatedBooking: booking._id, description: `Security paid from Wallet to accept Bulk Deal #${booking._id.toString().slice(-6)}`
+                });
+
+                booking.fleetSecurityPayment = {
+                    amount: securityAmount,
+                    isPaid: true,
+                    hdfcOrderId: "WALLET_BYPASS",
+                    fleetId: fleetId
+                };
+                booking.status = 'Accepted';
+                booking.assignedFleet = fleetId;
+                booking.acceptedAt = new Date();
+                await booking.save();
+
+                // Notify Creator
+                try {
+                    const io = getIO();
+                    const creatorId = booking.createdBy.toString();
+
+                    io.to(creatorId).emit("bulk_booking_update", {
+                        bookingId: booking._id, status: "Accepted", fleetName: fleet.companyName,
+                        message: "Your bulk booking has been accepted!"
+                    });
+
+                    if (booking.createdByModel === 'Agent') {
+                        io.to(`agent_${creatorId}`).emit("bulk_booking_update", {
+                            bookingId: booking._id, status: "Accepted", fleetName: fleet.companyName
+                        });
+                    }
+
+                    let creator = null;
+                    if (booking.createdByModel === 'User') creator = await User.findById(creatorId);
+                    else if (booking.createdByModel === 'Agent') creator = await Agent.findById(creatorId);
+
+                    if (creator && creator.fcmToken) {
+                        await sendPushNotification(creator.fcmToken, {
+                            title: "📦 Bulk Booking Accepted!",
+                            body: `Your booking has been accepted by ${fleet.companyName}.`,
+                            data: { bookingId: booking._id.toString(), type: "BULK_BOOKING_ACCEPTED" }
+                        });
+                    }
+
+                    // Remove from other fleets' marketplace
+                    io.emit("remove_bulk_deal", { bookingId: booking._id });
+                } catch (err) {
+                    console.error("Payment Success Notification Error (Bypass):", err.message);
+                }
+
+                return res.json({ 
+                    success: true, 
+                    message: "Security paid via Wallet! Deal assigned to you.", 
+                    booking,
+                    walletDeducted: true 
+                });
+            }
+        }
+
+        // --- NORMAL BANK PAYMENT FLOW ---
         const orderIdString = `bulk_sec_${booking._id.toString().slice(-6)}_${Date.now()}`;
 
         const frontendOrigin = req.headers.origin || process.env.FRONTEND_FLEET_URL || 'http://localhost:5178';
@@ -237,7 +449,7 @@ exports.acceptBulkBooking = async (req, res) => {
 
         res.json({
             success: true,
-            message: "To accept this deal, please pay 20% security commission.",
+            message: "To accept this deal, please pay security commission.",
             securityAmount,
             bookingId: booking._id,
             paymentLinks: sessionResponse.payment_links || sessionResponse

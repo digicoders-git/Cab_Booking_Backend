@@ -74,6 +74,11 @@ const driverSchema = new mongoose.Schema({
   },
   // CAR DETAILS (Driver's Own Car)
   carDetails: {
+    vehicleType: {
+      type: String,
+      enum: ["Car", "Bike"],
+      default: "Car"
+    },
     carNumber: {
       type: String,
       default: null,

@@ -238,7 +238,7 @@ exports.autoMatchDriver = async (bookingId) => {
                 distance: booking.estimatedDistanceKm,
                 rideType: booking.rideType,
                 fare: booking.fareEstimate,
-                expiresAt: Date.now() + 11000 // 🔥 Using immediate time for zero delay
+                expiresAt: Date.now() + 16000 // 🔥 Using immediate time for zero delay
             });
             console.log(`Driver ${nearestDriver.name} notified via Socket about New Request! 🟢`);
         } catch (err) {
@@ -301,7 +301,7 @@ exports.getPendingRequests = async (req, res) => {
         // Filter: Sirf wahi requests dikhao jinki booking abhi bhi "Pending" hai
         const activeRequests = requests.filter(req => req.booking && req.booking.bookingStatus === "Pending").map(req => {
             const reqObj = req.toObject();
-            reqObj.expiresAt = new Date(req.createdAt).getTime() + 11000;
+            reqObj.expiresAt = new Date(req.createdAt).getTime() + 16000;
             return reqObj;
         });
 

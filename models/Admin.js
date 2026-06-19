@@ -38,14 +38,23 @@ const adminSchema = new mongoose.Schema({
         type: Number,
         default: 10 // Global platform fee % for individual drivers
     },
-    bulkAdvancePercentage: {
-        type: Number,
-        default: 25
-    },
-    bulkSecurityPercentage: {
-        type: Number,
-        default: 20
-    },
+    // --- NEW: Global Settings for Bulk Booking ---
+    userBulkAdvancePct: { type: Number, default: 25 },
+    userPayViaBank: { type: Boolean, default: true },
+
+    agentBulkAdvancePct: { type: Number, default: 5 },
+    agentPayViaBank: { type: Boolean, default: false },
+
+    vendorBulkAdvancePct: { type: Number, default: 15 },
+    vendorPayViaBank: { type: Boolean, default: true },
+
+    adminBulkAdvancePct: { type: Number, default: 0 },
+    adminPayViaBank: { type: Boolean, default: false },
+
+    fleetBulkSecurityPct: { type: Number, default: 20 },
+    fleetSecurityPayViaBank: { type: Boolean, default: true },
+
+    maxNegativeWalletLimit: { type: Number, default: 3000 },
     role: {
         type: String,
         enum: ["SuperAdmin", "SubAdmin"],

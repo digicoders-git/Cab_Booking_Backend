@@ -22,7 +22,7 @@ exports.registerDriver = async (req, res) => {
             accountNumber, ifscCode, accountHolderName, bankName,
             
             // Car Details (Optional for direct registration)
-            carNumber, carModel, carBrand, carType, seatCapacity, carColor, 
+            vehicleType, carNumber, carModel, carBrand, carType, seatCapacity, carColor, 
             manufacturingYear, insuranceExpiry, permitExpiry, pucExpiry
         } = req.body;
 
@@ -66,6 +66,7 @@ exports.registerDriver = async (req, res) => {
 
         // Prepare car details object
         const carDetails = carNumber ? {
+            vehicleType: vehicleType || "Car",
             carNumber,
             carModel,
             carBrand,
@@ -285,7 +286,7 @@ exports.updateDriverProfile = async (req, res) => {
             license, aadhar, pan,
             
             // Car Details
-            carNumber, carModel, carBrand, carType, seatCapacity, carColor,
+            vehicleType, carNumber, carModel, carBrand, carType, seatCapacity, carColor,
             manufacturingYear, insuranceExpiry, permitExpiry, pucExpiry,
             lastServiceDate, nextServiceDate,
             rcDocument, insuranceDocument, permitDocument, pucDocument
@@ -349,7 +350,8 @@ exports.updateDriverProfile = async (req, res) => {
         }
 
         // Update Car Details (text fields)
-        if (carNumber || carModel || carBrand || carType) {
+        if (vehicleType || carNumber || carModel || carBrand || carType) {
+            updateData["carDetails.vehicleType"]       = vehicleType || driverRecord.carDetails?.vehicleType || "Car";
             updateData["carDetails.carNumber"]         = carNumber;
             updateData["carDetails.carModel"]          = carModel;
             updateData["carDetails.carBrand"]          = carBrand;

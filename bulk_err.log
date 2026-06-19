@@ -1,0 +1,6 @@
+Error: Bad Request.
+    at IncomingMessage.<anonymous> (C:\Users\vivekvkraj\OneDrive\Desktop\Cab booking\CapBokkin\utils\PaymentHandler.js:258:15)
+    at Object.onceWrapper (node:events:622:28)
+    at IncomingMessage.emit (node:events:520:35)
+    at endReadableNT (node:internal/streams/readable:1729:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
