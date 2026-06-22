@@ -11,6 +11,7 @@ const FleetCar = require("../models/FleetCar");
 const FleetDriver = require("../models/FleetDriver");
 const Fleet = require("../models/Fleet");
 const { getIO } = require("../socket/socket");
+const AreaPricing = require("../models/AreaPricing");
 const serviceAreaController = require("./serviceAreaController");
 const { sendPushNotification } = require("../utils/fcmNotification");
 const Transaction = require("../models/Transaction");
@@ -25,9 +26,10 @@ const paymentHandler = PaymentHandler.getInstance();
 // 1. Create Bulk Booking Request
 exports.createBulkBooking = async (req, res) => {
     try {
-        const {
+        let {
             pickup, drop, pickupDateTime, tripType, returnDateTime,
-            numberOfDays, totalDistance, carsRequired, offeredPrice, notes
+            numberOfDays, totalDistance, carsRequired, offeredPrice, notes,
+            isOutstation
         } = req.body;
 
         // Validation
@@ -43,6 +45,37 @@ exports.createBulkBooking = async (req, res) => {
                 success: false,
                 message: "Bulk bookings are not available at this location yet. Please check back later."
             });
+        }
+
+        // --- NEW: AreaPricing MCD Tax Lookup ---
+        let mcdStateTaxApplied = 0;
+        try {
+            const activeArea = await AreaPricing.findOne({
+                isActive: true,
+                location: {
+                    $nearSphere: {
+                        $geometry: {
+                            type: "Point",
+                            coordinates: [parseFloat(pickup.longitude), parseFloat(pickup.latitude)]
+                        },
+                        $maxDistance: 50000 // 50 KM Search Radius
+                    }
+                }
+            }).sort({ priority: -1 });
+
+            if (activeArea) {
+                mcdStateTaxApplied = activeArea.mcdStateTax || 0;
+            }
+        } catch (err) {
+            console.error("Geo Pricing Lookup Error for Bulk Booking:", err.message);
+        }
+
+        // Add MCD/State tax to the final offered price if it's an outstation ride
+        if (isOutstation && mcdStateTaxApplied > 0) {
+            const totalCars = carsRequired.reduce((sum, item) => sum + (item.quantity || 1), 0);
+            const totalTax = mcdStateTaxApplied * totalCars;
+            offeredPrice = Number(offeredPrice) + totalTax;
+            mcdStateTaxApplied = totalTax; // Store the total applied tax for all cars
         }
 
 
@@ -106,6 +139,8 @@ exports.createBulkBooking = async (req, res) => {
             carsRequired, systemEstimatedPrice, offeredPrice, priceModifiedPercentage, notes,
             status: 'PendingPayment',
             advancePayment: { amount: advanceAmount, isPaid: false },
+            isOutstation: isOutstation || false,
+            mcdStateTaxApplied,
             startOtp: Math.floor(1000 + Math.random() * 9000).toString()
         });
 
@@ -205,13 +240,19 @@ exports.createBulkBooking = async (req, res) => {
                     console.error("FCM/Socket Error during Bulk Advance Payment Bypass:", err.message);
                 }
 
-                return res.status(201).json({
+                let responseData = {
                     success: true,
                     message: "Bulk request created & published directly to Marketplace (Wallet Deduction).",
                     bookingId: newBooking._id,
                     advanceAmount: advanceAmount,
                     walletDeducted: true
-                });
+                };
+
+                if (isOutstation) {
+                    responseData.tollTaxMessage = "Note: Toll Tax is to be collected separately by the driver directly from the rider.";
+                }
+
+                return res.status(201).json(responseData);
             }
         }
 
@@ -240,13 +281,19 @@ exports.createBulkBooking = async (req, res) => {
         newBooking.advancePayment.hdfcOrderId = orderIdString;
         await newBooking.save();
 
-        res.status(201).json({
+        let responseData = {
             success: true,
             message: "Bulk request created. Redirecting to payment...",
             bookingId: newBooking._id,
             advanceAmount: advanceAmount,
             paymentLinks: sessionResponse.payment_links || sessionResponse
-        });
+        };
+
+        if (isOutstation) {
+            responseData.tollTaxMessage = "Note: Toll Tax is to be collected separately by the driver directly from the rider.";
+        }
+
+        res.status(201).json(responseData);
 
     } catch (error) {
         require('fs').writeFileSync('bulk_err.log', error.stack || error.message);

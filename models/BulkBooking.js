@@ -45,6 +45,10 @@ const bulkBookingSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    isOutstation: {
+        type: Boolean,
+        default: false
+    },
 
     // 🚗 Requirements (Multiple Categories)
     carsRequired: [{
@@ -72,6 +76,10 @@ const bulkBookingSchema = new mongoose.Schema({
     priceModifiedPercentage: {
         type: Number,
         default: 0 // Track if user increased/decreased vs system
+    },
+    mcdStateTaxApplied: {
+        type: Number,
+        default: 0
     },
 
     // 🚀 Marketplace Status

@@ -85,7 +85,6 @@ const bookingSchema = new mongoose.Schema({
     default: () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   },
 
-  // Financials
   fareEstimate: {
     type: Number,
     required: true

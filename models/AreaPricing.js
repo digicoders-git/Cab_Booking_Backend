@@ -51,6 +51,11 @@ const areaPricingSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
+    // 🏛️ MCD / State Tax
+    mcdStateTax: {
+        type: Number,
+        default: 0
+    },
     // 📅 Time-Bound Validity
     validFrom: {
         type: Date,

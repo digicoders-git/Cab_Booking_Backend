@@ -63,3 +63,32 @@ exports.autoExpireAreaPricing = async () => {
         console.error("Error auto-expiring area pricing:", error.message);
     }
 };
+
+// 6. Check Tax for Location
+exports.checkTax = async (req, res) => {
+    try {
+        const { lat, lng } = req.query;
+        if (!lat || !lng) return res.status(400).json({ success: false, message: "lat and lng required" });
+
+        const activeArea = await AreaPricing.findOne({
+            isActive: true,
+            location: {
+                $nearSphere: {
+                    $geometry: {
+                        type: "Point",
+                        coordinates: [parseFloat(lng), parseFloat(lat)]
+                    },
+                    $maxDistance: 50000 // 50 KM Search Radius
+                }
+            }
+        }).sort({ priority: -1 });
+
+        if (activeArea) {
+            res.json({ success: true, tax: activeArea.mcdStateTax || 0 });
+        } else {
+            res.json({ success: true, tax: 0 });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
