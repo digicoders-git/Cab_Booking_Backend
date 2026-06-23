@@ -61,6 +61,29 @@ router.put("/profile/self-update", auth, vendorOnly, upload.fields([
   { name: 'gst', maxCount: 1 }
 ]), vendorController.updateSelfProfile);
 
+// Create Agent (Vendor creates an agent, remains pending)
+router.post("/create-agent", auth, vendorOnly, upload.fields([
+  { name: 'image', maxCount: 1 },
+  { name: 'aadhar', maxCount: 1 },
+  { name: 'pan', maxCount: 1 }
+]), vendorController.vendorCreateAgent);
+
+// Get My Agents
+router.get("/my/agents", auth, vendorOnly, vendorController.getMyAgents);
+
+// Get Single Agent by ID
+router.get("/agent/:id", auth, vendorOnly, vendorController.getVendorAgentById);
+
+// Update My Agent
+router.put("/update-agent/:id", auth, vendorOnly, upload.fields([
+  { name: 'image', maxCount: 1 },
+  { name: 'aadhar', maxCount: 1 },
+  { name: 'pan', maxCount: 1 }
+]), vendorController.updateVendorAgent);
+
+// Delete My Agent
+router.delete("/delete-agent/:id", auth, vendorOnly, vendorController.deleteVendorAgent);
+
 // Dashboard Stats
 router.get("/dashboard/stats", auth, vendorOnly, vendorController.getVendorDashboard);
 

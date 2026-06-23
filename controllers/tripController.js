@@ -1438,28 +1438,58 @@ exports.processTripSettlement = async (booking, driver) => {
             });
         }
 
-        // 3. Vendor Commission Logic
-        let vendorCut = 0;
+        // 3. Vendor Commission Logic (Master Franchise Model)
+        const uniqueVendorIds = new Set();
+
+        // A. Driver's Creator
         if (driver.createdByModel === "Vendor" && driver.createdBy) {
-            const vendor = await Vendor.findById(driver.createdBy);
-            if (vendor && admin) {
-                vendorCut = Math.round(adminCut * (vendor.commissionPercentage / 100));
-                admin.walletBalance -= vendorCut;
-                admin.totalEarnings -= vendorCut;
-                await admin.save();
-                await Transaction.create({
-                    user: admin._id, userModel: 'Admin', amount: vendorCut, type: 'Debit',
-                    category: 'Vendor Commission', status: 'Completed', relatedBooking: booking._id,
-                    description: `Vendor '${vendor.name}' fee paid`
-                });
-                vendor.walletBalance += vendorCut;
-                vendor.totalEarnings += vendorCut;
-                await vendor.save();
-                await Transaction.create({
-                    user: vendor._id, userModel: 'Vendor', amount: vendorCut, type: 'Credit',
-                    category: 'Commission', status: 'Completed', relatedBooking: booking._id,
-                    description: `Commission earned from Trip ${booking._id}`
-                });
+            uniqueVendorIds.add(driver.createdBy.toString());
+        }
+        // B. Fleet's Creator
+        if (driver.createdByModel === "Fleet" && driver.createdBy) {
+            const fleet = await Fleet.findById(driver.createdBy);
+            if (fleet && fleet.createdByModel === "Vendor" && fleet.createdBy) {
+                uniqueVendorIds.add(fleet.createdBy.toString());
+            }
+        }
+        // C. Agent's Creator
+        if (booking.agent) {
+            const agent = await Agent.findById(booking.agent._id || booking.agent);
+            if (agent && agent.createdByVendor) {
+                uniqueVendorIds.add(agent.createdByVendor.toString());
+            }
+        }
+
+        // Apply Commission
+        if (admin) {
+            for (const vendorId of uniqueVendorIds) {
+                const vendor = await Vendor.findById(vendorId);
+                if (vendor) {
+                    const commPct = vendor.commissionPercentage !== undefined ? vendor.commissionPercentage : 25;
+                    const vendorCut = Math.round(adminCut * (commPct / 100));
+                    
+                    if (vendorCut > 0) {
+                        admin.walletBalance -= vendorCut;
+                        admin.totalEarnings -= vendorCut;
+                        await admin.save();
+                        
+                        await Transaction.create({
+                            user: admin._id, userModel: 'Admin', amount: vendorCut, type: 'Debit',
+                            category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                            description: `Master Franchise cut paid to Vendor '${vendor.name}'`
+                        });
+                        
+                        vendor.walletBalance = (vendor.walletBalance || 0) + vendorCut;
+                        vendor.totalEarnings = (vendor.totalEarnings || 0) + vendorCut;
+                        await vendor.save();
+                        
+                        await Transaction.create({
+                            user: vendor._id, userModel: 'Vendor', amount: vendorCut, type: 'Credit',
+                            category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                            description: `Master Franchise Commission (Trip ${booking._id.toString().slice(-6)})`
+                        });
+                    }
+                }
             }
         }
 

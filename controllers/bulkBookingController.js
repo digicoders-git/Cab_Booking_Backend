@@ -19,6 +19,7 @@ const Admin = require("../models/Admin");
 const Agent = require("../models/Agent");
 const User = require("../models/User");
 const Driver = require("../models/Driver");
+const Vendor = require("../models/Vendor");
 const { PaymentHandler, validateHMAC_SHA256 } = require("../utils/PaymentHandler");
 const paymentHandler = PaymentHandler.getInstance();
 
@@ -1239,6 +1240,50 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
                     }
                 }
             } catch (err) { console.error("Fleet Settlement Error:", err.message); }
+
+            // 3. Master Franchise Vendor Settlement
+            try {
+                const uniqueVendorIds = new Set();
+                if (booking.createdByModel === 'Agent' && booking.createdBy) {
+                    const agent = await Agent.findById(booking.createdBy);
+                    if (agent && agent.createdByVendor) uniqueVendorIds.add(agent.createdByVendor.toString());
+                }
+                if (booking.assignedFleet) {
+                    const fleet = await Fleet.findById(booking.assignedFleet);
+                    if (fleet && fleet.createdByModel === "Vendor" && fleet.createdBy) uniqueVendorIds.add(fleet.createdBy.toString());
+                }
+                // Calculate admin profit from bulk deal (Security Deposit is the Admin's Profit)
+                const adminBulkProfit = booking.fleetSecurityPayment?.amount || 0;
+                if (adminBulkProfit > 0) {
+                    const admin = await Admin.findOne();
+                    if (admin) {
+                        for (const vendorId of uniqueVendorIds) {
+                            const vendor = await Vendor.findById(vendorId);
+                            if (vendor) {
+                                const commPct = vendor.commissionPercentage !== undefined ? vendor.commissionPercentage : 25;
+                            const vendorCut = Math.round(adminBulkProfit * (commPct / 100));
+                                if (vendorCut > 0) {
+                                    admin.walletBalance -= vendorCut;
+                                    await admin.save();
+                                    await Transaction.create({
+                                        user: admin._id, userModel: 'Admin', amount: vendorCut, type: 'Debit',
+                                        category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                                        description: `Master Franchise Bulk Cut to '${vendor.name}'`
+                                    });
+                                    vendor.walletBalance = (vendor.walletBalance || 0) + vendorCut;
+                                    vendor.totalEarnings = (vendor.totalEarnings || 0) + vendorCut;
+                                    await vendor.save();
+                                    await Transaction.create({
+                                        user: vendor._id, userModel: 'Vendor', amount: vendorCut, type: 'Credit',
+                                        category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                                        description: `Master Franchise Bulk Commission (Deal #${booking._id.toString().slice(-6)})`
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (err) { console.error("Vendor Bulk Commission Error:", err.message); }
         }
 
         await booking.save();
@@ -1354,6 +1399,51 @@ exports.verifyBulkPayment = async (req, res) => {
                 }
             } catch (err) { console.error("Fleet Verification Settlement Error:", err.message); }
         }
+
+        // 3. Master Franchise Vendor Settlement (Online Payment)
+        try {
+            const uniqueVendorIds = new Set();
+            if (booking.createdByModel === 'Agent' && booking.createdBy) {
+                const agent = await Agent.findById(booking.createdBy);
+                if (agent && agent.createdByVendor) uniqueVendorIds.add(agent.createdByVendor.toString());
+            }
+            if (booking.assignedFleet) {
+                const fleet = await Fleet.findById(booking.assignedFleet);
+                if (fleet && fleet.createdByModel === "Vendor" && fleet.createdBy) uniqueVendorIds.add(fleet.createdBy.toString());
+            }
+            
+            // Security Deposit is the Admin's Profit in Bulk Bookings
+            const adminBulkProfit = booking.fleetSecurityPayment?.amount || 0;
+            if (adminBulkProfit > 0) {
+                const admin = await Admin.findOne();
+                if (admin) {
+                    for (const vendorId of uniqueVendorIds) {
+                        const vendor = await Vendor.findById(vendorId);
+                        if (vendor) {
+                            const commPct = vendor.commissionPercentage !== undefined ? vendor.commissionPercentage : 25;
+                            const vendorCut = Math.round(adminBulkProfit * (commPct / 100));
+                            if (vendorCut > 0) {
+                                admin.walletBalance -= vendorCut;
+                                await admin.save();
+                                await Transaction.create({
+                                    user: admin._id, userModel: 'Admin', amount: vendorCut, type: 'Debit',
+                                    category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                                    description: `Master Franchise Bulk Cut to '${vendor.name}'`
+                                });
+                                vendor.walletBalance = (vendor.walletBalance || 0) + vendorCut;
+                                vendor.totalEarnings = (vendor.totalEarnings || 0) + vendorCut;
+                                await vendor.save();
+                                await Transaction.create({
+                                    user: vendor._id, userModel: 'Vendor', amount: vendorCut, type: 'Credit',
+                                    category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                                    description: `Master Franchise Bulk Commission (Deal #${booking._id.toString().slice(-6)})`
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (err) { console.error("Vendor Bulk Commission Online Error:", err.message); }
 
         await booking.save();
         res.json({ success: true, message: "Payment verified and booking completed!", booking });

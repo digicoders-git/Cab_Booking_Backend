@@ -663,6 +663,7 @@ exports.getBulkSettings = async (req, res) => {
         res.json({
             success: true,
             settings: {
+                defaultCommission: admin.defaultCommission ?? 10,
                 userBulkAdvancePct: admin.userBulkAdvancePct ?? 25,
                 userPayViaBank: admin.userPayViaBank ?? true,
                 agentBulkAdvancePct: admin.agentBulkAdvancePct ?? 5,
@@ -693,6 +694,7 @@ exports.updateBulkSettings = async (req, res) => {
         }
 
         const validKeys = [
+            'defaultCommission',
             'userBulkAdvancePct', 'userPayViaBank',
             'agentBulkAdvancePct', 'agentPayViaBank',
             'vendorBulkAdvancePct', 'vendorPayViaBank',
@@ -713,6 +715,7 @@ exports.updateBulkSettings = async (req, res) => {
             success: true,
             message: "Bulk Booking settings updated successfully",
             settings: {
+                defaultCommission: admin.defaultCommission,
                 userBulkAdvancePct: admin.userBulkAdvancePct,
                 userPayViaBank: admin.userPayViaBank,
                 agentBulkAdvancePct: admin.agentBulkAdvancePct,

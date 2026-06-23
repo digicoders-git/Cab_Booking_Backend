@@ -112,6 +112,11 @@ const agentSchema = new mongoose.Schema({
     ref: "Admin",
     default: null
   },
+  createdByVendor: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Vendor",
+    default: null
+  },
   fcmToken: {
     type: String,
     default: null

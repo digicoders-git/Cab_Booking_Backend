@@ -197,6 +197,218 @@ exports.updateSelfProfile = async (req, res) => {
 };
 
 // ============================================================
+// 4B. Vendor Creates Agent (Remains Pending for Admin)
+// ============================================================
+exports.vendorCreateAgent = async (req, res) => {
+    try {
+        const Agent = require("../models/Agent");
+        const { 
+            name, email, phone, password,
+            address, city, state, pincode,
+            aadharNumber, panNumber,
+            accountNumber, ifscCode, accountHolderName, bankName 
+        } = req.body;
+
+        const image = req.files?.image ? req.files.image[0].filename : null;
+        const aadhar = req.files?.aadhar ? req.files.aadhar[0].filename : null;
+        const pan = req.files?.pan ? req.files.pan[0].filename : null;
+
+        // Check global uniqueness
+        const emailTakenBy = await isEmailTaken(email);
+        if (emailTakenBy) return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+
+        const phoneTakenBy = await isPhoneTaken(phone);
+        if (phoneTakenBy) return res.status(400).json({ success: false, message: `Phone number is already registered as ${phoneTakenBy}` });
+
+        const agent = await Agent.create({
+            name,
+            email,
+            phone,
+            password,
+            image,
+            commissionPercentage: 10, // Default 10%
+            bulkCommissionPercentage: 5, // Default 5%
+            address,
+            city,
+            state,
+            pincode,
+            aadharNumber,
+            panNumber,
+            documents: { aadhar, pan },
+            bankDetails: {
+                accountNumber,
+                ifscCode,
+                accountHolderName,
+                bankName
+            },
+            isActive: false, // Pending
+            isApproved: false, // Pending
+            createdBy: null,
+            createdByVendor: req.user.id
+        });
+
+        res.status(201).json({
+            success: true,
+            message: "Agent registration submitted successfully. Waiting for Admin approval.",
+            agent
+        });
+
+        // NOTIFY ADMINS
+        try {
+            const Admin = require("../models/Admin");
+            const { sendPushNotification } = require("../utils/fcmNotification");
+            const admins = await Admin.find({ fcmToken: { $ne: null } });
+            if (admins.length > 0) {
+                for (const admin of admins) {
+                    await sendPushNotification(admin.fcmToken, {
+                        title: "🆕 Vendor Created Agent",
+                        body: `A Vendor has registered ${name} as an Agent. Waiting for approval.`,
+                        data: { type: "NEW_AGENT_REGISTRATION", agentId: agent._id.toString() }
+                    });
+                }
+            }
+        } catch (fcmErr) {
+            console.error("FCM Error:", fcmErr.message);
+        }
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// ============================================================
+// 4C. Get My Agents (Vendor Only)
+// ============================================================
+exports.getMyAgents = async (req, res) => {
+    try {
+        const Agent = require("../models/Agent");
+        const agents = await Agent.find({ createdByVendor: req.user.id })
+            .select("-password")
+            .sort({ createdAt: -1 });
+
+        res.json({ success: true, count: agents.length, agents });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// ============================================================
+// 4D. Get Single Agent (Vendor Only)
+// ============================================================
+exports.getVendorAgentById = async (req, res) => {
+    try {
+        const Agent = require("../models/Agent");
+        const agent = await Agent.findOne({ 
+            _id: req.params.id, 
+            createdByVendor: req.user.id 
+        }).select("-password");
+
+        if (!agent) {
+            return res.status(404).json({ success: false, message: "Agent nahi mila ya access nahi hai" });
+        }
+
+        res.json({ success: true, agent });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// ============================================================
+// 4E. Update Vendor's Agent (Vendor Only)
+// ============================================================
+exports.updateVendorAgent = async (req, res) => {
+    try {
+        const Agent = require("../models/Agent");
+        const { 
+            name, email, phone, password,
+            address, city, state, pincode,
+            aadharNumber, panNumber,
+            accountNumber, ifscCode, accountHolderName, bankName 
+        } = req.body;
+
+        const agent = await Agent.findOne({ 
+            _id: req.params.id, 
+            createdByVendor: req.user.id 
+        });
+
+        if (!agent) {
+            return res.status(404).json({ success: false, message: "Agent nahi mila ya access nahi hai" });
+        }
+
+        if (email && email !== agent.email) {
+            const emailTakenBy = await isEmailTaken(email, agent._id);
+            if (emailTakenBy) return res.status(400).json({ success: false, message: `Email is already registered as ${emailTakenBy}` });
+        }
+
+        if (phone && phone !== agent.phone) {
+            const phoneTakenBy = await isPhoneTaken(phone, agent._id);
+            if (phoneTakenBy) return res.status(400).json({ success: false, message: `Phone number is already registered as ${phoneTakenBy}` });
+        }
+
+        if (name) agent.name = name;
+        if (email) agent.email = email;
+        if (phone) agent.phone = phone;
+        if (password) agent.password = password;
+        if (address) agent.address = address;
+        if (city) agent.city = city;
+        if (state) agent.state = state;
+        if (pincode) agent.pincode = pincode;
+        if (aadharNumber) agent.aadharNumber = aadharNumber;
+        if (panNumber) agent.panNumber = panNumber;
+
+        if (accountNumber || ifscCode || accountHolderName || bankName) {
+            agent.bankDetails = {
+                accountNumber: accountNumber || agent.bankDetails?.accountNumber,
+                ifscCode: ifscCode || agent.bankDetails?.ifscCode,
+                accountHolderName: accountHolderName || agent.bankDetails?.accountHolderName,
+                bankName: bankName || agent.bankDetails?.bankName
+            };
+        }
+
+        if (req.files) {
+            if (req.files.image) agent.image = req.files.image[0].filename;
+            if (req.files.aadhar || req.files.pan) {
+                if (!agent.documents) agent.documents = {};
+                if (req.files.aadhar) agent.documents.aadhar = req.files.aadhar[0].filename;
+                if (req.files.pan) agent.documents.pan = req.files.pan[0].filename;
+            }
+        }
+
+        await agent.save();
+
+        res.json({
+            success: true,
+            message: "Agent ki details update ho gayi hain",
+            agent
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// ============================================================
+// 4F. Delete Vendor's Agent (Vendor Only)
+// ============================================================
+exports.deleteVendorAgent = async (req, res) => {
+    try {
+        const Agent = require("../models/Agent");
+        const agent = await Agent.findOneAndDelete({ 
+            _id: req.params.id, 
+            createdByVendor: req.user.id 
+        });
+
+        if (!agent) {
+            return res.status(404).json({ success: false, message: "Agent nahi mila ya access nahi hai" });
+        }
+
+        res.json({ success: true, message: "Agent successfully delete ho gaya hai" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// ============================================================
 // 5. Vendor Dashboard Stats
 // ============================================================
 exports.getVendorDashboard = async (req, res) => {
