@@ -48,35 +48,41 @@ exports.createBulkBooking = async (req, res) => {
             });
         }
 
-        // --- NEW: AreaPricing MCD Tax Lookup ---
+        // --- NEW: State Tax / MCD Toll Lookup (Replaces old AreaPricing logic) ---
         let mcdStateTaxApplied = 0;
+        let taxBreakdown = [];
         try {
-            const activeArea = await AreaPricing.findOne({
-                isActive: true,
-                location: {
-                    $nearSphere: {
-                        $geometry: {
-                            type: "Point",
-                            coordinates: [parseFloat(pickup.longitude), parseFloat(pickup.latitude)]
-                        },
-                        $maxDistance: 50000 // 50 KM Search Radius
+            if (isOutstation) {
+                const stateTaxController = require("./stateTaxController");
+                let totalTaxForBooking = 0;
+
+                // Bulk booking can have multiple car categories
+                for (const item of carsRequired) {
+                    const result = await stateTaxController.calculateTaxesInternal({
+                        pickupAddress: pickup.address,
+                        dropAddress: drop.address,
+                        carCategoryId: item.category,
+                        tripType: tripType
+                    });
+                    
+                    // Multiply the tax by the quantity of cars for this category
+                    totalTaxForBooking += (result.totalTax * (item.quantity || 1));
+                    if (result.taxBreakdown && result.taxBreakdown.length > 0) {
+                        taxBreakdown.push({
+                            carCategory: item.category,
+                            quantity: item.quantity || 1,
+                            taxes: result.taxBreakdown
+                        });
                     }
                 }
-            }).sort({ priority: -1 });
 
-            if (activeArea) {
-                mcdStateTaxApplied = activeArea.mcdStateTax || 0;
+                if (totalTaxForBooking > 0) {
+                    offeredPrice = Number(offeredPrice) + totalTaxForBooking;
+                    mcdStateTaxApplied = totalTaxForBooking;
+                }
             }
         } catch (err) {
-            console.error("Geo Pricing Lookup Error for Bulk Booking:", err.message);
-        }
-
-        // Add MCD/State tax to the final offered price if it's an outstation ride
-        if (isOutstation && mcdStateTaxApplied > 0) {
-            const totalCars = carsRequired.reduce((sum, item) => sum + (item.quantity || 1), 0);
-            const totalTax = mcdStateTaxApplied * totalCars;
-            offeredPrice = Number(offeredPrice) + totalTax;
-            mcdStateTaxApplied = totalTax; // Store the total applied tax for all cars
+            console.error("State Tax Lookup Error for Bulk Booking:", err.message);
         }
 
 
@@ -142,6 +148,7 @@ exports.createBulkBooking = async (req, res) => {
             advancePayment: { amount: advanceAmount, isPaid: false },
             isOutstation: isOutstation || false,
             mcdStateTaxApplied,
+            taxBreakdown,
             startOtp: Math.floor(1000 + Math.random() * 9000).toString()
         });
 

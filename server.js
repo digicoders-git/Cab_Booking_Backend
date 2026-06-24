@@ -65,6 +65,7 @@ app.use("/api/area-pricing", areaPricingRoutes); // NEW: Area Wise Pricing
 app.use("/api/service-areas", serviceAreaRoutes); // NEW: Service Availability Check
 app.use("/api/bulk-bookings", bulkBookingRoutes); // NEW: Bulk Booking Marketplace
 app.use("/api/agent-leads", agentLeadRoutes); // NEW: Agent Lead Marketplace
+app.use("/api/taxes/state-taxes", require("./routes/stateTaxRoutes")); // NEW: State Tax / MCD Tolls
 
 
 const PORT = process.env.PORT || 5000;

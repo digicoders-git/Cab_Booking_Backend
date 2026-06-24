@@ -9,6 +9,7 @@ const AreaPricing = require("../models/AreaPricing");
 const serviceAreaController = require("./serviceAreaController");
 const { sendPushNotification } = require("../utils/fcmNotification");
 const Agent = require("../models/Agent");
+const stateTaxController = require("./stateTaxController");
 
 // Helper: Calculate Area-specific pricing overrides (GEO-SPATIAL VERSION)
 const getAreaSpecificRates = async (pickupLat, pickupLng, defaultBase, defaultPrivateRate, defaultSharedRate) => {
@@ -224,8 +225,21 @@ exports.getAllFareEstimates = async (req, res) => {
             let privateRate = areaRates.privateRate;
             let sharedRate = areaRates.sharedRate;
 
-            const privateFare = base + (privateRate * distanceKm);
-            const sharedFare = base + (sharedRate * distanceKm * seats);
+            let privateFare = base + (privateRate * distanceKm);
+            let sharedFare = base + (sharedRate * distanceKm * seats);
+
+            // --- NEW: Auto-Calculate State Tax ---
+            const taxResult = await stateTaxController.calculateTaxesInternal({
+                pickupAddress, 
+                dropAddress, 
+                carCategoryId: category._id, 
+                tripType: "OneWay" // Default for cab search
+            });
+
+            if (taxResult && taxResult.totalTax > 0) {
+                privateFare += taxResult.totalTax;
+                sharedFare += taxResult.totalTax;
+            }
 
             // --- REAL ETA CALCULATION LOGIC ---
             let arrivalMins = 0;
@@ -295,7 +309,8 @@ exports.getAllFareEstimates = async (req, res) => {
                     id: d.driver._id,
                     latitude: d.driver.currentLocation.latitude,
                     longitude: d.driver.currentLocation.longitude
-                })).slice(0, 10) // Limit to 10 nearest drivers for map performance
+                })).slice(0, 10), // Limit to 10 nearest drivers for map performance
+                taxBreakdown: taxResult.taxBreakdown || [] // Added tax breakdown
             };
 
             // Only show the specific fare user asked for
@@ -407,6 +422,18 @@ exports.createBooking = async (req, res) => {
         } else if (normalizedRideType === "shared") {
             finalSeats = seatsBooked || 1;
             fareEstimate += (areaRates.sharedRate * distanceKm * finalSeats);
+        }
+
+        // --- NEW: Auto-Calculate State Tax ---
+        const taxResult = await stateTaxController.calculateTaxesInternal({
+            pickupAddress, 
+            dropAddress, 
+            carCategoryId, 
+            tripType: "OneWay" // Default
+        });
+
+        if (taxResult && taxResult.totalTax > 0) {
+            fareEstimate += taxResult.totalTax;
         }
 
         fareEstimate = Math.round(fareEstimate);

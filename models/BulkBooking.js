@@ -81,6 +81,10 @@ const bulkBookingSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    taxBreakdown: {
+        type: Array,
+        default: []
+    },
 
     // 🚀 Marketplace Status
     status: {

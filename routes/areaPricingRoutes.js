@@ -3,7 +3,7 @@ const router = express.Router();
 const areaPricingController = require("../controllers/areaPricingController");
 
 // Basic CRUD for Area Pricing
-router.get("/check-tax", areaPricingController.checkTax);
+
 router.post("/", areaPricingController.createAreaPricing);
 router.get("/", areaPricingController.getAllAreaPricings);
 router.put("/:id", areaPricingController.updateAreaPricing);
