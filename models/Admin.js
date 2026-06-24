@@ -54,6 +54,8 @@ const adminSchema = new mongoose.Schema({
     fleetBulkSecurityPct: { type: Number, default: 20 },
     fleetSecurityPayViaBank: { type: Boolean, default: true },
 
+    agentLeadAdminProfitPct: { type: Number, default: 10 },
+
     maxNegativeWalletLimit: { type: Number, default: 3000 },
     role: {
         type: String,

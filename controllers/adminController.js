@@ -132,7 +132,7 @@ exports.updateProfile = async (req, res) => {
 
         const admin = await Admin.findById(id);
         if (!admin) {
-             return res.status(404).json({ success: false, message: "Admin not found" });
+            return res.status(404).json({ success: false, message: "Admin not found" });
         }
 
         // Check global email uniqueness if changed
@@ -284,7 +284,7 @@ exports.updateAdminPermissions = async (req, res) => {
 exports.deleteAdmin = async (req, res) => {
     try {
         const { id } = req.params;
-        
+
         // Prevent self-deletion
         if (id === req.user.id) {
             return res.status(400).json({ success: false, message: "You cannot delete yourself" });
@@ -380,11 +380,11 @@ exports.getDashboardStats = async (req, res) => {
                     cashPayments: await Booking.countDocuments({ paymentMethod: "Cash" }),
                     sharedRides: await Booking.countDocuments({ rideType: "Shared" }),
                     privateRides: await Booking.countDocuments({ rideType: "Private" }),
-                    todayBookings: await Booking.countDocuments({ createdAt: { $gte: new Date().setHours(0,0,0,0) } })
+                    todayBookings: await Booking.countDocuments({ createdAt: { $gte: new Date().setHours(0, 0, 0, 0) } })
                 },
                 users: {
                     total: await User.countDocuments(),
-                    today: await User.countDocuments({ createdAt: { $gte: new Date().setHours(0,0,0,0) } })
+                    today: await User.countDocuments({ createdAt: { $gte: new Date().setHours(0, 0, 0, 0) } })
                 }
             },
             driverStats: {
@@ -394,12 +394,12 @@ exports.getDashboardStats = async (req, res) => {
                 busy: await Driver.countDocuments({ isApproved: true, isAvailable: false }),
                 idle: await Driver.countDocuments({ isApproved: true, isOnline: true, isAvailable: true }),
                 rejected: await Driver.countDocuments({ isRejected: true }),
-                today: await Driver.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0,0,0,0)) } })
+                today: await Driver.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } })
             },
             partnerStats: {
-                todayAgents: await Agent.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0,0,0,0)) } }),
-                todayFleets: await Fleet.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0,0,0,0)) } }),
-                todayVendors: await Vendor.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0,0,0,0)) } })
+                todayAgents: await Agent.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } }),
+                todayFleets: await Fleet.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } }),
+                todayVendors: await Vendor.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } })
             },
             payoutStats: {
                 totalPayouts: (await Transaction.aggregate([
@@ -420,11 +420,11 @@ exports.getDashboardStats = async (req, res) => {
             },
             todayFinancials: {
                 revenue: (await Booking.aggregate([
-                    { $match: { bookingStatus: "Completed", createdAt: { $gte: new Date(new Date().setHours(0,0,0,0)) } } },
+                    { $match: { bookingStatus: "Completed", createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } } },
                     { $group: { _id: null, total: { $sum: "$actualFare" } } }
                 ]))[0]?.total || 0,
                 profit: (await Transaction.aggregate([
-                    { $match: { userModel: "Admin", category: "Commission", createdAt: { $gte: new Date(new Date().setHours(0,0,0,0)) } } },
+                    { $match: { userModel: "Admin", category: "Commission", createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } } },
                     { $group: { _id: null, total: { $sum: "$amount" } } }
                 ]))[0]?.total || 0
             },
@@ -543,7 +543,7 @@ exports.getLiveDriversTracking = async (req, res) => {
 
         const trackingData = await Promise.all(drivers.map(async driver => {
             let activityStatus = "Offline"; // Default if not online
-            
+
             if (driver.isOnline) {
                 if (driver.isAvailable) {
                     activityStatus = "Idle"; // Online but no ride
@@ -563,7 +563,7 @@ exports.getLiveDriversTracking = async (req, res) => {
                 let activeBookings = driver.seatMap
                     .filter(s => s.isBooked && s.bookingId)
                     .map(s => s.bookingId);
-                
+
                 // If found in seatMap
                 if (activeBookings.length > 0) {
                     ongoingTrip = {
@@ -585,9 +585,9 @@ exports.getLiveDriversTracking = async (req, res) => {
                     // DEEP SEARCH FALLBACK: Query the Booking model directly for this driver
                     const Booking = require("../models/Booking");
                     // We also need to search by status 'Ongoing'
-                    const directBooking = await Booking.findOne({ 
-                        assignedDriver: driver._id, 
-                        bookingStatus: "Ongoing" 
+                    const directBooking = await Booking.findOne({
+                        assignedDriver: driver._id,
+                        bookingStatus: "Ongoing"
                     });
 
                     if (directBooking) {
@@ -628,15 +628,15 @@ exports.getLiveDriversTracking = async (req, res) => {
                     carNumber: driver.carDetails?.carNumber || "N/A",
                     carModel: driver.carDetails?.carModel || "N/A",
                     carCategoryName: catData.name, // "Sedan", "SUV", etc.
-                    carCategoryId: rawCatId, 
-                    carCategoryImage: catData.image 
+                    carCategoryId: rawCatId,
+                    carCategoryImage: catData.image
                 },
-                location: driver.currentLocation, 
-                heading: driver.currentHeading, 
+                location: driver.currentLocation,
+                heading: driver.currentHeading,
                 status: activityStatus,
                 rideType: driver.currentRideType,
                 availableSeats: driver.availableSeats,
-                currentTrip: ongoingTrip 
+                currentTrip: ongoingTrip
             };
         }));
 
@@ -674,7 +674,8 @@ exports.getBulkSettings = async (req, res) => {
                 adminPayViaBank: admin.adminPayViaBank ?? false,
                 fleetBulkSecurityPct: admin.fleetBulkSecurityPct ?? 20,
                 fleetSecurityPayViaBank: admin.fleetSecurityPayViaBank ?? true,
-                maxNegativeWalletLimit: admin.maxNegativeWalletLimit ?? 3000
+                maxNegativeWalletLimit: admin.maxNegativeWalletLimit ?? 3000,
+                agentLeadAdminProfitPct: admin.agentLeadAdminProfitPct ?? 10
             }
         });
     } catch (error) {
@@ -700,7 +701,7 @@ exports.updateBulkSettings = async (req, res) => {
             'vendorBulkAdvancePct', 'vendorPayViaBank',
             'adminBulkAdvancePct', 'adminPayViaBank',
             'fleetBulkSecurityPct', 'fleetSecurityPayViaBank',
-            'maxNegativeWalletLimit'
+            'maxNegativeWalletLimit', 'agentLeadAdminProfitPct'
         ];
 
         validKeys.forEach(key => {
@@ -726,7 +727,8 @@ exports.updateBulkSettings = async (req, res) => {
                 adminPayViaBank: admin.adminPayViaBank,
                 fleetBulkSecurityPct: admin.fleetBulkSecurityPct,
                 fleetSecurityPayViaBank: admin.fleetSecurityPayViaBank,
-                maxNegativeWalletLimit: admin.maxNegativeWalletLimit
+                maxNegativeWalletLimit: admin.maxNegativeWalletLimit,
+                agentLeadAdminProfitPct: admin.agentLeadAdminProfitPct
             }
         });
     } catch (error) {
@@ -767,18 +769,18 @@ exports.getDriversByRadius = async (req, res) => {
             const R = 6371; // Earth's radius in KM
             const dLatRad = (dLat - centerLat) * Math.PI / 180;
             const dLonRad = (dLng - centerLng) * Math.PI / 180;
-            
+
             const a =
                 Math.sin(dLatRad / 2) * Math.sin(dLatRad / 2) +
                 Math.cos(centerLat * Math.PI / 180) * Math.cos(dLat * Math.PI / 180) *
                 Math.sin(dLonRad / 2) * Math.sin(dLonRad / 2);
-            
+
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             const distance = R * c;
 
             // Attach distance to the driver object for frontend display
             driver.distanceFromCenter = distance.toFixed(2);
-            
+
             return distance <= searchRadius;
         });
 
@@ -795,7 +797,7 @@ exports.getDriversByRadius = async (req, res) => {
 
         // Map drivers to consistent tracking format
         const trackingData = await Promise.all(filteredDrivers.map(async driver => {
-            let activityStatus = "Offline"; 
+            let activityStatus = "Offline";
             if (driver.isOnline) {
                 if (driver.isAvailable) {
                     activityStatus = "Idle";
@@ -810,16 +812,16 @@ exports.getDriversByRadius = async (req, res) => {
             return {
                 ...driver,
                 _id: driver._id,
-                driverId: driver._id, 
+                driverId: driver._id,
                 carInfo: {
                     carNumber: driver.carDetails?.carNumber || "N/A",
                     carModel: driver.carDetails?.carModel || "N/A",
                     carCategoryName: catData.name,
-                    carCategoryId: rawCatId, 
-                    carCategoryImage: catData.image 
+                    carCategoryId: rawCatId,
+                    carCategoryImage: catData.image
                 },
-                location: driver.currentLocation, 
-                heading: driver.currentHeading, 
+                location: driver.currentLocation,
+                heading: driver.currentHeading,
                 status: activityStatus,
                 rideType: driver.currentRideType,
                 availableSeats: driver.availableSeats,
@@ -876,18 +878,18 @@ exports.getDriversByHomeRadius = async (req, res) => {
             const R = 6371; // Earth's radius in KM
             const dLatRad = (dLat - centerLat) * Math.PI / 180;
             const dLonRad = (dLng - centerLng) * Math.PI / 180;
-            
+
             const a =
                 Math.sin(dLatRad / 2) * Math.sin(dLatRad / 2) +
                 Math.cos(centerLat * Math.PI / 180) * Math.cos(dLat * Math.PI / 180) *
                 Math.sin(dLonRad / 2) * Math.sin(dLonRad / 2);
-            
+
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             const distance = R * c;
 
             // Attach distance for UI
             driver.distanceFromCenter = distance.toFixed(2);
-            
+
             return distance <= searchRadius;
         });
 
@@ -904,7 +906,7 @@ exports.getDriversByHomeRadius = async (req, res) => {
 
         // Map drivers to consistent format
         const trackingData = await Promise.all(filteredDrivers.map(async driver => {
-            let activityStatus = "Offline"; 
+            let activityStatus = "Offline";
             if (driver.isOnline) {
                 if (driver.isAvailable) {
                     activityStatus = "Idle";
@@ -919,16 +921,16 @@ exports.getDriversByHomeRadius = async (req, res) => {
             return {
                 ...driver,
                 _id: driver._id,
-                driverId: driver._id, 
+                driverId: driver._id,
                 carInfo: {
                     carNumber: driver.carDetails?.carNumber || "N/A",
                     carModel: driver.carDetails?.carModel || "N/A",
                     carCategoryName: catData.name,
-                    carCategoryId: rawCatId, 
-                    carCategoryImage: catData.image 
+                    carCategoryId: rawCatId,
+                    carCategoryImage: catData.image
                 },
-                location: driver.currentLocation, 
-                heading: driver.currentHeading, 
+                location: driver.currentLocation,
+                heading: driver.currentHeading,
                 status: activityStatus,
                 rideType: driver.currentRideType,
                 availableSeats: driver.availableSeats,
@@ -981,7 +983,7 @@ exports.updateFcmToken = async (req, res) => {
 exports.toggleDriverOnlineByAdmin = async (req, res) => {
     try {
         const { driverId, status } = req.body; // status: true for online, false for offline
-        
+
         const driver = await Driver.findById(driverId);
         if (!driver) {
             return res.status(404).json({ success: false, message: "Driver not found" });
@@ -1012,7 +1014,7 @@ exports.toggleDriverOnlineByAdmin = async (req, res) => {
         try {
             const { getIO } = require("../socket/socket");
             const io = getIO();
-            
+
             let activityStatus = status ? (driver.isAvailable ? "Idle" : "Busy") : "Offline";
 
             io.to('admin_room').emit("driver_location_update", {

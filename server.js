@@ -23,6 +23,7 @@ const vendorRoutes = require("./routes/vendorRoutes"); // NEW: Vendor Panel
 const areaPricingRoutes = require("./routes/areaPricingRoutes"); // NEW: Area Wise Pricing
 const serviceAreaRoutes = require("./routes/serviceAreaRoutes"); // NEW: Service Availability Check
 const bulkBookingRoutes = require("./routes/bulkBookingRoutes"); // NEW: Bulk Booking Marketplace
+const agentLeadRoutes = require("./routes/agentLeadRoutes"); // NEW: Agent Lead Marketplace
 const { autoExpireBookings } = require("./controllers/bulkBookingController");
 const { autoExpireAreaPricing } = require("./controllers/areaPricingController");
 
@@ -63,6 +64,7 @@ app.use("/api/vendors", vendorRoutes);  // NEW: Vendor Panel
 app.use("/api/area-pricing", areaPricingRoutes); // NEW: Area Wise Pricing
 app.use("/api/service-areas", serviceAreaRoutes); // NEW: Service Availability Check
 app.use("/api/bulk-bookings", bulkBookingRoutes); // NEW: Bulk Booking Marketplace
+app.use("/api/agent-leads", agentLeadRoutes); // NEW: Agent Lead Marketplace
 
 
 const PORT = process.env.PORT || 5000;
