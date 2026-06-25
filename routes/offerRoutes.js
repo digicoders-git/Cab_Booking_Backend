@@ -18,7 +18,10 @@ router.delete("/delete/:id", auth, adminOnly, offerController.deleteOffer);
 
 
 // --- USER ROUTES ---
-// Validate an offer code before booking
+// Get all active offers (Public route so non-logged in users can see promos)
+router.get("/active", offerController.getActiveOffers);
+
+// Validate an offer code before booking (requires auth)
 router.post("/validate", auth, offerController.validateOffer);
 
 module.exports = router;

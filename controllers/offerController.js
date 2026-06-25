@@ -117,3 +117,18 @@ exports.validateOffer = async (req, res) => {
         res.status(500).json({ success: false, message: "Server Error", error: error.message });
     }
 };
+
+// 6. Get Active Offers (User Only)
+exports.getActiveOffers = async (req, res) => {
+    try {
+        const currentDate = new Date();
+        const activeOffers = await Offer.find({
+            isActive: true,
+            validTill: { $gte: currentDate }
+        }).sort({ createdAt: -1 }).select("-__v -createdAt -updatedAt");
+
+        res.status(200).json({ success: true, offers: activeOffers });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server Error", error: error.message });
+    }
+};
