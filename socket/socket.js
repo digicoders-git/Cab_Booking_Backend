@@ -5,7 +5,7 @@ const Booking = require("../models/Booking");
 
 let io;
 const lastDBUpdate = {}; // Optimized: Throttling ke liye driver update time tracking
-
+// ytr
 const initSocket = (server) => {
     io = new Server(server, {
         cors: {
@@ -13,6 +13,8 @@ const initSocket = (server) => {
             methods: ["GET", "POST"]
         }
     });
+    // oiuygfd
+    // iuy
 
     console.log("Socket.io Initialized");
 
@@ -38,12 +40,12 @@ const initSocket = (server) => {
                 try {
                     const Fleet = require("../models/Fleet");
                     const driver = await Driver.findById(userId).select("createdBy createdByModel");
-                    
+
                     if (driver && driver.createdBy) {
                         if (driver.createdByModel === "Fleet") {
                             socket.fleetId = driver.createdBy.toString();
                             console.log(`Driver ${userId} linked to Fleet: ${socket.fleetId}`);
-                            
+
                             // Check if this Fleet belongs to a Vendor
                             const fleet = await Fleet.findById(driver.createdBy).select("createdBy createdByModel");
                             if (fleet && fleet.createdByModel === "Vendor") {
@@ -100,7 +102,7 @@ const initSocket = (server) => {
         // 2. Driver Update Location (Live Stream Optimization)
         socket.on("update_location", async (data) => {
             const { driverId, latitude, longitude, heading } = data;
-            
+
             // debugging ke liye heading check kar rahe hain
             console.log(`📡 Incoming Location: Driver ${driverId} -> Heading: ${heading}`);
 
