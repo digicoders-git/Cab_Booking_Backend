@@ -227,7 +227,7 @@ exports.loginDriver = async (req, res) => {
                 role: "driver"
             },
             process.env.JWT_SECRET,
-            { expiresIn: "7d" }
+            { expiresIn: "365d" }
         );
 
         res.json({

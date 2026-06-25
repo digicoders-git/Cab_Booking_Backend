@@ -502,3 +502,58 @@ exports.getMyLeads = async (req, res) => {
         res.status(500).json({ success: false, message: "Server Error", error: error.message });
     }
 };
+
+// 8. Download Receipt for Agent Lead
+exports.downloadReceipt = async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        const lead = await AgentLead.findById(leadId)
+            .populate('createdByAgent')
+            .populate('carCategory')
+            .populate('assignedDriver');
+            
+        if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
+
+        const fileName = `KwikCabs_Lead_${lead._id.toString().slice(-6).toUpperCase()}.pdf`;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+        const pdfGenerator = require('../utils/pdfGenerator');
+        await pdfGenerator.generateAgentLeadReceipt(lead, res);
+    } catch (error) {
+        console.error("Receipt generation error:", error);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: "Error generating receipt" });
+        }
+    }
+};
+
+// 9. Download Driver Commission Receipt for Agent Lead
+exports.downloadDriverReceipt = async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        const lead = await AgentLead.findById(leadId)
+            .populate('createdByAgent')
+            .populate('carCategory')
+            .populate('assignedDriver');
+            
+        if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
+
+        // Driver receipt only makes sense if the driver exists
+        if (!lead.assignedDriver) {
+            return res.status(400).json({ success: false, message: "Driver not assigned to this lead yet." });
+        }
+
+        const fileName = `KwikCabs_Commission_${lead._id.toString().slice(-6).toUpperCase()}.pdf`;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+        const pdfGenerator = require('../utils/pdfGenerator');
+        await pdfGenerator.generateDriverCommissionReceipt(lead, res);
+    } catch (error) {
+        console.error("Commission Receipt generation error:", error);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: "Error generating commission receipt" });
+        }
+    }
+};

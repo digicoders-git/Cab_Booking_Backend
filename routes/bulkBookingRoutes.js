@@ -43,6 +43,12 @@ router.get("/driver/my-assignments", auth, bulkBookingController.getDriverBulkAs
 router.post("/driver/start/:bookingId", auth, bulkBookingController.startIndividualDriverBulkTrip);
 router.post("/driver/end/:bookingId", auth, bulkBookingController.endIndividualDriverBulkTrip);
 
+// 13. Download Receipt
+router.get("/receipt/:bookingId", auth, bulkBookingController.downloadReceipt);
+
+// 14. Download Security Receipt (Fleet Admin)
+router.get("/security-receipt/:bookingId", auth, bulkBookingController.downloadSecurityReceipt);
+
 // 10.5 HDFC Payment Return Webhook/Redirect
 router.post("/payment-return", bulkBookingController.paymentReturn);
 router.get("/payment-return", bulkBookingController.paymentReturn);

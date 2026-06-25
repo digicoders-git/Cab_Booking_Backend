@@ -92,6 +92,15 @@ const bulkBookingSchema = new mongoose.Schema({
         enum: ['PendingPayment', 'Marketplace', 'Accepted', 'Ongoing', 'Completed', 'Cancelled', 'Expired'],
         default: 'PendingPayment'
     },
+    appliedOffer: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Offer",
+        default: null
+    },
+    discountAmount: {
+        type: Number,
+        default: 0
+    },
 
     // 🏢 Assignment
     assignedFleet: {

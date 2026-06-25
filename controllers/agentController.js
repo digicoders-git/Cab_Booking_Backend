@@ -199,7 +199,7 @@ exports.loginAgent = async (req, res) => {
                 role: "agent"
             },
             process.env.JWT_SECRET,
-            { expiresIn: "7d" }
+            { expiresIn: "365d" }
         );
 
         res.json({

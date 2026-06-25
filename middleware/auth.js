@@ -5,15 +5,20 @@ const jwt = require("jsonwebtoken");
 const auth = (req, res, next) => {
 
     const authHeader = req.headers.authorization;
+    let token;
 
-    if (!authHeader) {
+    if (authHeader) {
+        token = authHeader.split(" ")[1]; // Bearer TOKEN
+    } else if (req.query && req.query.token) {
+        token = req.query.token; // Fallback for file downloads
+    }
+
+    if (!token) {
         return res.status(401).json({
             success: false,
             message: "Token not found"
         });
     }
-
-    const token = authHeader.split(" ")[1]; // Bearer TOKEN
 
     try {
 

@@ -102,7 +102,7 @@ exports.loginVendor = async (req, res) => {
         const token = jwt.sign(
             { id: vendor._id, role: "vendor" },
             process.env.JWT_SECRET,
-            { expiresIn: "7d" }
+            { expiresIn: "365d" }
         );
 
         res.json({

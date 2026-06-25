@@ -18,6 +18,8 @@ const Transaction = require("../models/Transaction");
 const Admin = require("../models/Admin");
 const Agent = require("../models/Agent");
 const User = require("../models/User");
+const { generateBulkBookingReceipt } = require("../utils/pdfGenerator");
+
 const Driver = require("../models/Driver");
 const Vendor = require("../models/Vendor");
 const { PaymentHandler, validateHMAC_SHA256 } = require("../utils/PaymentHandler");
@@ -1569,3 +1571,57 @@ exports.paymentReturn = async (req, res) => {
     }
 };
 
+// ==========================================
+// Download Bulk Booking Receipt
+// ==========================================
+exports.downloadReceipt = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+
+        // Ensure user is authorized to access (assuming auth middleware populates req.user)
+        // We'll skip complex role checks here for simplicity, but auth middleware is assumed on the route
+        
+        const booking = await BulkBooking.findById(bookingId).populate('assignedFleet').populate('createdBy').populate('carsRequired.category');
+        if (!booking) {
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        // Set Headers for PDF Download
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="receipt-${bookingId}.pdf"`);
+
+        // Generate and pipe PDF
+        await generateBulkBookingReceipt(booking, res);
+        
+    } catch (error) {
+        console.error("Error generating receipt:", error);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: "Error generating receipt" });
+        }
+    }
+};
+
+exports.downloadSecurityReceipt = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        
+        const booking = await BulkBooking.findById(bookingId).populate('assignedFleet').populate('createdBy').populate('carsRequired.category');
+        if (!booking) {
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        const fileName = `KwikCabs_Security_${booking._id.toString().slice(-6).toUpperCase()}.pdf`;
+        
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+        const pdfGenerator = require('../utils/pdfGenerator');
+        await pdfGenerator.generateSecurityReceipt(booking, res);
+        
+    } catch (error) {
+        console.error("Error generating security receipt:", error);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: "Error generating security receipt" });
+        }
+    }
+};

@@ -93,6 +93,15 @@ const bookingSchema = new mongoose.Schema({
     type: Number,
     default: 0 // Will update if route changes or driver adds extra cost
   },
+  appliedOffer: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Offer",
+    default: null
+  },
+  discountAmount: {
+    type: Number,
+    default: 0
+  },
   agentCommission: {
     type: Number,
     default: 0 // Calculated if agent made the booking

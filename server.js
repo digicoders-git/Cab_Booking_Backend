@@ -24,6 +24,7 @@ const areaPricingRoutes = require("./routes/areaPricingRoutes"); // NEW: Area Wi
 const serviceAreaRoutes = require("./routes/serviceAreaRoutes"); // NEW: Service Availability Check
 const bulkBookingRoutes = require("./routes/bulkBookingRoutes"); // NEW: Bulk Booking Marketplace
 const agentLeadRoutes = require("./routes/agentLeadRoutes"); // NEW: Agent Lead Marketplace
+const offerRoutes = require("./routes/offerRoutes"); // NEW: Offers
 const { autoExpireBookings } = require("./controllers/bulkBookingController");
 const { autoExpireAreaPricing } = require("./controllers/areaPricingController");
 
@@ -65,6 +66,7 @@ app.use("/api/area-pricing", areaPricingRoutes); // NEW: Area Wise Pricing
 app.use("/api/service-areas", serviceAreaRoutes); // NEW: Service Availability Check
 app.use("/api/bulk-bookings", bulkBookingRoutes); // NEW: Bulk Booking Marketplace
 app.use("/api/agent-leads", agentLeadRoutes); // NEW: Agent Lead Marketplace
+app.use("/api/offers", offerRoutes); // NEW: Promo Codes / Offers
 app.use("/api/taxes/state-taxes", require("./routes/stateTaxRoutes")); // NEW: State Tax / MCD Tolls
 
 

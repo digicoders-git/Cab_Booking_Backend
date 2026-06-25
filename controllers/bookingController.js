@@ -9,6 +9,7 @@ const AreaPricing = require("../models/AreaPricing");
 const serviceAreaController = require("./serviceAreaController");
 const { sendPushNotification } = require("../utils/fcmNotification");
 const Agent = require("../models/Agent");
+const Offer = require("../models/Offer");
 const stateTaxController = require("./stateTaxController");
 
 // Helper: Calculate Area-specific pricing overrides (GEO-SPATIAL VERSION)
@@ -365,7 +366,8 @@ exports.createBooking = async (req, res) => {
             dropAddress, dropLat, dropLng,
             distanceKm, pickupDate, pickupTime,
             selectedSeats, // NEW: If coming from shared flow
-            stops // NEW: Multiple stoppages
+            stops, // NEW: Multiple stoppages
+            offerCode // NEW: Promo code
         } = req.body;
 
         // Validate basic inputs (Simplified for example)
@@ -438,6 +440,27 @@ exports.createBooking = async (req, res) => {
 
         fareEstimate = Math.round(fareEstimate);
 
+        // --- NEW: Offer/Promo Code Logic ---
+        let discountAmount = 0;
+        let appliedOfferId = null;
+
+        if (offerCode) {
+            const offer = await Offer.findOne({ code: offerCode.toUpperCase(), isActive: true });
+            if (offer && new Date() <= new Date(offer.validTill) && offer.bookingType === "Normal") {
+                if (req.user && req.user.role === "agent") {
+                    return res.status(403).json({ success: false, message: "You cannot access/use this coupon. Only users can use offers." });
+                }
+                discountAmount = offer.discountAmount;
+                appliedOfferId = offer._id;
+            } else {
+                return res.status(400).json({ success: false, message: "Invalid, expired, or inapplicable offer code." });
+            }
+        }
+
+        if (discountAmount > 0) {
+            fareEstimate = Math.max(0, fareEstimate - discountAmount); // Ensure it doesn't go below 0
+        }
+
         // Security code for trip start (OTP)
         const startOtp = Math.floor(1000 + Math.random() * 9000).toString(); // e.g. "4592"
 
@@ -455,6 +478,8 @@ exports.createBooking = async (req, res) => {
             selectedSeats: selectedSeats || [], // Track chosen spots
             stops: stops || [], // NEW: Multi-stop support
             fareEstimate,
+            appliedOffer: appliedOfferId,
+            discountAmount: discountAmount,
             tripData: { startOtp }
         };
 

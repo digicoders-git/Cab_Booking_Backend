@@ -21,4 +21,8 @@ router.get('/agent/my-leads', auth, agentLeadController.getMyLeads);
 router.post('/:leadId/cancel', auth, agentLeadController.cancelLead);
 router.get('/admin/all', auth, agentLeadController.getAllLeadsAdmin);
 
+// Receipt Route
+router.get('/receipt/:leadId', auth, agentLeadController.downloadReceipt);
+router.get('/driver-receipt/:leadId', auth, agentLeadController.downloadDriverReceipt);
+
 module.exports = router;
