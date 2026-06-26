@@ -34,7 +34,7 @@ exports.generateBulkBookingReceipt = (booking, res) => {
             
             doc.font('Helvetica-Bold').fontSize(9);
             // Baseline top helps align text properly like jsPDF
-            doc.text("PAN: GWKPS6928H", mm(10), mm(11), { baseline: 'bottom' });
+            doc.text("Registration Number : 09LUGPK1138L2Z4", mm(10), mm(11), { baseline: 'bottom' });
             doc.text("TAX INVOICE", mm(175), mm(11), { baseline: 'bottom' });
 
             // 3. Company Branding
@@ -226,7 +226,7 @@ exports.generateSecurityReceipt = (booking, res) => {
 
             doc.moveTo(mm(5), mm(15)).lineTo(mm(205), mm(15)).stroke();
             doc.font('Helvetica-Bold').fontSize(9);
-            doc.text("PAN: GWKPS6928H", mm(10), mm(11), { baseline: 'bottom' });
+            doc.text("Registration Number : 09LUGPK1138L2Z4", mm(10), mm(11), { baseline: 'bottom' });
             const isCompleted = booking.status === 'Completed';
             doc.text(isCompleted ? "FINAL SETTLEMENT RECEIPT" : "SECURITY DEPOSIT RECEIPT", mm(145), mm(11), { baseline: 'bottom' });
 
@@ -410,7 +410,7 @@ exports.generateAgentLeadReceipt = async (lead, res) => {
 
             doc.moveTo(mm(5), mm(15)).lineTo(mm(205), mm(15)).stroke();
             doc.font('Helvetica-Bold').fontSize(9);
-            doc.text("PAN: GWKPS6928H", mm(10), mm(11), { baseline: 'bottom' });
+            doc.text("Registration Number : 09LUGPK1138L2Z4", mm(10), mm(11), { baseline: 'bottom' });
             doc.text("AGENT LEAD BOOKING RECEIPT", mm(145), mm(11), { baseline: 'bottom' });
 
             const logoPath = 'C:\\\\Users\\\\vivekvkraj\\\\OneDrive\\\\Desktop\\\\Cab booking\\\\Carbookig_Website\\\\Cab_Booking_Website\\\\src\\\\assets\\\\logo.png';
@@ -559,7 +559,7 @@ exports.generateDriverCommissionReceipt = async (lead, res) => {
             doc.rect(mm(5), mm(5), mm(200), mm(287)).stroke();
             doc.moveTo(mm(5), mm(15)).lineTo(mm(205), mm(15)).stroke();
             doc.font('Helvetica-Bold').fontSize(9);
-            doc.text("PAN: GWKPS6928H", mm(10), mm(11), { baseline: 'bottom' });
+            doc.text("Registration Number : 09LUGPK1138L2Z4", mm(10), mm(11), { baseline: 'bottom' });
             doc.text("DRIVER COMMISSION INVOICE", mm(145), mm(11), { baseline: 'bottom' });
 
             const logoPath = 'C:\\\\Users\\\\vivekvkraj\\\\OneDrive\\\\Desktop\\\\Cab booking\\\\Carbookig_Website\\\\Cab_Booking_Website\\\\src\\\\assets\\\\logo.png';

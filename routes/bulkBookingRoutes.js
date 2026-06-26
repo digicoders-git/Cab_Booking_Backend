@@ -53,6 +53,9 @@ router.get("/security-receipt/:bookingId", auth, bulkBookingController.downloadS
 router.post("/payment-return", bulkBookingController.paymentReturn);
 router.get("/payment-return", bulkBookingController.paymentReturn);
 
+// 15. Admin Only: View all bulk bookings history
+router.get("/admin/all-history", auth, bulkBookingController.getAllBulkBookingsForAdmin);
+
 module.exports = router;
 
 

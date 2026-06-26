@@ -204,3 +204,139 @@ exports.getPendingPayouts = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
+
+// 7. Export Transactions (CSV)
+exports.exportTransactions = async (req, res) => {
+    try {
+        const { timeframe, startDate, endDate, format } = req.query;
+        let dateFilter = {};
+
+        const now = new Date();
+        if (timeframe === 'daily') {
+            const startOfDay = new Date(now);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(now);
+            endOfDay.setHours(23, 59, 59, 999);
+            dateFilter = { $gte: startOfDay, $lte: endOfDay };
+        } else if (timeframe === 'weekly') {
+            const lastWeek = new Date(now);
+            lastWeek.setDate(now.getDate() - 7);
+            dateFilter = { $gte: lastWeek, $lte: new Date() };
+        } else if (timeframe === 'monthly') {
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            dateFilter = { $gte: startOfMonth, $lte: new Date() };
+        } else if (timeframe === 'yearly') {
+            const startOfYear = new Date(now.getFullYear(), 0, 1);
+            dateFilter = { $gte: startOfYear, $lte: new Date() };
+        } else if (timeframe === 'custom' && startDate && endDate) {
+            dateFilter = { $gte: new Date(startDate), $lte: new Date(endDate) };
+        }
+
+        const filter = {};
+        if (Object.keys(dateFilter).length > 0) {
+            filter.createdAt = dateFilter;
+        }
+
+        const transactions = await Transaction.find(filter)
+            .populate("user", "name phone email")
+            .sort({ createdAt: -1 });
+
+        // Map for export
+        const exportData = transactions.map(tx => {
+            const userName = tx.user ? (tx.user.name || 'Unknown') : 'System/Unknown';
+            return {
+                Date: new Date(tx.createdAt).toLocaleString('en-IN'),
+                Name: userName,
+                Role: tx.userModel,
+                Type: tx.type,
+                Category: tx.category,
+                Amount: tx.amount,
+                Status: tx.status,
+                Description: tx.description
+            };
+        });
+
+        if (format === 'csv' || !format) {
+            const { Parser } = require('json2csv');
+            const json2csvParser = new Parser();
+            
+            // Handle empty data case
+            if (exportData.length === 0) {
+                exportData.push({ Date: '', Name: '', Role: '', Type: '', Category: '', Amount: '', Status: '', Description: 'No transactions found' });
+            }
+            
+            const csv = json2csvParser.parse(exportData);
+
+            res.header('Content-Type', 'text/csv');
+            res.attachment('transactions.csv');
+            return res.send(csv);
+        } else {
+            return res.status(400).json({ success: false, message: "Unsupported format. Use format=csv" });
+        }
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// 8. Admin: Manually Add Balance to a User/Agent/Driver/Fleet
+exports.addManualBalance = async (req, res) => {
+    try {
+        const { targetUserId, targetUserModel, amount, description } = req.body;
+
+        if (!targetUserId || !targetUserModel || !amount) {
+            return res.status(400).json({ success: false, message: "Missing required fields: targetUserId, targetUserModel, amount" });
+        }
+
+        const adjustmentAmount = Number(amount);
+        if (adjustmentAmount === 0) {
+            return res.status(400).json({ success: false, message: "Amount cannot be zero" });
+        }
+
+        // Query can be Email, Phone, or MongoDB Object ID
+        let query;
+        if (targetUserId.includes('@')) {
+            query = { email: targetUserId };
+        } else if (targetUserId.length === 24 && /^[0-9a-fA-F]{24}$/.test(targetUserId)) {
+            query = { _id: targetUserId };
+        } else {
+            // Use regex to match the end of the phone number, 
+            // so 9876543210 matches +919876543210
+            query = { phone: { $regex: new RegExp(targetUserId + '$') } };
+        }
+
+        let user;
+        if (targetUserModel === 'Driver') user = await Driver.findOne(query);
+        else if (targetUserModel === 'Agent') user = await Agent.findOne(query);
+        else if (targetUserModel === 'Fleet') user = await Fleet.findOne(query);
+        else if (targetUserModel === 'User') user = await User.findOne(query);
+        
+        if (!user) {
+            return res.status(404).json({ success: false, message: `${targetUserModel} not found` });
+        }
+
+        // Add balance (can be negative for deduction)
+        user.walletBalance = (user.walletBalance || 0) + adjustmentAmount;
+        await user.save();
+
+        // Create transaction log
+        const transaction = await Transaction.create({
+            user: user._id, // Must be the actual ObjectId from the found user, not the raw input
+            userModel: targetUserModel,
+            amount: Math.abs(adjustmentAmount),
+            type: adjustmentAmount > 0 ? 'Credit' : 'Debit',
+            category: 'Admin Adjustment', // Must match the enum in Transaction model
+            status: 'Completed',
+            description: description || (adjustmentAmount > 0 ? `Manual credit by Admin` : `Manual debit by Admin`)
+        });
+
+        res.json({ 
+            success: true, 
+            message: `Successfully ${adjustmentAmount > 0 ? 'added' : 'deducted'} ₹${Math.abs(adjustmentAmount)} ${adjustmentAmount > 0 ? 'to' : 'from'} ${user.name || targetUserModel}'s wallet`,
+            newBalance: user.walletBalance,
+            transaction 
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};

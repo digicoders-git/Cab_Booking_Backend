@@ -1565,9 +1565,29 @@ exports.paymentReturn = async (req, res) => {
             }
         }
         return res.redirect((req.query.redirect || `${fallbackUserUrl}/bulk-booking`) + '?error=payment_failed');
-    } catch (e) {
-        console.error("Payment Return Error:", e);
-        return res.redirect((req.query.redirect || `${fallbackUserUrl}/bulk-booking`) + '?error=server_error');
+    } catch (error) {
+        console.error("Payment Return Error:", error.message);
+        res.redirect(`${process.env.FRONTEND_AGENT_URL || 'http://localhost:5176'}?error=payment_processing_failed`);
+    }
+};
+
+// 15. Admin Only: Get All Bulk Bookings History
+exports.getAllBulkBookingsForAdmin = async (req, res) => {
+    try {
+        const bookings = await BulkBooking.find({})
+            .populate("carsRequired.category", "name image bulkBookingBasePrice")
+            .populate("createdBy", "name phone email image")
+            .populate("assignedFleet", "companyName ownerName phone email")
+            .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            count: bookings.length,
+            bookings: bookings
+        });
+    } catch (error) {
+        console.error("Error fetching all bulk bookings:", error.message);
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
 
