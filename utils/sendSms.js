@@ -14,7 +14,7 @@ exports.sendOtpSms = async (phone, otp) => {
         const sender = process.env.SMS_SENDER_ID || "KWIKCB";
         
         // Use the EXACT string format from your approved DLT Template
-        const messageText = `Your login OTP is ${otp}. Do not share it with anyone. - KwikCab`;
+        const messageText = `Your login OTP is ${otp}. Do not share it with anyone. - KwikCab https://www.kwikcabs.in/`;
 
         // Configure query parameters as per BulkSMSPlans documentation
         const params = {
