@@ -380,6 +380,40 @@ exports.acceptBulkBooking = async (req, res) => {
             return res.status(400).json({ success: false, message: "Sorry, this deal is already taken or unavailable." });
         }
 
+        // --- NEW ADMIN BYPASS LOGIC ---
+        if (req.user.role === 'admin' || req.user.role === 'SuperAdmin') {
+            booking.status = 'Accepted';
+            booking.assignedAdmin = req.user.id;
+            booking.acceptedAt = new Date();
+            await booking.save();
+
+            try {
+                const io = getIO();
+                const creatorId = booking.createdBy.toString();
+
+                io.to(creatorId).emit("bulk_booking_update", {
+                    bookingId: booking._id, status: "Accepted", fleetName: "System Admin",
+                    message: "Your bulk booking has been accepted by Admin!"
+                });
+
+                if (booking.createdByModel === 'Agent') {
+                    io.to(`agent_${creatorId}`).emit("bulk_booking_update", {
+                        bookingId: booking._id, status: "Accepted", fleetName: "System Admin"
+                    });
+                }
+                
+                io.emit("remove_bulk_deal", { bookingId: booking._id });
+            } catch (err) {
+                console.error("Admin Bypass Notification Error:", err.message);
+            }
+
+            return res.json({ 
+                success: true, 
+                message: "Bulk Deal accepted by Admin successfully (Zero Security).", 
+                booking
+            });
+        }
+
         // --- NEW: Fetch dynamic percentages from Admin & Handle Wallet Bypass ---
         const adminSettings = await Admin.findOne({ role: 'SuperAdmin' });
         const securityPct = adminSettings?.fleetBulkSecurityPct ?? 20;
@@ -982,12 +1016,14 @@ exports.endBulkBooking = async (req, res) => {
         const booking = await BulkBooking.findById(bookingId);
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
 
-        if (booking.assignedFleet?.toString() !== req.user.id && req.user.role !== 'admin') {
+        const isAdmin = req.user.role === 'admin' || req.user.role === 'SuperAdmin';
+
+        if (booking.assignedFleet?.toString() !== req.user.id && booking.assignedAdmin?.toString() !== req.user.id && !isAdmin) {
             return res.status(403).json({ success: false, message: "Not authorized to end this trip." });
         }
 
-        if (booking.status !== "Ongoing") {
-            return res.status(400).json({ success: false, message: "Only Ongoing trips can be ended." });
+        if (booking.status !== "Ongoing" && !(isAdmin && booking.status === "Accepted")) {
+            return res.status(400).json({ success: false, message: "Only Ongoing trips can be ended. Admins can end Accepted trips directly." });
         }
 
         booking.status = "Completed";
@@ -1012,6 +1048,33 @@ exports.endBulkBooking = async (req, res) => {
                         type: 'Credit', category: 'Commission', status: 'Completed',
                         relatedBooking: booking._id, description: `Bulk deal commission (${commissionPercent}%)`
                     });
+
+                    // Deduct from Admin or Fleet
+                    if (booking.assignedAdmin) {
+                        const Admin = require("../models/Admin");
+                        const admin = await Admin.findById(booking.assignedAdmin);
+                        if (admin) {
+                            admin.walletBalance -= commissionAmount;
+                            await admin.save();
+                            await Transaction.create({
+                                user: admin._id, userModel: 'Admin', amount: commissionAmount,
+                                type: 'Debit', category: 'Commission', status: 'Completed',
+                                relatedBooking: booking._id, description: `Paid Agent Commission for Bulk Deal #${booking._id.toString().slice(-6)}`
+                            });
+                        }
+                    } else if (booking.assignedFleet) {
+                        const Fleet = require("../models/Fleet");
+                        const fleet = await Fleet.findById(booking.assignedFleet);
+                        if (fleet) {
+                            fleet.walletBalance -= commissionAmount;
+                            await fleet.save();
+                            await Transaction.create({
+                                user: fleet._id, userModel: 'Fleet', amount: commissionAmount,
+                                type: 'Debit', category: 'Commission', status: 'Completed',
+                                relatedBooking: booking._id, description: `Paid Agent Commission for Bulk Deal #${booking._id.toString().slice(-6)}`
+                            });
+                        }
+                    }
                 }
             } catch (err) {
                 console.error("Bulk Agent Commission Error:", err.message);

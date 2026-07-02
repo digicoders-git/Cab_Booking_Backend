@@ -1,13 +1,13 @@
 const express = require("express");
 const router = express.Router();
 const bulkBookingController = require("../controllers/bulkBookingController");
-const { auth, fleetOnly } = require("../middleware/auth");
+const { auth, fleetOnly, fleetOrAdmin } = require("../middleware/auth");
 
 // 1. Marketplace Access for Fleets & Admins
 router.get("/marketplace", auth, bulkBookingController.getMarketplace);
 
 // 2. Acceptance for Fleets
-router.post("/accept/:bookingId", auth, fleetOnly, bulkBookingController.acceptBulkBooking);
+router.post("/accept/:bookingId", auth, fleetOrAdmin, bulkBookingController.acceptBulkBooking);
 
 // 3. Creation (Any protected role)
 router.post("/create", auth, bulkBookingController.createBulkBooking);

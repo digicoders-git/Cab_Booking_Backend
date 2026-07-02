@@ -20,6 +20,8 @@ router.get('/agent/my-leads', auth, agentLeadController.getMyLeads);
 // Shared/Admin routes
 router.post('/:leadId/cancel', auth, agentLeadController.cancelLead);
 router.get('/admin/all', auth, agentLeadController.getAllLeadsAdmin);
+router.post('/admin/:leadId/accept', auth, agentLeadController.adminAcceptLead);
+router.post('/admin/:leadId/complete', auth, agentLeadController.adminCompleteLead);
 
 // Receipt Route
 router.get('/receipt/:leadId', auth, agentLeadController.downloadReceipt);

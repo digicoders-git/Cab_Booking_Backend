@@ -45,7 +45,7 @@ exports.sendOtp = async (req, res) => {
 // Login / Register User Using Phone and Fixed OTP (Combined API)
 exports.loginUser = async (req, res) => {
     try {
-        const { phone, otp, name, email } = req.body;
+        const { phone, otp, name, email, aadhaarCard } = req.body;
 
         if (!phone || !otp) {
             return res.status(400).json({ success: false, message: "Phone number and OTP are required" });
@@ -97,6 +97,7 @@ exports.loginUser = async (req, res) => {
                 phone,
                 name: name || "",
                 email: email || "",
+                aadhaarCard: aadhaarCard || null,
                 isActive: true
             });
             isNewUser = true;
@@ -264,7 +265,7 @@ exports.toggleUserStatus = async (req, res) => {
 exports.updateUserProfile = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, email, accountNumber, ifscCode, accountHolderName, bankName } = req.body;
+        const { name, email, accountNumber, ifscCode, accountHolderName, bankName, aadhaarCard } = req.body;
 
         const user = await User.findById(id);
 
@@ -284,6 +285,7 @@ exports.updateUserProfile = async (req, res) => {
         }
 
         if (name) user.name = name;
+        if (aadhaarCard) user.aadhaarCard = aadhaarCard;
         if (email && email !== user.email) {
             const emailTakenBy = await isEmailTaken(email, id);
             if (emailTakenBy) {

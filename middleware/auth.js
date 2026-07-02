@@ -117,6 +117,16 @@ const vendorOnly = (req, res, next) => {
 
 }
 
+const fleetOrAdmin = (req, res, next) => {
+    if (req.user.role !== "fleet" && req.user.role !== "admin" && req.user.role !== "SuperAdmin") {
+        return res.status(403).json({
+            success: false,
+            message: "Access not Defined. Fleet or Admin only."
+        });
+    }
+    next();
+};
+
 module.exports = {
     auth,
     adminOnly,
@@ -124,5 +134,6 @@ module.exports = {
     driverOnly,
     agentOnly,
     fleetOnly,
-    vendorOnly
+    vendorOnly,
+    fleetOrAdmin
 };

@@ -68,6 +68,11 @@ const agentLeadSchema = new mongoose.Schema({
         ref: "Driver",
         default: null
     },
+    assignedAdmin: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Admin",
+        default: null
+    },
     pendingDriverId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Driver",
@@ -81,7 +86,7 @@ const agentLeadSchema = new mongoose.Schema({
     // 💳 Escrow / Financial Tracking
     paymentStatus: {
         type: String,
-        enum: ['Pending', 'Held_In_Escrow', 'Settled', 'Refunded'],
+        enum: ['Pending', 'Held_In_Escrow', 'Settled', 'Refunded', 'Admin_Bypass'],
         default: 'Pending'
     },
 

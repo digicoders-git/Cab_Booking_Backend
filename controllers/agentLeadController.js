@@ -557,3 +557,136 @@ exports.downloadDriverReceipt = async (req, res) => {
         }
     }
 };
+
+// 10. Admin Bypass: Accept Lead directly
+exports.adminAcceptLead = async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        const adminId = req.user.id;
+
+        const lead = await AgentLead.findById(leadId);
+        if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
+
+        if (lead.status !== 'Marketplace') {
+            return res.status(400).json({ success: false, message: "Lead is already accepted or unavailable" });
+        }
+
+        lead.status = 'Accepted';
+        lead.paymentStatus = 'Admin_Bypass';
+        lead.assignedAdmin = adminId;
+        lead.acceptedAt = new Date();
+        await lead.save();
+
+        res.json({
+            success: true,
+            message: "Lead accepted successfully via Admin Bypass",
+            lead
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server Error", error: error.message });
+    }
+};
+
+// 11. Admin Bypass: Complete Lead
+exports.adminCompleteLead = async (req, res) => {
+    try {
+        const { leadId } = req.params;
+
+        const lead = await AgentLead.findById(leadId).populate('createdByAgent');
+        if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
+
+        if (lead.status === 'Completed') {
+            return res.status(400).json({ success: false, message: "Lead already completed" });
+        }
+        
+        if (lead.paymentStatus !== 'Admin_Bypass' || !lead.assignedAdmin) {
+            return res.status(400).json({ success: false, message: "This lead was not accepted via Admin Bypass" });
+        }
+
+        const admin = await Admin.findOne({ role: 'SuperAdmin' });
+        const agent = lead.createdByAgent;
+
+        if (!admin || !agent) {
+             return res.status(400).json({ success: false, message: "Admin or Agent missing" });
+        }
+
+        // Settlement: Admin keeps adminProfit, pays agentPayout to Agent from Admin Wallet
+        const adminProfitPct = admin.agentLeadAdminProfitPct ?? 10;
+        const adminProfit = Math.round(lead.agentCommission * (adminProfitPct / 100));
+        const agentPayout = lead.agentCommission - adminProfit;
+
+        // Deduct from Admin (since Admin holds the physical cash)
+        admin.walletBalance -= agentPayout;
+        admin.totalEarnings = (admin.totalEarnings || 0) + adminProfit; // Admin earned the profit
+        await admin.save();
+
+        // Pay Agent
+        agent.walletBalance = (agent.walletBalance || 0) + agentPayout;
+        agent.totalEarnings = (agent.totalEarnings || 0) + agentPayout;
+        await agent.save();
+
+        await Transaction.create({
+            user: agent._id, userModel: 'Agent', amount: agentPayout, type: 'Credit',
+            category: 'Commission', status: 'Completed', relatedBooking: leadId,
+            description: `Earned commission for completed Lead #${leadId.toString().slice(-6)} (Admin Bypass)`
+        });
+
+        await Transaction.create({
+            user: admin._id, userModel: 'Admin', amount: agentPayout, type: 'Debit',
+            category: 'Commission', status: 'Completed', relatedBooking: leadId,
+            description: `Paid Agent Commission for Lead #${leadId.toString().slice(-6)} (Admin Bypass)`
+        });
+
+        if (adminProfit > 0) {
+            await Transaction.create({
+                user: admin._id, userModel: 'Admin', amount: adminProfit, type: 'Credit',
+                category: 'Commission', status: 'Completed', relatedBooking: leadId,
+                description: `Platform profit (10%) for Lead #${leadId.toString().slice(-6)}`
+            });
+        }
+
+        // Master Franchise Logic
+        if (agent.createdByVendor) {
+            const vendor = await Vendor.findById(agent.createdByVendor);
+            if (vendor) {
+                const vendorCommPct = vendor.commissionPercentage !== undefined ? vendor.commissionPercentage : 25;
+                const vendorCut = Math.round(adminProfit * (vendorCommPct / 100));
+
+                if (vendorCut > 0) {
+                    admin.walletBalance -= vendorCut;
+                    admin.totalEarnings -= vendorCut;
+                    await admin.save();
+
+                    vendor.walletBalance = (vendor.walletBalance || 0) + vendorCut;
+                    vendor.totalEarnings = (vendor.totalEarnings || 0) + vendorCut;
+                    await vendor.save();
+
+                    await Transaction.create({
+                        user: admin._id, userModel: 'Admin', amount: vendorCut, type: 'Debit',
+                        category: 'Commission', status: 'Completed', relatedBooking: leadId,
+                        description: `Master Franchise Cut for Lead #${leadId.toString().slice(-6)}`
+                    });
+
+                    await Transaction.create({
+                        user: vendor._id, userModel: 'Vendor', amount: vendorCut, type: 'Credit',
+                        category: 'Commission', status: 'Completed', relatedBooking: leadId,
+                        description: `Master Franchise Commission (Lead #${leadId.toString().slice(-6)})`
+                    });
+                }
+            }
+        }
+
+        lead.paymentStatus = 'Settled';
+        lead.status = 'Completed';
+        await lead.save();
+
+        res.json({
+            success: true,
+            message: "Lead completed and commission settled successfully!"
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server Error", error: error.message });
+    }
+};

@@ -108,6 +108,11 @@ const bulkBookingSchema = new mongoose.Schema({
         ref: "Fleet",
         default: null
     },
+    assignedAdmin: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Admin",
+        default: null
+    },
     // 🚗 Multiple Driver/Car Assignments for the deal
     assignedDrivers: [{
         driver: { type: mongoose.Schema.Types.ObjectId, ref: "Driver" },

@@ -1,4 +1,4 @@
-Error: Bad Request.
+Error: access_denied
     at IncomingMessage.<anonymous> (C:\Users\vivekvkraj\OneDrive\Desktop\Cab booking\CapBokkin\utils\PaymentHandler.js:258:15)
     at Object.onceWrapper (node:events:622:28)
     at IncomingMessage.emit (node:events:520:35)
