@@ -12,8 +12,10 @@ const { sendPushNotification } = require("../utils/fcmNotification");
 const User = require("../models/User");
 const mongoose = require("mongoose");
 const BulkBooking = require("../models/BulkBooking");
-const { PaymentHandler, validateHMAC_SHA256 } = require("../utils/PaymentHandler");
-const paymentHandler = PaymentHandler.getInstance();
+// const { PaymentHandler, validateHMAC_SHA256 } = require("../utils/PaymentHandler");
+// const paymentHandler = PaymentHandler.getInstance();
+const { RazorpayHandler } = require("../utils/RazorpayHandler");
+const razorpayHandler = RazorpayHandler.getInstance();
 
 // Haversine formula to get distance between two points in km
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
@@ -1222,7 +1224,8 @@ exports.initiateTripPayment = async (req, res) => {
         const protocol = req.get('host').includes('localhost') || req.get('host').includes('127.0.0.1') ? req.protocol : 'https';
         const returnUrl = `${protocol}://${req.get('host')}/api/trips/execute/payment-return?redirect=${encodeURIComponent(frontendOrigin + '/driver/trip/' + booking._id)}`;
 
-        const sessionResponse = await paymentHandler.orderSession({
+        // const sessionResponse = await paymentHandler.orderSession({
+        const sessionResponse = await razorpayHandler.orderSession({
             order_id: orderIdString,
             amount: amountToCollect.toFixed(2),
             customer_id: booking.user ? booking.user.toString() : "guest",
@@ -1348,6 +1351,7 @@ exports.paymentReturn = async (req, res) => {
         const payload = req.method === 'POST' ? req.body : req.query;
         const fallbackUrl = process.env.FRONTEND_DRIVER_URL || 'http://localhost:5174';
 
+        /* HDFC Code Commented Out:
         if (!payload || !payload.status) {
             return res.redirect((req.query.redirect || `${fallbackUrl}/dashboard`) + '?error=invalid_payload');
         }
@@ -1365,6 +1369,28 @@ exports.paymentReturn = async (req, res) => {
         const statusId = payload.status_id ? String(payload.status_id) : '';
 
         if (status === 'CHARGED' || status === 'SUCCESS' || status === 'AUTHORIZING' || statusId === '21' || statusId === '28') {
+        */
+
+        if (!payload || !payload.razorpay_payment_link_status) {
+            return res.redirect((req.query.redirect || `${fallbackUrl}/dashboard`) + '?error=invalid_payload');
+        }
+
+        const isValid = razorpayHandler.validateSignature(
+            payload.razorpay_payment_id,
+            payload.razorpay_payment_link_id,
+            payload.razorpay_payment_link_reference_id,
+            payload.razorpay_payment_link_status,
+            payload.razorpay_signature
+        );
+
+        if (!isValid) {
+            return res.redirect((req.query.redirect || `${fallbackUrl}/dashboard`) + '?error=invalid_signature');
+        }
+
+        const orderId = payload.razorpay_payment_link_reference_id;
+        const status = payload.razorpay_payment_link_status ? payload.razorpay_payment_link_status.toUpperCase() : '';
+
+        if (status === 'PAID') {
             const Booking = require("../models/Booking");
             const booking = await Booking.findOne({ hdfcOrderId: orderId });
 

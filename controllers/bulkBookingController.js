@@ -22,8 +22,10 @@ const { generateBulkBookingReceipt } = require("../utils/pdfGenerator");
 
 const Driver = require("../models/Driver");
 const Vendor = require("../models/Vendor");
-const { PaymentHandler, validateHMAC_SHA256 } = require("../utils/PaymentHandler");
-const paymentHandler = PaymentHandler.getInstance();
+// const { PaymentHandler, validateHMAC_SHA256 } = require("../utils/PaymentHandler");
+// const paymentHandler = PaymentHandler.getInstance();
+const { RazorpayHandler } = require("../utils/RazorpayHandler");
+const razorpayHandler = RazorpayHandler.getInstance();
 
 
 // 1. Create Bulk Booking Request
@@ -279,7 +281,8 @@ exports.createBulkBooking = async (req, res) => {
         const protocol = req.get('host').includes('localhost') || req.get('host').includes('127.0.0.1') ? req.protocol : 'https';
         const returnUrl = `${protocol}://${req.get('host')}/api/bulk-bookings/payment-return?redirect=${encodeURIComponent(fullRedirectUrl)}`;
 
-        const sessionResponse = await paymentHandler.orderSession({
+        // const sessionResponse = await paymentHandler.orderSession({
+        const sessionResponse = await razorpayHandler.orderSession({
             order_id: orderIdString,
             amount: advanceAmount.toFixed(2),
             customer_id: req.user.id.toString(),
@@ -521,7 +524,8 @@ exports.acceptBulkBooking = async (req, res) => {
         const protocol = req.get('host').includes('localhost') || req.get('host').includes('127.0.0.1') ? req.protocol : 'https';
         const returnUrl = `${protocol}://${req.get('host')}/api/bulk-bookings/payment-return?redirect=${encodeURIComponent(frontendOrigin + '/bulk-marketplace')}`;
 
-        const sessionResponse = await paymentHandler.orderSession({
+        // const sessionResponse = await paymentHandler.orderSession({
+        const sessionResponse = await razorpayHandler.orderSession({
             order_id: orderIdString,
             amount: securityAmount.toFixed(2),
             customer_id: fleetId.toString(),
@@ -1212,7 +1216,8 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
                 try {
                     const orderIdString = `bulk_final_${bookingId.slice(-6)}_${Date.now()}`;
                     const frontendOrigin = req.headers.origin || process.env.FRONTEND_DRIVER_URL || 'http://localhost:5174';
-                    const sessionResponse = await paymentHandler.orderSession({
+                    // const sessionResponse = await paymentHandler.orderSession({
+                    const sessionResponse = await razorpayHandler.orderSession({
                         order_id: orderIdString,
                         amount: remainingBalance.toFixed(2),
                         customer_id: booking.createdBy ? booking.createdBy.toString() : "guest",
@@ -1551,11 +1556,12 @@ exports.autoExpireBookings = async () => {
 exports.paymentReturn = async (req, res) => {
     try {
         const payload = req.method === 'POST' ? req.body : req.query;
-        console.log("HDFC Bulk Payment Return Payload:", payload);
+        console.log("Razorpay Bulk Payment Return Payload:", payload);
 
         const fallbackUserUrl = process.env.FRONTEND_USER_URL || 'http://localhost:5173';
         const fallbackAgentUrl = process.env.FRONTEND_AGENT_URL || 'http://localhost:5176';
 
+        /* HDFC Code Commented Out:
         if (!payload || !payload.status) {
             return res.redirect((req.query.redirect || `${fallbackUserUrl}/bulk-booking`) + '?error=invalid_payload');
         }
@@ -1576,6 +1582,28 @@ exports.paymentReturn = async (req, res) => {
         const statusId = payload.status_id ? String(payload.status_id) : '';
 
         if (status === 'CHARGED' || status === 'SUCCESS' || status === 'AUTHORIZING' || statusId === '21' || statusId === '28') {
+        */
+
+        if (!payload || !payload.razorpay_payment_link_status) {
+            return res.redirect((req.query.redirect || `${fallbackUserUrl}/bulk-booking`) + '?error=invalid_payload');
+        }
+
+        const isValid = razorpayHandler.validateSignature(
+            payload.razorpay_payment_id,
+            payload.razorpay_payment_link_id,
+            payload.razorpay_payment_link_reference_id,
+            payload.razorpay_payment_link_status,
+            payload.razorpay_signature
+        );
+
+        if (!isValid) {
+             return res.redirect((req.query.redirect || `${fallbackUserUrl}/bulk-booking`) + '?error=invalid_signature');
+        }
+
+        const orderId = payload.razorpay_payment_link_reference_id;
+        const status = payload.razorpay_payment_link_status ? payload.razorpay_payment_link_status.toUpperCase() : '';
+
+        if (status === 'PAID') {
             const isFinal = orderId.startsWith('bulk_final_');
             const isSecurity = orderId.startsWith('bulk_sec_');
 
