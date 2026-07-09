@@ -68,7 +68,7 @@ app.use("/api/bulk-bookings", bulkBookingRoutes); // NEW: Bulk Booking Marketpla
 app.use("/api/agent-leads", agentLeadRoutes); // NEW: Agent Lead Marketplace
 app.use("/api/offers", offerRoutes); // NEW: Promo Codes / Offers
 app.use("/api/taxes/state-taxes", require("./routes/stateTaxRoutes")); // NEW: State Tax / MCD Tolls
-
+app.use("/api/settings", require("./routes/appSettingRoutes")); // NEW: Global App Settings
 
 const PORT = process.env.PORT || 5000;
 
