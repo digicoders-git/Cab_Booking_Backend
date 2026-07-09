@@ -170,6 +170,28 @@ const bookingSchema = new mongoose.Schema({
     startOtp: { type: String, default: null }, // Safety feature: OTP to start ride
     waitingTimeMin: { type: Number, default: 0 }, // Chargeable waiting time
     waitingCharges: { type: Number, default: 0 }  // Total waiting cost added to bill
+  },
+
+  // Ratings and Reviews
+  userRating: {
+    type: Number,
+    min: 1,
+    max: 5,
+    default: null
+  },
+  userReview: {
+    type: String,
+    default: null
+  },
+  driverRating: {
+    type: Number,
+    min: 1,
+    max: 5,
+    default: null
+  },
+  driverReview: {
+    type: String,
+    default: null
   }
 
 }, { timestamps: true });

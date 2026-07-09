@@ -163,6 +163,10 @@ const driverSchema = new mongoose.Schema({
     min: 0,
     max: 5
   },
+  totalRatings: {
+    type: Number,
+    default: 0
+  },
   totalTrips: {
     type: Number,
     default: 0

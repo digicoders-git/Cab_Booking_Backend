@@ -847,3 +847,127 @@ exports.deleteBooking = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
+
+// 7. Rate Driver (by User/Agent)
+exports.rateDriver = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const { rating, review } = req.body;
+
+        if (!rating || rating < 1 || rating > 5) {
+            return res.status(400).json({ success: false, message: "Valid rating (1-5) is required" });
+        }
+
+        const booking = await Booking.findById(bookingId);
+        if (!booking) {
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        if (booking.bookingStatus !== "Completed") {
+            return res.status(400).json({ success: false, message: "Can only rate completed rides" });
+        }
+
+        if (booking.driverRating) {
+            return res.status(400).json({ success: false, message: "Driver already rated for this trip" });
+        }
+
+        booking.driverRating = rating;
+        booking.driverReview = review || null;
+        await booking.save();
+
+        if (booking.assignedDriver) {
+            const Driver = require("../models/Driver");
+            const driver = await Driver.findById(booking.assignedDriver);
+            if (driver) {
+                const newTotal = driver.totalRatings + 1;
+                const newAvg = ((driver.rating * driver.totalRatings) + rating) / newTotal;
+                driver.totalRatings = newTotal;
+                driver.rating = parseFloat(newAvg.toFixed(2));
+                await driver.save();
+            }
+        }
+
+        res.json({ success: true, message: "Driver rated successfully" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// 8. Rate User (by Driver)
+exports.rateUser = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const { rating, review } = req.body;
+
+        if (!rating || rating < 1 || rating > 5) {
+            return res.status(400).json({ success: false, message: "Valid rating (1-5) is required" });
+        }
+
+        const booking = await Booking.findById(bookingId);
+        if (!booking) {
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        if (booking.bookingStatus !== "Completed") {
+            return res.status(400).json({ success: false, message: "Can only rate completed rides" });
+        }
+
+        if (booking.userRating) {
+            return res.status(400).json({ success: false, message: "User already rated for this trip" });
+        }
+
+        booking.userRating = rating;
+        booking.userReview = review || null;
+        await booking.save();
+
+        if (booking.user) {
+            const User = require("../models/User");
+            const user = await User.findById(booking.user);
+            if (user) {
+                const newTotal = user.totalRatings + 1;
+                const newAvg = ((user.averageRating * user.totalRatings) + rating) / newTotal;
+                user.totalRatings = newTotal;
+                user.averageRating = parseFloat(newAvg.toFixed(2));
+                await user.save();
+            }
+        }
+
+        res.json({ success: true, message: "User rated successfully" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// GET USER REVIEWS
+exports.getUserReviews = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const reviews = await Booking.find({ 
+            user: userId, 
+            bookingStatus: 'Completed',
+            userRating: { $gt: 0 } 
+        }).populate("assignedDriver", "name image").sort({ createdAt: -1 });
+
+        res.status(200).json({ success: true, data: reviews });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+// GET DRIVER REVIEWS
+exports.getDriverReviews = async (req, res) => {
+    try {
+        const { driverId } = req.params;
+        const reviews = await Booking.find({ 
+            assignedDriver: driverId, 
+            bookingStatus: 'Completed',
+            driverRating: { $gt: 0 } 
+        }).populate("user", "name image").sort({ createdAt: -1 });
+
+        res.status(200).json({ success: true, data: reviews });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};

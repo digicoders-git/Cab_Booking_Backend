@@ -9,7 +9,11 @@ const {
     getAllBookings, // NEW: Admin view
     cancelBooking,
     getSingleBooking,
-    deleteBooking
+    deleteBooking,
+    rateDriver,
+    rateUser,
+    getUserReviews,
+    getDriverReviews
 } = require("../controllers/bookingController");
 
 const { auth, adminOnly, agentOnly } = require("../middleware/auth");
@@ -39,5 +43,17 @@ router.get("/:bookingId", auth, getSingleBooking);
 
 // 6. Delete Booking (Admin Only)
 router.delete("/delete/:bookingId", auth, checkPermission("BOOKING_DELETE"), deleteBooking);
+
+// 7. Rate Driver (by User/Agent)
+router.post("/:bookingId/rate-driver", auth, rateDriver);
+
+// 8. Rate User (by Driver)
+router.post("/:bookingId/rate-user", auth, rateUser);
+
+// 9. Get User Reviews (Admin/User)
+router.get("/user/:userId/reviews", auth, getUserReviews);
+
+// 10. Get Driver Reviews (Admin/Driver)
+router.get("/driver/:driverId/reviews", auth, getDriverReviews);
 
 module.exports = router;
