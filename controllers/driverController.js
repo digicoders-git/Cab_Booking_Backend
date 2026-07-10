@@ -234,6 +234,10 @@ exports.loginDriver = async (req, res) => {
             { expiresIn: "365d" }
         );
 
+        // Track single session token
+        driver.activeSessionToken = token;
+        await driver.save();
+
         res.json({
             success: true,
             message: "Login successful",

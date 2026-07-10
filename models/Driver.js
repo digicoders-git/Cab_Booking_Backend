@@ -72,6 +72,11 @@ const driverSchema = new mongoose.Schema({
       default: null
     }
   },
+  // NEW: Token for Single Device Login
+  activeSessionToken: {
+    type: String,
+    default: null
+  },
   // CAR DETAILS (Driver's Own Car)
   carDetails: {
     vehicleType: {

@@ -1,6 +1,5 @@
 const jwt = require("jsonwebtoken");
-
-// const jwt = require("jsonwebtoken");
+const Driver = require("../models/Driver");
 
 const auth = (req, res, next) => {
 
@@ -25,6 +24,7 @@ const auth = (req, res, next) => {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
         req.user = decoded;
+        req.token = token; // Store token for further validation
 
         next();
 
@@ -65,7 +65,7 @@ const userOnly = (req, res, next) => {
 
 }
 
-const driverOnly = (req, res, next) => {
+const driverOnly = async (req, res, next) => {
 
     if (req.user.role !== "driver") {
         return res.status(403).json({
@@ -74,8 +74,24 @@ const driverOnly = (req, res, next) => {
         })
     }
 
-    next()
+    try {
+        const driver = await Driver.findById(req.user.id);
+        if (!driver) {
+            return res.status(404).json({ success: false, message: "Driver not found" });
+        }
 
+        // Single Device Login check
+        if (driver.activeSessionToken && driver.activeSessionToken !== req.token) {
+            return res.status(401).json({
+                success: false,
+                message: "Session expired. You have logged in from another device."
+            });
+        }
+
+        next();
+    } catch (err) {
+        return res.status(500).json({ success: false, message: "Server error" });
+    }
 }
 
 const agentOnly = (req, res, next) => {
