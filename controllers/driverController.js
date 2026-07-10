@@ -13,7 +13,7 @@ const { sendPushNotification } = require("../utils/fcmNotification");
 // Driver can register with car details
 exports.registerDriver = async (req, res) => {
     try {
-        const { 
+        let { 
             // Driver Details
             name, email, phone, password, licenseNumber, licenseExpiry, 
             address, city, state, pincode,
@@ -25,6 +25,8 @@ exports.registerDriver = async (req, res) => {
             vehicleType, carNumber, carModel, carBrand, carType, seatCapacity, carColor, 
             manufacturingYear, insuranceExpiry, permitExpiry, pucExpiry
         } = req.body;
+
+        if (email) email = email.trim().toLowerCase();
 
         const image = req.files?.image ? req.files.image[0].filename : null;
         const rcImage        = req.files?.rcImage        ? req.files.rcImage[0].filename        : null;
@@ -158,7 +160,9 @@ exports.registerDriver = async (req, res) => {
 // Login Driver
 exports.loginDriver = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        let { email, password } = req.body;
+
+        if (email) email = email.trim().toLowerCase();
 
         if (!email || !password) {
             return res.status(400).json({
@@ -276,7 +280,7 @@ exports.getDriverProfile = async (req, res) => {
 // Update Driver Profile (Including Documents, Bank Details & Car Details)
 exports.updateDriverProfile = async (req, res) => {
     try {
-        const { 
+        let { 
             name, email, phone, password, 
             licenseNumber, licenseExpiry,
             address, city, state, pincode,
@@ -291,6 +295,8 @@ exports.updateDriverProfile = async (req, res) => {
             lastServiceDate, nextServiceDate,
             rcDocument, insuranceDocument, permitDocument, pucDocument
         } = req.body;
+
+        if (email) email = email.trim().toLowerCase();
 
         const id = req.user.id;
         const driverRecord = await Driver.findById(id);

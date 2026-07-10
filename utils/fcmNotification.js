@@ -16,6 +16,14 @@ const sendPushNotification = async (token, payload) => {
       body: payload.body,
     },
     token: token,
+    android: {
+      priority: 'high',
+    },
+    apns: {
+      headers: {
+        'apns-priority': '10',
+      },
+    },
   };
   try {
     const response = await admin.messaging().send(message);
@@ -41,6 +49,14 @@ const sendTopicNotification = async (topic, payload) => {
       body: payload.body,
     },
     topic: topic,
+    android: {
+      priority: 'high',
+    },
+    apns: {
+      headers: {
+        'apns-priority': '10',
+      },
+    },
   };
   try {
     const response = await admin.messaging().send(message);

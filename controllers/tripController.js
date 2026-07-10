@@ -125,8 +125,7 @@ exports.autoMatchDriver = async (bookingId) => {
             booking.drop.latitude, booking.drop.longitude
         );
 
-        let nearestDriver = null;
-        let minDistance = 50; // Increased search radius
+        let driversWithDist = [];
 
         for (const driver of availableDrivers) {
             console.log(`   🔸 Checking Driver: ${driver.name} | Category: ${driver.carDetails?.carType?._id || driver.carDetails?.carType}`);
@@ -197,93 +196,102 @@ exports.autoMatchDriver = async (bookingId) => {
 
             console.log(`      📍 Distance: ${dist.toFixed(2)} km`);
 
-            if (dist < minDistance) {
-                console.log(`      ✅ Potential Match! Nearest so far.`);
-                minDistance = dist;
-                nearestDriver = driver;
+            // Use a max distance of 50km
+            if (dist < 50) {
+                console.log(`      ✅ Potential Match!`);
+                driversWithDist.push({ driver, dist });
             } else {
-                console.log(`      ❌ Rejected: Too far (> ${minDistance}km)`);
+                console.log(`      ❌ Rejected: Too far (> 50km)`);
             }
         }
 
-        if (!nearestDriver) {
+        if (driversWithDist.length === 0) {
             return { success: false, status: 404, message: "No available nearby drivers found" };
         }
 
-        const newRequest = await RideRequest.create({
-            booking: booking._id,
-            driver: nearestDriver._id,
-            status: "Pending"
-        });
+        // Sort drivers by distance and pick top 2
+        driversWithDist.sort((a, b) => a.dist - b.dist);
+        const topDrivers = driversWithDist.slice(0, 2).map(d => d.driver);
 
-        // SEND NOTIFICATION TO DRIVER
-        await Notification.create({
-            title: "New Ride Request",
-            message: `You have a new ${booking.rideType} ride request from ${booking.pickup.address}.`,
-            recipient: nearestDriver._id,
-            recipientModel: 'Driver',
-            createdBy: booking.user || booking.agent,
-            createdByModel: booking.user ? 'User' : 'Agent'
-        });
+        const newRequests = [];
+        const io = getIO();
 
-        // 🎯 LIVE NOTIFICATION: Tell Driver about the New Request!
-        try {
-            const io = getIO();
-            io.to(nearestDriver._id.toString()).emit("new_ride_request", {
-                bookingId: booking._id,
-                requestId: newRequest._id,
-                passengerName: booking.passengerDetails?.name || 'Passenger',
-                passengerPhone: booking.passengerDetails?.phone || 'N/A',
-                pickup: booking.pickup.address,
-                drop: booking.drop.address,
-                stops: booking.stops || [],
-                distance: booking.estimatedDistanceKm,
-                rideType: booking.rideType,
-                fare: booking.fareEstimate,
-                expiresAt: Date.now() + 16000 // 🔥 Using immediate time for zero delay
+        for (const driver of topDrivers) {
+            const newRequest = await RideRequest.create({
+                booking: booking._id,
+                driver: driver._id,
+                status: "Pending"
             });
-            console.log(`Driver ${nearestDriver.name} notified via Socket about New Request! 🟢`);
-        } catch (err) {
-            console.error("Socket error (autoMatchDriver):", err.message);
-        }
+            newRequests.push(newRequest);
 
-        // 🎯 PUSH NOTIFICATION: If driver has a token, send a push!
-        if (nearestDriver.fcmToken) {
-            console.log(`[TRIP-DEBUG] Attempting FCM to Driver: ${nearestDriver.name}. Token present.`);
-            let notificationBody = `${booking.estimatedDistanceKm} km | Pickup: ${booking.pickup.address.split(',')[0]}`;
+            // SEND NOTIFICATION TO DRIVER
+            await Notification.create({
+                title: "New Ride Request",
+                message: `You have a new ${booking.rideType} ride request from ${booking.pickup.address}.`,
+                recipient: driver._id,
+                recipientModel: 'Driver',
+                createdBy: booking.user || booking.agent,
+                createdByModel: booking.user ? 'User' : 'Agent'
+            });
 
-            // If Agent booked it, mention it in notification!
-            if (booking.agent) {
-                try {
-                    const agent = await Agent.findById(booking.agent);
-                    if (agent) {
-                        notificationBody = `Agent ${agent.name} booked: ${notificationBody}`;
-                    }
-                } catch (err) { }
-            }
-
+            // 🎯 LIVE NOTIFICATION: Tell Driver about the New Request!
             try {
-                const fcmResult = await sendPushNotification(nearestDriver.fcmToken, {
-                    title: `🚖 New Ride: ₹${booking.fareEstimate}`,
-                    body: notificationBody,
-                    data: {
-                        bookingId: booking._id.toString(),
-                        type: "NEW_RIDE_REQUEST"
-                    }
+                io.to(driver._id.toString()).emit("new_ride_request", {
+                    bookingId: booking._id,
+                    requestId: newRequest._id,
+                    passengerName: booking.passengerDetails?.name || 'Passenger',
+                    passengerPhone: booking.passengerDetails?.phone || 'N/A',
+                    pickup: booking.pickup.address,
+                    drop: booking.drop.address,
+                    stops: booking.stops || [],
+                    distance: booking.estimatedDistanceKm,
+                    rideType: booking.rideType,
+                    fare: booking.fareEstimate,
+                    expiresAt: Date.now() + 16000 // 🔥 Using immediate time for zero delay
                 });
-                console.log(`[TRIP-DEBUG] FCM Success for Driver ${nearestDriver.name}:`, fcmResult);
-            } catch (fcmErr) {
-                console.error(`[TRIP-DEBUG] FCM Error for Driver ${nearestDriver.name}:`, fcmErr.message);
+                console.log(`Driver ${driver.name} notified via Socket about New Request! 🟢`);
+            } catch (err) {
+                console.error("Socket error (autoMatchDriver):", err.message);
             }
-        } else {
-            console.log(`[TRIP-DEBUG] ⚠️ Driver ${nearestDriver.name} has NO FCM token. Notification skipped.`);
+
+            // 🎯 PUSH NOTIFICATION: If driver has a token, send a push!
+            if (driver.fcmToken) {
+                console.log(`[TRIP-DEBUG] Attempting FCM to Driver: ${driver.name}. Token present.`);
+                let notificationBody = `${booking.estimatedDistanceKm} km | Pickup: ${booking.pickup.address.split(',')[0]}`;
+
+                // If Agent booked it, mention it in notification!
+                if (booking.agent) {
+                    try {
+                        const agent = await Agent.findById(booking.agent);
+                        if (agent) {
+                            notificationBody = `Agent ${agent.name} booked: ${notificationBody}`;
+                        }
+                    } catch (err) { }
+                }
+
+                try {
+                    const fcmResult = await sendPushNotification(driver.fcmToken, {
+                        title: `🚖 New Ride: ₹${booking.fareEstimate}`,
+                        body: notificationBody,
+                        data: {
+                            bookingId: booking._id.toString(),
+                            type: "NEW_RIDE_REQUEST"
+                        }
+                    });
+                    console.log(`[TRIP-DEBUG] FCM Success for Driver ${driver.name}:`, fcmResult);
+                } catch (fcmErr) {
+                    console.error(`[TRIP-DEBUG] FCM Error for Driver ${driver.name}:`, fcmErr.message);
+                }
+            } else {
+                console.log(`[TRIP-DEBUG] ⚠️ Driver ${driver.name} has NO FCM token. Notification skipped.`);
+            }
         }
 
         return {
             success: true,
-            message: "Request sent to nearest driver",
-            driverDetails: { id: nearestDriver._id, name: nearestDriver.name, distanceKm: Math.round(minDistance * 10) / 10 },
-            requestId: newRequest._id
+            message: `Request sent to ${topDrivers.length} nearest driver(s)`,
+            driverDetails: topDrivers.map(d => ({ id: d._id, name: d.name })),
+            requestIds: newRequests.map(r => r._id)
         };
 
     } catch (error) {
@@ -359,6 +367,28 @@ exports.respondToRequest = async (req, res) => {
             };
 
             await booking.save();
+
+            // CANCEL OTHER PENDING REQUESTS FOR THIS BOOKING
+            const otherRequests = await RideRequest.find({ booking: booking._id, status: "Pending", _id: { $ne: request._id } });
+            if (otherRequests.length > 0) {
+                await RideRequest.updateMany(
+                    { booking: booking._id, status: "Pending", _id: { $ne: request._id } },
+                    { status: "Cancelled" }
+                );
+                
+                const io = getIO();
+                for (const otherReq of otherRequests) {
+                    try {
+                        io.to(otherReq.driver.toString()).emit("ride_request_cancelled", {
+                            requestId: otherReq._id,
+                            bookingId: booking._id,
+                            message: "Ride accepted by another driver"
+                        });
+                    } catch (err) {
+                        console.error("Socket error cancelling other driver:", err.message);
+                    }
+                }
+            }
 
             // SEND NOTIFICATION TO USER
             if (booking.user) {
