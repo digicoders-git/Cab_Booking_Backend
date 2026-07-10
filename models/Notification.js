@@ -40,6 +40,11 @@ const notificationSchema = new mongoose.Schema({
     type: String,
     enum: ['Admin', 'Driver', 'User', 'System', 'Agent'],
     default: 'Admin'
+  },
+  // NEW: Support for image/video attachments
+  mediaUrl: {
+    type: String,
+    default: null
   }
 }, { timestamps: true });
 

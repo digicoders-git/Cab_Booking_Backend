@@ -11,10 +11,11 @@ const {
 
 const { auth, adminOnly } = require("../middleware/auth");
 const { checkPermission } = require("../middleware/rbac");
+const upload = require("../middleware/uploadAdminImage"); // Generic upload
 
 // 1. Create a Notification (Admin Only)
 // Expects: { "title": "Diwali Offer", "message": "10% Off", "targetRoles": ["user", "agent"] }
-router.post("/create", auth, checkPermission("NEWS_POST"), createNotification);
+router.post("/create", auth, checkPermission("NEWS_POST"), upload.single("media"), createNotification);
 
 // 2. Fetch Notifications for anyone who is logged in (User/Driver/Agent/Fleet)
 // Token magic extracts role, no role parameter needed

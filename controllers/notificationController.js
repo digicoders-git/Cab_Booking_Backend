@@ -20,6 +20,15 @@ exports.createNotification = async (req, res) => {
             });
         }
 
+        let mediaUrl = null;
+        let absoluteMediaUrl = "";
+        if (req.file) {
+            mediaUrl = `/uploads/${req.file.filename}`;
+            // Dynamically get the base URL of the live server (e.g. https://api.yourdomain.com)
+            const baseUrl = req.protocol + '://' + req.get('host');
+            absoluteMediaUrl = baseUrl + mediaUrl;
+        }
+
         const notification = await Notification.create({
             title,
             message,
@@ -27,7 +36,8 @@ exports.createNotification = async (req, res) => {
             recipient: recipient || null,
             recipientModel: recipientModel || null,
             createdBy: req.user.id,
-            createdByModel: 'Admin'
+            createdByModel: 'Admin',
+            mediaUrl: mediaUrl // Keep relative in DB to avoid domain-change issues
         });
 
         console.log(`[ADMIN-NOTIF-DEBUG] Notification saved to DB. ID: ${notification._id}`);
@@ -42,7 +52,9 @@ exports.createNotification = async (req, res) => {
                 type: "ANNOUNCEMENT", 
                 id: notification._id.toString(),
                 title: title,
-                body: message
+                body: message,
+                mediaUrl: absoluteMediaUrl, // Send absolute URL for external push notification tray
+                image: absoluteMediaUrl // Many FCM libraries look specifically for the "image" key in data
             }
         };
 
