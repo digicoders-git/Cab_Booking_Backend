@@ -234,6 +234,17 @@ exports.loginDriver = async (req, res) => {
             { expiresIn: "365d" }
         );
 
+        // Notify old devices to logout via Socket.io
+        try {
+            const { getIO } = require("../socket/socket");
+            const io = getIO();
+            io.to(driver._id.toString()).emit("force_logout", {
+                message: "Session expired. Logged in from another device."
+            });
+        } catch (socketErr) {
+            console.error("Socket emit error on login:", socketErr.message);
+        }
+
         // Track single session token
         driver.activeSessionToken = token;
         await driver.save();
