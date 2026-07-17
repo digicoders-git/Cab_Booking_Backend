@@ -48,7 +48,45 @@ exports.createLead = async (req, res) => {
             paymentStatus: 'Pending'
         });
 
-        // 🔔 NOTIFY DRIVERS: (Optional) Send push to nearby drivers about new lead
+        // 🔔 NOTIFY DRIVERS: Send push and socket to drivers of matching car category
+        try {
+            const { getIO } = require("../socket/socket");
+            const io = getIO();
+            
+            // Find drivers matching the car category
+            const eligibleDrivers = await Driver.find({ 
+                isActive: true, 
+                isApproved: true,
+                "carDetails.carType": carCategoryId
+            });
+
+            if (eligibleDrivers.length > 0) {
+                eligibleDrivers.forEach(driver => {
+                    // Socket event
+                    io.to(driver._id.toString()).emit("new_agent_lead", {
+                        leadId: newLead._id,
+                        pickup: newLead.pickup.address,
+                        drop: newLead.drop.address,
+                        dateTime: newLead.pickupDateTime,
+                        earning: newLead.driverEarning
+                    });
+                });
+
+                // FCM Push Notification
+                for (const driver of eligibleDrivers) {
+                    if (driver.fcmToken) {
+                        await sendPushNotification(driver.fcmToken, {
+                            title: `🚀 New Lead: Earn ₹${newLead.driverEarning}`,
+                            body: `Pickup at ${newLead.pickup.address.split(',')[0]}. Check marketplace!`,
+                            data: { leadId: newLead._id.toString(), type: "NEW_AGENT_LEAD" }
+                        });
+                    }
+                }
+            }
+        } catch (notifyErr) {
+            console.error("Agent Lead Notification Error:", notifyErr.message);
+        }
+
         res.status(201).json({
             success: true,
             message: "Lead created and added to Marketplace successfully!",

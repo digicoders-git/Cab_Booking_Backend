@@ -9,7 +9,8 @@ const {
     updateUserProfile,
     deleteUser,
     toggleUserStatus,
-    updateFcmToken
+    updateFcmToken,
+    saveFirstLocation
 } = require("../controllers/userController")
 
 const upload = require("../middleware/uploadAdminImage")
@@ -22,6 +23,9 @@ router.post("/login", loginUser)
 
 // Update FCM Token (Self)
 router.put("/update-fcm-token", auth, updateFcmToken)
+
+// Save First Location (Self)
+router.put("/first-location", auth, saveFirstLocation)
 
 // Secure routes (Admin / Sub-Admin)
 router.get("/all", auth, checkPermission("USER_READ"), getAllUsers)

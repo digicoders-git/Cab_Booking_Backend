@@ -56,6 +56,13 @@ const userSchema = new mongoose.Schema({
   totalRatings: {
     type: Number,
     default: 0
+  },
+  // To track where the user first opened the app / came online
+  firstLocation: {
+    latitude: { type: Number, default: null },
+    longitude: { type: Number, default: null },
+    address: { type: String, default: null },
+    recordedAt: { type: Date, default: null }
   }
 }, { timestamps: true });
 

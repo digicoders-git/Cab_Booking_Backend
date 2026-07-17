@@ -374,3 +374,48 @@ exports.updateFcmToken = async (req, res) => {
         });
     }
 };
+
+// Save User's First Known Location (Called when app opens)
+exports.saveFirstLocation = async (req, res) => {
+    try {
+        const { latitude, longitude, address } = req.body;
+        const userId = req.user.id;
+
+        if (latitude === undefined || longitude === undefined) {
+            return res.status(400).json({ success: false, message: "Latitude and longitude are required" });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        // Only save if it hasn't been saved before
+        if (!user.firstLocation || user.firstLocation.latitude === null) {
+            user.firstLocation = {
+                latitude,
+                longitude,
+                address: address || "Unknown",
+                recordedAt: new Date()
+            };
+            await user.save();
+            return res.status(200).json({
+                success: true,
+                message: "First location recorded successfully",
+                firstLocation: user.firstLocation
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "First location already exists, skipped update",
+            firstLocation: user.firstLocation
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Error saving first location",
+            error: error.message
+        });
+    }
+};

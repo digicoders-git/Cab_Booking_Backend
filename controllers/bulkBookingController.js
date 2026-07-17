@@ -236,6 +236,13 @@ exports.createBulkBooking = async (req, res) => {
                                 offeredPrice: newBooking.offeredPrice, cars: newBooking.carsRequired.length
                             });
                         });
+                        
+                        // Emit to Admin Panel as well
+                        io.to('admin_room').emit("new_bulk_deal", {
+                            bookingId: newBooking._id, pickup: newBooking.pickup.address, drop: newBooking.drop.address,
+                            dateTime: newBooking.pickupDateTime, tripType: newBooking.tripType,
+                            offeredPrice: newBooking.offeredPrice, cars: newBooking.carsRequired.length
+                        });
 
                         for (const fleetId of eligibleFleetIds) {
                             const fleet = await require('../models/Fleet').findById(fleetId);
@@ -632,6 +639,17 @@ exports.verifyBulkPayment = async (req, res) => {
                             offeredPrice: booking.offeredPrice,
                             cars: booking.carsRequired.length
                         });
+                    });
+
+                    // Emit to Admin Panel as well
+                    io.to('admin_room').emit("new_bulk_deal", {
+                        bookingId: booking._id,
+                        pickup: booking.pickup.address,
+                        drop: booking.drop.address,
+                        dateTime: booking.pickupDateTime,
+                        tripType: booking.tripType,
+                        offeredPrice: booking.offeredPrice,
+                        cars: booking.carsRequired.length
                     });
 
                     // --- FCM PUSH NOTIFICATION ---
