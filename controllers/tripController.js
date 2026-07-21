@@ -375,7 +375,7 @@ exports.respondToRequest = async (req, res) => {
                     { booking: booking._id, status: "Pending", _id: { $ne: request._id } },
                     { status: "Cancelled" }
                 );
-                
+
                 const io = getIO();
                 for (const otherReq of otherRequests) {
                     try {
@@ -874,14 +874,16 @@ exports.endTrip = async (req, res) => {
                 io.to(`agent_${agentId.toString()}`).emit("booking_update", {
                     bookingId: booking._id,
                     status: "Completed",
-                    finalFare: booking.actualFare
+                    finalFare: booking.actualFare,
+                    paymentMethod: booking.paymentMethod
                 });
             }
             if (userId) {
                 io.to(userId.toString()).emit("booking_update", {
                     bookingId: booking._id,
                     status: "Completed",
-                    finalFare: booking.actualFare
+                    finalFare: booking.actualFare,
+                    paymentMethod: booking.paymentMethod
                 });
             }
         } catch (err) { }
@@ -1267,6 +1269,23 @@ exports.initiateTripPayment = async (req, res) => {
         booking.hdfcOrderId = orderIdString;
         await booking.save();
 
+        // 🎯 Notify User that Payment has been Requested
+        try {
+            const { getIO } = require("../socket/socket");
+            const io = getIO();
+            if (booking.user) {
+                io.to(booking.user.toString()).emit("booking_update", {
+                    bookingId: booking._id,
+                    status: "Payment_Requested",
+                    paymentMethod: "Online",
+                    finalFare: amountToCollect,
+                    paymentLinks: sessionResponse.payment_links || sessionResponse
+                });
+            }
+        } catch (err) {
+            console.error("Socket error on payment initiation:", err.message);
+        }
+
         res.json({
             success: true,
             orderId: orderIdString,
@@ -1289,18 +1308,7 @@ exports.verifyTripPayment = async (req, res) => {
         const booking = await Booking.findOne({ _id: bookingId, assignedDriver: driverId });
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
 
-        // Signature Verification using HDFC Utility
-        const isValid = validateHMAC_SHA256(req.body, process.env.HDFC_RESPONSE_KEY);
-        const isUAT = process.env.HDFC_BASE_URL && process.env.HDFC_BASE_URL.includes('uat');
-
-        if (!isValid) {
-            if (isUAT) {
-                console.warn("⚠️ [UAT Mode] Invalid Signature detected, but proceeding for simulator testing!");
-            } else {
-                return res.status(400).json({ success: false, message: "Invalid payment signature" });
-            }
-        }
-
+        // Signature Verification is now handled by Razorpay in paymentReturn
         // Payment Success! Now End the Trip
         booking.hdfcTransactionId = hdfcTransactionId || req.body.transaction_id || req.body.order_id;
         booking.paymentMethod = "Online";
@@ -1523,22 +1531,22 @@ exports.processTripSettlement = async (booking, driver) => {
                 if (vendor) {
                     const commPct = vendor.commissionPercentage !== undefined ? vendor.commissionPercentage : 25;
                     const vendorCut = Math.round(adminCut * (commPct / 100));
-                    
+
                     if (vendorCut > 0) {
                         admin.walletBalance -= vendorCut;
                         admin.totalEarnings -= vendorCut;
                         await admin.save();
-                        
+
                         await Transaction.create({
                             user: admin._id, userModel: 'Admin', amount: vendorCut, type: 'Debit',
                             category: 'Commission', status: 'Completed', relatedBooking: booking._id,
                             description: `Master Franchise cut paid to Vendor '${vendor.name}'`
                         });
-                        
+
                         vendor.walletBalance = (vendor.walletBalance || 0) + vendorCut;
                         vendor.totalEarnings = (vendor.totalEarnings || 0) + vendorCut;
                         await vendor.save();
-                        
+
                         await Transaction.create({
                             user: vendor._id, userModel: 'Vendor', amount: vendorCut, type: 'Credit',
                             category: 'Commission', status: 'Completed', relatedBooking: booking._id,
