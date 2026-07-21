@@ -7,6 +7,7 @@ const bcrypt = require("bcryptjs");
 const FleetCar = require("../models/FleetCar");
 const FleetDriver = require("../models/FleetDriver");
 const Admin = require("../models/Admin");
+const DriverLead = require("../models/DriverLead"); // Added DriverLead
 const { sendPushNotification } = require("../utils/fcmNotification");
 
 // Register Driver (Open Registration - Pending Admin Approval)
@@ -128,6 +129,16 @@ exports.registerDriver = async (req, res) => {
             message: "Driver registration submitted successfully. Waiting for admin approval.",
             driver
         });
+
+        // Update DriverLead status to CONVERTED if it exists
+        try {
+            await DriverLead.findOneAndUpdate(
+                { mobile: phone, status: 'INCOMPLETE_REGISTRATION' },
+                { status: 'CONVERTED' }
+            );
+        } catch (leadErr) {
+            console.error("Error updating DriverLead status:", leadErr.message);
+        }
 
         // 🔔 NOTIFY ADMINS: New Driver Registration
         try {
