@@ -86,13 +86,29 @@ exports.autoMatchDriver = async (bookingId) => {
         const previousRequests = await RideRequest.find({ booking: bookingId }).select("driver");
         const excludedDriverIds = previousRequests.map(r => r.driver.toString());
 
+        // --- NEW: WATERFALL UPGRADE LOGIC ---
+        const timeElapsedSecs = (Date.now() - booking.createdAt.getTime()) / 1000;
+        let targetCategoryIds = [booking.carCategory];
+
+        if (timeElapsedSecs >= 120) {
+            const CarCategory = require("../models/CarCategory");
+            const originalCategory = await CarCategory.findById(booking.carCategory);
+            if (originalCategory) {
+                const largerCategories = await CarCategory.find({
+                    seatCapacity: { $gte: originalCategory.seatCapacity }
+                }).select('_id');
+                targetCategoryIds = largerCategories.map(c => c._id);
+                console.log(`🚀 [WATERFALL UPGRADE] Time elapsed ${Math.round(timeElapsedSecs)}s. Expanding search to ${targetCategoryIds.length} categories with >= ${originalCategory.seatCapacity} seats.`);
+            }
+        }
+
         // Base query for matching
         let driverQuery = {
             isOnline: true,
             isAvailable: true,
             isActive: true,
             isApproved: true,
-            "carDetails.carType": booking.carCategory
+            "carDetails.carType": { $in: targetCategoryIds }
         };
 
         const normalizedRideType = booking.rideType ? booking.rideType.toLowerCase() : "";
