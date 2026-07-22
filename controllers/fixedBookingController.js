@@ -400,6 +400,9 @@ exports.createOnlinePayment = async (req, res) => {
             return res.status(400).json({ success: false, message: "Ride must be completed before payment" });
         }
 
+        const source = (req.body && req.body.source) ? req.body.source : 'web';
+        const return_url = `${req.protocol}://${req.get('host')}/api/fixed-routes/bookings/${booking._id}/verify-payment?source=${source}`;
+
         const sessionResponse = await razorpayHandler.orderSession({
             amount: booking.price, // the full fare
             currency: 'INR',
@@ -407,7 +410,7 @@ exports.createOnlinePayment = async (req, res) => {
             customer_id: booking.user.name || "Customer",
             customer_email: booking.user.email || "customer@example.com",
             customer_phone: booking.user.phone || "",
-            return_url: `${req.protocol}://${req.get('host')}/api/fixed-routes/bookings/${booking._id}/verify-payment`
+            return_url: return_url
         });
 
         res.status(200).json({ success: true, session: sessionResponse });
@@ -422,7 +425,7 @@ exports.verifyOnlinePayment = async (req, res) => {
     try {
         const { id } = req.params;
         // The return payload from payment link comes via query parameters
-        const { razorpay_payment_id, razorpay_payment_link_id, razorpay_payment_link_reference_id, razorpay_payment_link_status, razorpay_signature } = req.query;
+        const { source, razorpay_payment_id, razorpay_payment_link_id, razorpay_payment_link_reference_id, razorpay_payment_link_status, razorpay_signature } = req.query;
 
         const booking = await FixedBooking.findById(id);
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
@@ -491,6 +494,28 @@ exports.verifyOnlinePayment = async (req, res) => {
             }
         } catch (sockErr) {
             console.error("Socket error during payment success:", sockErr);
+        }
+
+        if (source === 'app') {
+            return res.send(`
+                <html>
+                <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <title>Payment Successful</title>
+                    <style>
+                        body { font-family: sans-serif; text-align: center; padding-top: 50px; background: #111; color: #fff; }
+                        .success { color: #4CAF50; font-size: 80px; margin-bottom: 20px; }
+                        .btn { display: inline-block; padding: 12px 24px; background: #FFD700; color: #000; text-decoration: none; font-weight: bold; border-radius: 8px; margin-top: 20px; }
+                    </style>
+                </head>
+                <body>
+                    <div class="success">✓</div>
+                    <h2>Payment Successful</h2>
+                    <p>Your payment has been received successfully.</p>
+                    <p style="color: #aaa;">You can now close this browser window and return to the KwikCab App.</p>
+                </body>
+                </html>
+            `);
         }
 
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
