@@ -3,8 +3,11 @@ const FixedBooking = require("../models/FixedBooking");
 const Driver = require("../models/Driver");
 const Transaction = require("../models/Transaction");
 const Admin = require("../models/Admin");
+const User = require("../models/User");
 const { RazorpayHandler } = require("../utils/RazorpayHandler");
 const razorpayHandler = RazorpayHandler.getInstance();
+const { getIO } = require("../socket/socket");
+const { sendPushNotification } = require("../utils/fcmNotification");
 
 // User books a fixed route
 exports.bookFixedRoute = async (req, res) => {
@@ -34,6 +37,45 @@ exports.bookFixedRoute = async (req, res) => {
         });
 
         await newBooking.save();
+
+        // 1. WebSocket Event to Admin & Driver Marketplace
+        try {
+            const io = getIO();
+            if (io) {
+                // Populate required fields for marketplace view before emitting
+                const populatedBooking = await FixedBooking.findById(newBooking._id)
+                    .populate('user', 'name phone')
+                    .populate('carCategory', 'name icon');
+                io.emit('newFixedBookingMarketplace', { booking: populatedBooking });
+            }
+        } catch (sockErr) {
+            console.error("Socket error on new booking:", sockErr);
+        }
+
+        // 2. FCM Notification to Drivers and Admin
+        try {
+            // Find drivers matching the car category
+            const drivers = await Driver.find({ 'carDetails.carType': route.carCategory, fcmToken: { $ne: null } });
+            
+            const payload = {
+                title: "New Package Ride Available! 🚖",
+                body: `Package trip from ${route.pickupLocation} to ${route.dropLocation} for ₹${route.price}`,
+                data: { bookingId: newBooking._id.toString(), type: "FIXED_BOOKING" }
+            };
+            
+            drivers.forEach(driver => {
+                if (driver.fcmToken) {
+                    sendPushNotification(driver.fcmToken, payload);
+                }
+            });
+
+            // Also notify Admin if they have an FCM token setup (assuming Admin model has it or just skip for now, 
+            // usually admins use the web dashboard so websocket is enough, but we can do a general topic if needed).
+            // Let's rely on websocket for Admin for now as they are on dashboard.
+        } catch (fcmErr) {
+            console.error("FCM error on new booking:", fcmErr);
+        }
+
         res.status(201).json({ success: true, message: "Fixed route booked successfully", booking: newBooking });
     } catch (error) {
         console.error("Error booking fixed route:", error);
@@ -114,7 +156,7 @@ exports.getDriverAcceptedBookings = async (req, res) => {
         
         const bookings = await FixedBooking.find({ 
             assignedDriver: driverId,
-            status: { $in: ['Accepted', 'Completed'] }
+            status: { $in: ['Accepted', 'Completed', 'Cancelled'] }
         }).populate('user', 'name phone').populate('carCategory', 'name icon').sort({ acceptedAt: -1 });
 
         res.status(200).json({ success: true, bookings });
@@ -177,6 +219,33 @@ exports.acceptBookingDriver = async (req, res) => {
         booking.assignedDriver = driverId;
         booking.acceptedAt = new Date();
         await booking.save();
+
+        // Socket and FCM to User
+        try {
+            const io = getIO();
+            if (io) {
+                // Remove from marketplace for everyone
+                io.emit('removeFixedBookingMarketplace', { bookingId: booking._id });
+                // Notify user
+                io.to(booking.user.toString()).emit('booking_update', { bookingId: booking._id });
+                io.to(booking.user.toString()).emit('fixedBookingAccepted', { bookingId: booking._id });
+            }
+
+            const user = await User.findById(booking.user);
+            console.log(`[FCM-DEBUG-FIXED] User fetched: ${user?.name}, Token: ${user?.fcmToken}`);
+            if (user && user.fcmToken) {
+                const fcmRes = await sendPushNotification(user.fcmToken, {
+                    title: "Ride Accepted! 🚖",
+                    body: `${driver.name} is arriving to pick you up.`,
+                    data: { bookingId: booking._id.toString(), type: "FIXED_BOOKING_ACCEPTED" }
+                });
+                console.log(`[FCM-DEBUG-FIXED] Push sent to user. Response:`, fcmRes);
+            } else {
+                console.log(`[FCM-DEBUG-FIXED] No FCM Token for User ID ${booking.user}`);
+            }
+        } catch (err) {
+            console.error("Error sending accept notifications:", err);
+        }
 
         res.status(200).json({ success: true, message: "Booking accepted successfully", booking });
     } catch (error) {
@@ -248,8 +317,11 @@ exports.cancelBookingUser = async (req, res) => {
             return res.status(400).json({ success: false, message: "Cannot cancel this booking" });
         }
 
+        // Check previous status for notifications
+        const previousStatus = booking.status;
+
         // If it was already accepted, we need to refund the driver
-        if (booking.status === 'Accepted' && booking.commissionDeducted && booking.assignedDriver) {
+        if (previousStatus === 'Accepted' && booking.commissionDeducted && booking.assignedDriver) {
             const driver = await Driver.findById(booking.assignedDriver);
             if (driver) {
                 driver.walletBalance += booking.adminCommission;
@@ -258,6 +330,15 @@ exports.cancelBookingUser = async (req, res) => {
                     user: booking.assignedDriver, userModel: 'Driver', amount: booking.adminCommission, type: 'Credit',
                     category: 'Refund', status: 'Completed', description: `Commission refund for cancelled booking ${booking._id} (User Cancelled)`
                 });
+                
+                // FCM to Driver
+                if (driver.fcmToken) {
+                    sendPushNotification(driver.fcmToken, {
+                        title: "Ride Cancelled ❌",
+                        body: "The user has cancelled the package ride.",
+                        data: { bookingId: booking._id.toString(), type: "FIXED_BOOKING_CANCELLED" }
+                    });
+                }
             }
             const admin = await Admin.findOne();
             if (admin) {
@@ -273,6 +354,27 @@ exports.cancelBookingUser = async (req, res) => {
 
         booking.status = 'Cancelled';
         await booking.save();
+
+        // Socket Events
+        try {
+            const io = getIO();
+            if (io) {
+                if (previousStatus === 'Marketplace') {
+                    // Remove from marketplace
+                    io.emit('removeFixedBookingMarketplace', { bookingId: booking._id });
+                } else if (previousStatus === 'Accepted' && booking.assignedDriver) {
+                    // Notify specific driver
+                    io.to(booking.assignedDriver.toString()).emit('fixedBookingCancelled', { bookingId: booking._id });
+                    // Also refresh driver's marketplace just in case
+                    io.emit('removeFixedBookingMarketplace', { bookingId: booking._id });
+                    
+                    // Notify user as well
+                    io.to(booking.user.toString()).emit('fixedBookingCancelled', { bookingId: booking._id });
+                }
+            }
+        } catch (sockErr) {
+            console.error("Socket error on cancel user booking:", sockErr);
+        }
 
         res.status(200).json({ success: true, message: "Booking cancelled successfully", booking });
     } catch (error) {
@@ -420,6 +522,27 @@ exports.completeBookingDriver = async (req, res) => {
         // Add completed timestamp if you have one, or just update status
         await booking.save();
 
+        // Socket and FCM to User
+        try {
+            const io = getIO();
+            if (io) {
+                // Notify user to refresh UI (e.g. show Pay Now button)
+                io.to(booking.user.toString()).emit('booking_update', { bookingId: booking._id });
+                io.to(booking.user.toString()).emit('fixedBookingCompleted', { bookingId: booking._id });
+            }
+
+            const user = await User.findById(booking.user);
+            if (user && user.fcmToken) {
+                sendPushNotification(user.fcmToken, {
+                    title: "Ride Completed! 🎉",
+                    body: "Your package ride has been completed. Please proceed with payment if applicable.",
+                    data: { bookingId: booking._id.toString(), type: "FIXED_BOOKING_COMPLETED" }
+                });
+            }
+        } catch (err) {
+            console.error("Error sending complete notifications:", err);
+        }
+
         res.status(200).json({ success: true, message: "Booking marked as completed", booking });
     } catch (error) {
         console.error("Error completing booking:", error);
@@ -481,6 +604,32 @@ exports.acceptBookingAdmin = async (req, res) => {
         booking.acceptedAt = new Date();
         await booking.save();
 
+        // Socket and FCM to User
+        try {
+            const io = getIO();
+            if (io) {
+                // Remove from marketplace for everyone
+                io.emit('removeFixedBookingMarketplace', { bookingId: booking._id });
+                // Notify user
+                io.to(booking.user.toString()).emit('booking_update', { bookingId: booking._id });
+                io.to(booking.user.toString()).emit('fixedBookingAccepted', { bookingId: booking._id });
+            }
+
+            if (driverId) {
+                const user = await User.findById(booking.user);
+                const driver = await Driver.findById(driverId);
+                if (user && user.fcmToken && driver) {
+                    sendPushNotification(user.fcmToken, {
+                        title: "Ride Assigned! 🚖",
+                        body: `${driver.name} has been assigned to your package ride.`,
+                        data: { bookingId: booking._id.toString(), type: "FIXED_BOOKING_ACCEPTED" }
+                    });
+                }
+            }
+        } catch (err) {
+            console.error("Error sending accept admin notifications:", err);
+        }
+
         res.status(200).json({ success: true, message: "Booking accepted/assigned by Admin", booking });
     } catch (error) {
         console.error("Error accepting booking admin:", error);
@@ -496,6 +645,31 @@ exports.deleteBookingAdmin = async (req, res) => {
         
         if (!booking) {
             return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        // --- WebSocket & FCM Notifications ---
+        try {
+            const io = getIO();
+            if (io) {
+                // 1. Remove from Driver & Admin Marketplace
+                io.emit('removeFixedBookingMarketplace', { bookingId: booking._id });
+                
+                // 2. Notify the User via WebSocket
+                io.to(booking.user.toString()).emit('fixedBookingCancelled', { bookingId: booking._id });
+                io.to(booking.user.toString()).emit('booking_update', { bookingId: booking._id });
+            }
+
+            // 3. Notify the User via FCM Push Notification
+            const user = await User.findById(booking.user);
+            if (user && user.fcmToken) {
+                await sendPushNotification(user.fcmToken, {
+                    title: "Ride Cancelled ❌",
+                    body: "Your package ride request was cancelled by the administrator.",
+                    data: { bookingId: booking._id.toString(), type: "FIXED_BOOKING_CANCELLED" }
+                });
+            }
+        } catch (notifyErr) {
+            console.error("Error sending delete notifications from admin:", notifyErr);
         }
 
         await FixedBooking.findByIdAndDelete(id);

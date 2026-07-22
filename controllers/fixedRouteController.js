@@ -1,4 +1,7 @@
 const FixedRoute = require("../models/FixedRoute");
+const User = require("../models/User");
+const { getIO } = require("../socket/socket");
+const { sendPushNotification } = require("../utils/fcmNotification");
 
 // Create a new Fixed Route (Admin)
 exports.createRoute = async (req, res) => {
@@ -19,6 +22,35 @@ exports.createRoute = async (req, res) => {
         });
 
         await newRoute.save();
+
+        // 1. WebSocket Event to Website (Users)
+        try {
+            const io = getIO();
+            if (io) {
+                io.emit('newFixedRoute', { route: newRoute });
+            }
+        } catch (sockErr) {
+            console.error("Socket error on new route:", sockErr);
+        }
+
+        // 2. FCM Notification to all Users
+        try {
+            const users = await User.find({ fcmToken: { $ne: null }, isActive: true });
+            const payload = {
+                title: "New Fixed Route Available! 🚖",
+                body: `New package from ${pickupLocation} to ${dropLocation} is now available at ₹${price}.`,
+                data: { routeId: newRoute._id.toString() }
+            };
+            
+            users.forEach(user => {
+                if (user.fcmToken) {
+                    sendPushNotification(user.fcmToken, payload);
+                }
+            });
+        } catch (fcmErr) {
+            console.error("FCM error on new route:", fcmErr);
+        }
+
         res.status(201).json({ success: true, message: "Fixed route created successfully", route: newRoute });
     } catch (error) {
         console.error("Error creating fixed route:", error);
