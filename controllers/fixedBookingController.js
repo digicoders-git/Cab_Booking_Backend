@@ -497,25 +497,8 @@ exports.verifyOnlinePayment = async (req, res) => {
         }
 
         if (source === 'app') {
-            return res.send(`
-                <html>
-                <head>
-                    <meta name="viewport" content="width=device-width, initial-scale=1">
-                    <title>Payment Successful</title>
-                    <style>
-                        body { font-family: sans-serif; text-align: center; padding-top: 50px; background: #111; color: #fff; }
-                        .success { color: #4CAF50; font-size: 80px; margin-bottom: 20px; }
-                        .btn { display: inline-block; padding: 12px 24px; background: #FFD700; color: #000; text-decoration: none; font-weight: bold; border-radius: 8px; margin-top: 20px; }
-                    </style>
-                </head>
-                <body>
-                    <div class="success">✓</div>
-                    <h2>Payment Successful</h2>
-                    <p>Your payment has been received successfully.</p>
-                    <p style="color: #aaa;">You can now close this browser window and return to the KwikCab App.</p>
-                </body>
-                </html>
-            `);
+            // Redirect to the custom scheme so the app intercepts it and closes the browser automatically
+            return res.redirect(`kwikcab://payment-success?booking_id=${booking._id}&status=success`);
         }
 
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
