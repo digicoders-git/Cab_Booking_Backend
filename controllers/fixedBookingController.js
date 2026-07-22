@@ -401,7 +401,8 @@ exports.createOnlinePayment = async (req, res) => {
         }
 
         const source = (req.body && req.body.source) ? req.body.source : 'web';
-        const return_url = `${req.protocol}://${req.get('host')}/api/fixed-routes/bookings/${booking._id}/verify-payment?source=${source}`;
+        const protocol = req.get('host').includes('localhost') ? 'http' : 'https';
+        const return_url = `${protocol}://${req.get('host')}/api/fixed-routes/bookings/${booking._id}/verify-payment?source=${source}`;
 
         const sessionResponse = await razorpayHandler.orderSession({
             amount: booking.price, // the full fare
