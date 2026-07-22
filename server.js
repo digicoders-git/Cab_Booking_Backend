@@ -26,6 +26,7 @@ const bulkBookingRoutes = require("./routes/bulkBookingRoutes"); // NEW: Bulk Bo
 const agentLeadRoutes = require("./routes/agentLeadRoutes"); // NEW: Agent Lead Marketplace
 const driverLeadRoutes = require("./routes/driverLeadRoutes"); // NEW: Driver Leads
 const offerRoutes = require("./routes/offerRoutes"); // NEW: Offers
+const fixedRouteRoutes = require("./routes/fixedRouteRoutes"); // NEW: Fixed Routes
 const { autoExpireBookings } = require("./controllers/bulkBookingController");
 const { autoExpireAreaPricing } = require("./controllers/areaPricingController");
 
@@ -71,6 +72,7 @@ app.use("/api/driver-leads", driverLeadRoutes); // NEW: Driver Leads
 app.use("/api/offers", offerRoutes); // NEW: Promo Codes / Offers
 app.use("/api/taxes/state-taxes", require("./routes/stateTaxRoutes")); // NEW: State Tax / MCD Tolls
 app.use("/api/settings", require("./routes/appSettingRoutes")); // NEW: Global App Settings
+app.use("/api/fixed-routes", fixedRouteRoutes); // NEW: Fixed Routes Marketplace
 
 const PORT = process.env.PORT || 5000;
 
