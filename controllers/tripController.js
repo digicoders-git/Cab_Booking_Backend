@@ -1735,12 +1735,18 @@ exports.selectPaymentMethod = async (req, res) => {
             try {
                 const io = getIO();
                 if (booking.assignedDriver) {
-                    io.to(booking.assignedDriver._id.toString()).emit("collect_cash", {
+                    const driverRoom = booking.assignedDriver._id.toString();
+                    console.log(`[Backend] Emitting collect_cash to driver room: ${driverRoom}`);
+                    io.to(driverRoom).emit("collect_cash", {
                         bookingId: booking._id,
                         finalFare: booking.actualFare
                     });
+                } else {
+                    console.log(`[Backend] No assigned driver to emit collect_cash!`);
                 }
-            } catch (err) {}
+            } catch (err) {
+                console.error(`[Backend] Error emitting collect_cash:`, err);
+            }
             return res.json({ success: true, message: "Driver notified to collect cash" });
             
         } else if (paymentMethod === 'Online') {
