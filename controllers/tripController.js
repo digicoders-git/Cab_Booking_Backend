@@ -287,11 +287,15 @@ exports.autoMatchDriver = async (bookingId) => {
 
                 try {
                     const fcmResult = await sendPushNotification(driver.fcmToken, {
-                        title: `🚖 New Ride: ₹${booking.fareEstimate}`,
+                        title: `New Ride: Rs.${booking.fareEstimate}`,
                         body: notificationBody,
                         data: {
                             bookingId: booking._id.toString(),
-                            type: "NEW_RIDE_REQUEST"
+                            type: "NEW_RIDE_REQUEST",
+                            pickup: booking.pickup?.address ?? '',
+                            drop: booking.destination?.address ?? '',
+                            fare: (booking.fareEstimate ?? 0).toString(),
+                            distance: (booking.estimatedDistanceKm ?? 0).toString(),
                         }
                     });
                     console.log(`[TRIP-DEBUG] FCM Success for Driver ${driver.name}:`, fcmResult);
