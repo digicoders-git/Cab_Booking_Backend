@@ -291,9 +291,10 @@ exports.autoMatchDriver = async (bookingId) => {
                         body: notificationBody,
                         data: {
                             bookingId: booking._id.toString(),
+                            requestId: newRequest._id.toString(),
                             type: "NEW_RIDE_REQUEST",
                             pickup: booking.pickup?.address ?? '',
-                            drop: booking.destination?.address ?? '',
+                            drop: booking.drop?.address ?? '',
                             fare: (booking.fareEstimate ?? 0).toString(),
                             distance: (booking.estimatedDistanceKm ?? 0).toString(),
                         }
