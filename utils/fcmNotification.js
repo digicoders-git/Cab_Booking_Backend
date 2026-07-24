@@ -1,4 +1,6 @@
 const admin = require("../config/firebaseAdmin");
+const User = require("../models/User");
+const Driver = require("../models/Driver");
 
 /**
  * Send a push notification to a specific device token
@@ -32,6 +34,17 @@ const sendPushNotification = async (token, payload) => {
   } catch (error) {
     console.error("❌ FCM Dispatch Failed for token:", token.slice(0, 10) + "...");
     console.error("🔥 Error Detail:", error.message);
+    
+    // Auto-remove invalid tokens to prevent future errors
+    if (error.code === 'messaging/registration-token-not-registered' || error.code === 'messaging/invalid-registration-token' || error.message.includes('NotRegistered')) {
+      console.log(`🧹 Auto-removing invalid FCM Token from DB: ${token.slice(0, 10)}...`);
+      try {
+        await User.updateMany({ fcmToken: token }, { $unset: { fcmToken: 1 } });
+        await Driver.updateMany({ fcmToken: token }, { $unset: { fcmToken: 1 } });
+      } catch (dbErr) {
+        console.error("DB cleanup error:", dbErr.message);
+      }
+    }
     return null;
   }
 };

@@ -751,8 +751,8 @@ exports.endTrip = async (req, res) => {
         const booking = await Booking.findOne({ _id: bookingId, assignedDriver: driverId });
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
 
-        if (booking.bookingStatus !== "Ongoing") {
-            return res.status(400).json({ success: false, message: "Only Ongoing trips can be ended" });
+        if (booking.bookingStatus !== "Ongoing" && booking.bookingStatus !== "Payment_Pending") {
+            return res.status(400).json({ success: false, message: "Only Ongoing or Payment Pending trips can be ended" });
         }
 
         // --- NEW: MANDATORY STOP COMPLETION CHECK ---
@@ -1378,10 +1378,12 @@ exports.verifyTripPayment = async (req, res) => {
         await driver.save();
 
         // Notify Rider & Admin
+        // Notify Rider, Agent & Driver
         try {
             const io = getIO();
             if (booking.user) io.to(booking.user.toString()).emit("booking_update", { bookingId: booking._id, status: "Completed" });
             if (booking.agent) io.to(`agent_${booking.agent.toString()}`).emit("booking_update", { bookingId: booking._id, status: "Completed" });
+            if (driver._id) io.to(driver._id.toString()).emit("booking_update", { bookingId: booking._id, status: "Completed" });
 
             // Notify Admin Panel
             io.to('admin_room').emit("driver_location_update", {
@@ -1642,4 +1644,136 @@ exports.processTripSettlement = async (booking, driver) => {
     } catch (finError) {
         console.error("Financial Calculation Error:", finError.message);
     }
+};
+// ==========================================
+// USER-SIDE PAYMENT FLOW (NEW API)
+// ==========================================
+
+exports.initiateTripCompletion = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const driverId = req.user.id;
+
+        const booking = await Booking.findOne({ _id: bookingId, assignedDriver: driverId });
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        if (booking.bookingStatus !== "Ongoing") {
+            return res.status(400).json({ success: false, message: "Only Ongoing trips can be ended" });
+        }
+
+        // MANDATORY STOP COMPLETION CHECK
+        if (booking.stops && booking.stops.length > 0) {
+            const incompleteStop = booking.stops.find(s => s.status !== "Completed");
+            if (incompleteStop) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Pehle saare intermediate stops complete karo! (${incompleteStop.address} baki hai)`
+                });
+            }
+        }
+
+        // Finalize fare
+        booking.actualFare = booking.actualFare > 0 ? booking.actualFare : booking.fareEstimate;
+        booking.bookingStatus = "Payment_Pending";
+        await booking.save();
+
+        // Send Notification to User
+        try {
+            const io = getIO();
+            const userId = booking.user?._id || booking.user;
+            if (userId) {
+                io.to(userId.toString()).emit("payment_requested", {
+                    bookingId: booking._id,
+                    finalFare: booking.actualFare
+                });
+            }
+            
+            // Notify Agent if applicable
+            const agentId = booking.agent?._id || booking.agent;
+            if (agentId) {
+                io.to(`agent_${agentId.toString()}`).emit("payment_requested", {
+                    bookingId: booking._id,
+                    finalFare: booking.actualFare
+                });
+            }
+
+            // Send Push
+            if (booking.user) {
+                const rider = await User.findById(booking.user);
+                if (rider && rider.fcmToken) {
+                    await sendPushNotification(rider.fcmToken, {
+                        title: "💳 Payment Required",
+                        body: `Trip completed! Please pay ₹${booking.actualFare}`,
+                        data: { type: "PAYMENT_REQUESTED", bookingId: booking._id.toString() }
+                    });
+                }
+            }
+        } catch (err) {
+            console.error("Payment Request Socket Error:", err.message);
+        }
+
+        res.json({ success: true, message: "Payment request sent to user", finalFare: booking.actualFare });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+exports.selectPaymentMethod = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const { paymentMethod } = req.body; 
+
+        const booking = await Booking.findById(bookingId).populate("assignedDriver");
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        if (booking.bookingStatus !== "Payment_Pending") {
+            return res.status(400).json({ success: false, message: "Payment is not pending for this trip" });
+        }
+
+        if (paymentMethod === 'Cash') {
+            try {
+                const io = getIO();
+                if (booking.assignedDriver) {
+                    io.to(booking.assignedDriver._id.toString()).emit("collect_cash", {
+                        bookingId: booking._id,
+                        finalFare: booking.actualFare
+                    });
+                }
+            } catch (err) {}
+            return res.json({ success: true, message: "Driver notified to collect cash" });
+            
+        } else if (paymentMethod === 'Online') {
+            const amountToCollect = booking.actualFare > 0 ? booking.actualFare : booking.fareEstimate;
+            if (amountToCollect <= 0) return res.status(400).json({ success: false, message: "Invalid fare amount" });
+            
+            const orderIdString = `order_${booking._id.toString().slice(-6)}_${Date.now()}`;
+            const frontendOrigin = req.headers.origin || process.env.FRONTEND_URL || 'http://localhost:5173';
+            const protocol = req.get('host').includes('localhost') || req.get('host').includes('127.0.0.1') ? req.protocol : 'https';
+            const returnUrl = `${protocol}://${req.get('host')}/api/trips/execute/payment-return?redirect=${encodeURIComponent(frontendOrigin + '/booking-details/' + booking._id)}`;
+
+            // Uses the globally required razorpayHandler at the top of the file
+            const sessionResponse = await razorpayHandler.orderSession({
+                order_id: orderIdString,
+                amount: amountToCollect.toFixed(2),
+                customer_id: booking.user ? booking.user.toString() : "guest",
+                customer_email: "test@example.com",
+                customer_phone: booking.passengerDetails?.phone || "9999999999",
+                return_url: returnUrl
+            });
+
+            booking.hdfcOrderId = orderIdString;
+            await booking.save();
+            return res.json({ success: true, paymentLinks: sessionResponse.payment_links || sessionResponse });
+        }
+    } catch(err) {
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+exports.confirmCashCollection = async (req, res) => {
+    // Driver confirms cash received
+    if (!req.body) req.body = {};
+    req.body.paymentMethod = "Cash";
+    return exports.endTrip(req, res);
 };

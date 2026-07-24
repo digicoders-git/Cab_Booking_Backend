@@ -14,10 +14,13 @@ const {
     getDriverLocation,
     getDriverTrips,
     initiateTripPayment,
-    verifyTripPayment
+    verifyTripPayment,
+    initiateTripCompletion,
+    selectPaymentMethod,
+    confirmCashCollection
 } = require("../controllers/tripController");
 
-const { auth, driverOnly } = require("../middleware/auth"); 
+const { auth, driverOnly, userOnly } = require("../middleware/auth"); 
 
 // 1. Manually trigger auto-match (Auto-Matching for Private Rides usually)
 router.post("/trigger-match/:bookingId", findAndAssignDriver);
@@ -54,5 +57,10 @@ router.get("/driver/my-trips", auth, driverOnly, getDriverTrips);
 router.post("/execute/:bookingId/initiate-payment", auth, driverOnly, initiateTripPayment);
 router.post("/execute/verify-payment", auth, driverOnly, verifyTripPayment);
 router.all("/execute/payment-return", require("../controllers/tripController").paymentReturn);
+
+// 9. User-Side Payment Flow APIs
+router.post("/execute/:bookingId/initiate-completion", auth, driverOnly, initiateTripCompletion);
+router.post("/execute/:bookingId/select-payment", auth, selectPaymentMethod); // Removed userOnly strictly since Agent could also be the one paying if they booked it? Let's keep it simple with just auth for now.
+router.post("/execute/:bookingId/confirm-cash", auth, driverOnly, confirmCashCollection);
 
 module.exports = router;
