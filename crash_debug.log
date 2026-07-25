@@ -1,7 +1,7 @@
 TypeError: argument handler must be a function
     at Route.<computed> [as delete] (C:\Users\vivekvkraj\OneDrive\Desktop\Cab booking\CapBokkin\node_modules\router\lib\route.js:228:15)
     at Router.<computed> [as delete] (C:\Users\vivekvkraj\OneDrive\Desktop\Cab booking\CapBokkin\node_modules\router\index.js:448:19)
-    at Object.<anonymous> (C:\Users\vivekvkraj\OneDrive\Desktop\Cab booking\CapBokkin\routes\fixedRouteRoutes.js:31:14)
+    at Object.<anonymous> (C:\Users\vivekvkraj\OneDrive\Desktop\Cab booking\CapBokkin\routes\bulkBookingRoutes.js:31:14)
     at Module._compile (node:internal/modules/cjs/loader:1812:14)
     at Object..js (node:internal/modules/cjs/loader:1943:10)
     at Module.load (node:internal/modules/cjs/loader:1533:32)

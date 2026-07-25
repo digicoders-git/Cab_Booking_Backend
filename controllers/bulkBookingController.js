@@ -969,11 +969,11 @@ exports.deleteBulkBooking = async (req, res) => {
             return res.status(404).json({ success: false, message: "Booking not found" });
         }
 
-        // Strict Rule: Only Marketplace, Accepted, or PendingPayment rides can be deleted
-        if (!['Marketplace', 'Accepted', 'PendingPayment'].includes(booking.status)) {
+        // Strict Rule: Only Marketplace, Accepted, PendingPayment, Cancelled, or Expired rides can be deleted
+        if (!['Marketplace', 'Accepted', 'PendingPayment', 'Cancelled', 'Expired'].includes(booking.status)) {
             return res.status(400).json({
                 success: false,
-                message: `Cannot delete a ${booking.status} ride. Admin can only delete Marketplace, Accepted, or PendingPayment rides.`
+                message: `Cannot delete a ${booking.status} ride. Admin can only delete Marketplace, Accepted, PendingPayment, Cancelled, or Expired rides.`
             });
         }
 

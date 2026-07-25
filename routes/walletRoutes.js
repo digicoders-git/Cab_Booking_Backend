@@ -8,7 +8,9 @@ const {
     getAllTransactions,
     getPendingPayouts,
     exportTransactions,
-    addManualBalance
+    addManualBalance,
+    createAddMoneyOrder,
+    addMoneyReturn
 } = require("../controllers/walletController");
 const { auth, adminOnly } = require("../middleware/auth");
 const { checkPermission } = require("../middleware/rbac");
@@ -16,6 +18,10 @@ const { checkPermission } = require("../middleware/rbac");
 // 1. All Users: View Wallet
 router.get("/my-wallet", auth, getWalletDetails);
 router.get("/fleet", auth, getWalletDetails); // Alias for Fleet Panel convenience
+
+// 1.5 Add Money to Wallet (Razorpay)
+router.post("/add-money/create-order", auth, createAddMoneyOrder);
+router.get("/add-money/return", addMoneyReturn);
 
 // 2. Driver/Agent/Fleet: Request Money Withdrawal
 router.post("/withdraw", auth, requestWithdrawal);

@@ -4,6 +4,8 @@ const Agent = require("../models/Agent");
 const Fleet = require("../models/Fleet");
 const Admin = require("../models/Admin");
 const User = require("../models/User");
+const { RazorpayHandler } = require("../utils/RazorpayHandler");
+const razorpayHandler = RazorpayHandler.getInstance();
 
 // 1. Get Wallet Balance and Transaction History
 exports.getWalletDetails = async (req, res) => {
@@ -338,5 +340,126 @@ exports.addManualBalance = async (req, res) => {
 
     } catch (error) {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// 9. Create Add Money Order (Razorpay)
+exports.createAddMoneyOrder = async (req, res) => {
+    try {
+        const { amount } = req.body;
+        const userId = req.user.id;
+        let role = req.user.role || 'driver'; // fallback to driver
+
+        // Capitalize role for userModel
+        let userModel = role.charAt(0).toUpperCase() + role.slice(1);
+        if (userModel === 'Superadmin') userModel = 'Admin';
+
+        if (!amount || amount <= 0) {
+            return res.status(400).json({ success: false, message: "Valid amount is required" });
+        }
+
+        // Create a Pending Transaction first to track this order
+        const pendingTx = await Transaction.create({
+            user: userId,
+            userModel: userModel,
+            amount: amount,
+            type: 'Credit',
+            category: 'Wallet Recharge',
+            status: 'Pending',
+            description: 'Wallet recharge via Razorpay (Initiated)'
+        });
+
+        // Razorpay limit for reference_id is 40 chars. 
+        // "wa_" (3) + 24 (ObjectId) = 27 chars. Perfect!
+        const orderIdString = `wa_${pendingTx._id.toString()}`;
+        const hostUrl = `${req.get('host').includes('localhost') || req.get('host').includes('127.0.0.1') ? req.protocol : 'https'}://${req.get('host')}`;
+        
+        const frontendOrigin = req.headers.origin || process.env.FRONTEND_DRIVER_URL || 'http://localhost:5174';
+        const returnUrl = `${hostUrl}/api/wallet/add-money/return?redirect=${encodeURIComponent(frontendOrigin + '/driver/wallet')}`;
+
+        const sessionResponse = await razorpayHandler.orderSession({
+            order_id: orderIdString,
+            amount: amount.toString(),
+            customer_id: userId,
+            customer_email: req.user.email || "test@example.com",
+            customer_phone: req.user.phone || "9999999999",
+            return_url: returnUrl
+        });
+
+        res.json({
+            success: true,
+            orderId: orderIdString,
+            paymentLinks: sessionResponse.payment_links
+        });
+
+    } catch (error) {
+        console.error("Create Add Money Order Error:", error);
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// 10. Add Money Return Webhook / Redirect Handler
+exports.addMoneyReturn = async (req, res) => {
+    try {
+        const payload = req.method === 'POST' ? req.body : req.query;
+        let redirectUrl = req.query.redirect || process.env.FRONTEND_DRIVER_URL || 'http://localhost:5174';
+
+        if (!payload || !payload.razorpay_payment_link_status) {
+            return res.redirect(`${redirectUrl}?error=invalid_payload`);
+        }
+
+        const isValid = razorpayHandler.validateSignature(
+            payload.razorpay_payment_id,
+            payload.razorpay_payment_link_id,
+            payload.razorpay_payment_link_reference_id,
+            payload.razorpay_payment_link_status,
+            payload.razorpay_signature
+        );
+
+        if (!isValid) {
+            return res.redirect(`${redirectUrl}?error=invalid_signature`);
+        }
+
+        const orderId = payload.razorpay_payment_link_reference_id; // e.g. wa_6a5f...
+        const status = payload.razorpay_payment_link_status ? payload.razorpay_payment_link_status.toUpperCase() : '';
+
+        if (status === 'PAID') {
+            const parts = orderId.split('_');
+            if (parts.length >= 2 && parts[0] === 'wa') {
+                const txId = parts[1];
+                
+                const pendingTx = await Transaction.findById(txId);
+                
+                if (pendingTx && pendingTx.status === 'Pending') {
+                    const amount = pendingTx.amount;
+                    const userId = pendingTx.user;
+                    const roleModel = pendingTx.userModel;
+
+                    let user;
+                    if (roleModel === 'Driver') user = await Driver.findById(userId);
+                    else if (roleModel === 'Agent') user = await Agent.findById(userId);
+                    else if (roleModel === 'Fleet') user = await Fleet.findById(userId);
+                    else if (roleModel === 'User') user = await User.findById(userId);
+                    
+                    if (user) {
+                        user.walletBalance = (user.walletBalance || 0) + amount;
+                        await user.save();
+
+                        pendingTx.status = 'Completed';
+                        pendingTx.description = `Wallet recharge via Razorpay (Success)`;
+                        await pendingTx.save();
+                        
+                        return res.redirect(`${redirectUrl}?success=true`);
+                    }
+                } else if (pendingTx && pendingTx.status === 'Completed') {
+                     // Already processed
+                     return res.redirect(`${redirectUrl}?success=true`);
+                }
+            }
+        }
+        return res.redirect(`${redirectUrl}?error=payment_failed`);
+    } catch (error) {
+        console.error("Add Money Return Error:", error);
+        res.redirect(`${req.query.redirect || 'http://localhost:5174'}?error=server_error`);
     }
 };
