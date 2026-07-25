@@ -291,6 +291,24 @@ const driverSchema = new mongoose.Schema({
   fcmToken: {
     type: String,
     default: null
+  },
+  // --- NEW: Destination Filter ---
+  destinationFilterActive: {
+    type: Boolean,
+    default: false
+  },
+  preferredDestination: {
+    latitude: { type: Number, default: null },
+    longitude: { type: Number, default: null },
+    address: { type: String, default: "" }
+  },
+  destinationFilterCount: {
+    type: Number,
+    default: 0
+  },
+  destinationFilterDate: {
+    type: Date,
+    default: null
   }
 }, { timestamps: true });
 

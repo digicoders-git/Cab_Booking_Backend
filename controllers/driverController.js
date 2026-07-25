@@ -1299,3 +1299,66 @@ exports.updateFcmToken = async (req, res) => {
     }
 };
 
+// --- NEW: Destination Filter ---
+exports.setDestinationFilter = async (req, res) => {
+    try {
+        const { latitude, longitude, address } = req.body;
+        const driverId = req.user.id;
+
+        const driver = await Driver.findById(driverId);
+        if (!driver) return res.status(404).json({ success: false, message: "Driver not found" });
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Reset count if it's a new day
+        if (!driver.destinationFilterDate || driver.destinationFilterDate < today) {
+            driver.destinationFilterCount = 0;
+            driver.destinationFilterDate = today;
+        }
+
+        if (driver.destinationFilterCount >= 4) {
+            return res.status(400).json({ success: false, message: "You have reached the limit of 4 destination filters per day." });
+        }
+
+        driver.destinationFilterActive = true;
+        driver.preferredDestination = {
+            latitude,
+            longitude,
+            address: address || "Custom Destination"
+        };
+        driver.destinationFilterCount += 1;
+        
+        await driver.save();
+
+        res.json({
+            success: true,
+            message: "Destination filter activated successfully.",
+            destinationFilterCount: driver.destinationFilterCount
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+exports.clearDestinationFilter = async (req, res) => {
+    try {
+        const driverId = req.user.id;
+
+        const driver = await Driver.findById(driverId);
+        if (!driver) return res.status(404).json({ success: false, message: "Driver not found" });
+
+        driver.destinationFilterActive = false;
+        driver.preferredDestination = { latitude: null, longitude: null, address: "" };
+        
+        await driver.save();
+
+        res.json({
+            success: true,
+            message: "Destination filter cleared."
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+

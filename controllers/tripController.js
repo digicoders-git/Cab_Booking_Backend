@@ -134,7 +134,7 @@ exports.autoMatchDriver = async (bookingId) => {
 
         const availableDrivers = await Driver.find(driverQuery)
             .populate("carDetails.carType")
-            .select("_id name phone currentLocation availableSeats currentRideType currentHeading carDetails isAvailable seatMap fcmToken");
+            .select("_id name phone currentLocation availableSeats currentRideType currentHeading carDetails isAvailable seatMap fcmToken destinationFilterActive preferredDestination destinationFilterDate");
 
         console.log(`🔍 [MATCHING DEBUG] Found ${availableDrivers.length} Online Drivers in DB query.`);
         console.log(`🔍 [MATCHING DEBUG] Booking expects CarCategory ID: ${booking.carCategory}`);
@@ -168,6 +168,29 @@ exports.autoMatchDriver = async (bookingId) => {
             if (hasBulkConflict) {
                 console.log(`      ❌ Rejected: Driver has an upcoming Bulk Trip at ${hasBulkConflict.pickupDateTime.toLocaleString()}`);
                 continue;
+            }
+
+            // --- NEW: Destination Filter Check ---
+            if (driver.destinationFilterActive && driver.preferredDestination && driver.preferredDestination.latitude) {
+                const driverLat = driver.currentLocation.latitude;
+                const driverLng = driver.currentLocation.longitude;
+                const homeLat = driver.preferredDestination.latitude;
+                const homeLng = driver.preferredDestination.longitude;
+                
+                if (booking.drop && booking.drop.latitude) {
+                    const dropLat = booking.drop.latitude;
+                    const dropLng = booking.drop.longitude;
+
+                    const headingToHome = calculateHeading(driverLat, driverLng, homeLat, homeLng);
+                    const headingToDrop = calculateHeading(driverLat, driverLng, dropLat, dropLng);
+
+                    // Allow 60 degree tolerance for heading home
+                    if (!isHeadingSimilar(headingToHome, headingToDrop, 60)) {
+                        console.log(`      ❌ Rejected: Driver has Destination Filter active, Drop is wrong direction.`);
+                        continue;
+                    }
+                    console.log(`      ✅ Destination Filter Match! Heading home: ${headingToHome.toFixed(1)}, Drop: ${headingToDrop.toFixed(1)}`);
+                }
             }
 
             if (normalizedRideType === "shared") {
@@ -1697,7 +1720,7 @@ exports.initiateTripCompletion = async (req, res) => {
 
         let finalFareToCollect = booking.fareEstimate; 
 
-        if (actualDistanceKm && !isNaN(actualDistanceKm)) {
+        if (actualDistanceKm !== undefined && actualDistanceKm !== null && !isNaN(actualDistanceKm)) {
             const category = await CarCategory.findById(booking.carCategory);
             if (category) {
                 const pickupLat = booking.pickup?.latitude;
