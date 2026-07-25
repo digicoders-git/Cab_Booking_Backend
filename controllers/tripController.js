@@ -297,6 +297,9 @@ exports.autoMatchDriver = async (bookingId) => {
                             drop: booking.drop?.address ?? '',
                             fare: (booking.fareEstimate ?? 0).toString(),
                             distance: (booking.estimatedDistanceKm ?? 0).toString(),
+                            rideType: booking.rideType ?? 'Private',
+                            stopsCount: (booking.stops?.length ?? 0).toString(),
+                            expiresAt: (Date.now() + 16000).toString(),
                         }
                     });
                     console.log(`[TRIP-DEBUG] FCM Success for Driver ${driver.name}:`, fcmResult);
