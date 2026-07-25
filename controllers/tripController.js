@@ -12,6 +12,9 @@ const { sendPushNotification } = require("../utils/fcmNotification");
 const User = require("../models/User");
 const mongoose = require("mongoose");
 const BulkBooking = require("../models/BulkBooking");
+const CarCategory = require("../models/CarCategory");
+const stateTaxController = require("./stateTaxController");
+const bookingController = require("./bookingController");
 // const { PaymentHandler, validateHMAC_SHA256 } = require("../utils/PaymentHandler");
 // const paymentHandler = PaymentHandler.getInstance();
 const { RazorpayHandler } = require("../utils/RazorpayHandler");
@@ -1684,8 +1687,58 @@ exports.initiateTripCompletion = async (req, res) => {
             }
         }
 
-        // Finalize fare
-        booking.actualFare = booking.actualFare > 0 ? booking.actualFare : booking.fareEstimate;
+        // --- NEW: Dynamic Fare Recalculation (Option A) ---
+        const { actualDistanceKm } = req.body;
+        
+        // Find existing wait charges (if actualFare was modified during stops)
+        const waitCharges = (booking.actualFare > booking.fareEstimate) 
+                            ? (booking.actualFare - booking.fareEstimate) 
+                            : 0;
+
+        let finalFareToCollect = booking.fareEstimate; 
+
+        if (actualDistanceKm && !isNaN(actualDistanceKm)) {
+            const category = await CarCategory.findById(booking.carCategory);
+            if (category) {
+                const pickupLat = booking.pickup?.latitude;
+                const pickupLng = booking.pickup?.longitude;
+                const areaRates = await bookingController.getAreaSpecificRates(
+                    pickupLat, pickupLng,
+                    category.baseFare, category.privateRatePerKm, category.sharedRatePerSeatPerKm
+                );
+
+                let newFare = areaRates.baseFare;
+                const normalizedRideType = booking.rideType ? booking.rideType.toLowerCase() : "";
+                
+                if (normalizedRideType === "private") {
+                    newFare += (areaRates.privateRate * parseFloat(actualDistanceKm));
+                } else if (normalizedRideType === "shared") {
+                    const finalSeats = booking.seatsBooked || 1;
+                    newFare += (areaRates.sharedRate * parseFloat(actualDistanceKm) * finalSeats);
+                }
+
+                const taxResult = await stateTaxController.calculateTaxesInternal({
+                    pickupAddress: booking.pickup?.address, 
+                    dropAddress: booking.drop?.address, 
+                    carCategoryId: booking.carCategory, 
+                    tripType: "OneWay"
+                });
+
+                if (taxResult && taxResult.totalTax > 0) {
+                    newFare += taxResult.totalTax;
+                }
+
+                newFare = Math.round(newFare);
+
+                if (booking.discountAmount && booking.discountAmount > 0) {
+                    newFare = Math.max(0, newFare - booking.discountAmount);
+                }
+
+                finalFareToCollect = newFare;
+            }
+        }
+
+        booking.actualFare = finalFareToCollect + waitCharges;
         booking.bookingStatus = "Payment_Pending";
         await booking.save();
 
