@@ -285,22 +285,26 @@ exports.autoMatchDriver = async (bookingId) => {
                     } catch (err) { }
                 }
 
+                const payloadData = {
+                    bookingId: booking._id ? booking._id.toString() : '',
+                    requestId: newRequest._id ? newRequest._id.toString() : '',
+                    type: "NEW_RIDE_REQUEST",
+                    pickup: (booking.pickup && booking.pickup.address) ? booking.pickup.address : '',
+                    drop: (booking.drop && booking.drop.address) ? booking.drop.address : '',
+                    fare: (booking.fareEstimate || 0).toString(),
+                    distance: (booking.estimatedDistanceKm || 0).toString(),
+                    rideType: booking.rideType || 'Private',
+                    stopsCount: (booking.stops ? booking.stops.length : 0).toString(),
+                    expiresAt: (Date.now() + 16000).toString(),
+                };
+                
+                console.log(`[TEST DEBUG] Sending FCM Payload to driver ${driver.name}:`, payloadData);
+
                 try {
                     const fcmResult = await sendPushNotification(driver.fcmToken, {
                         title: `New Ride: Rs.${booking.fareEstimate}`,
                         body: notificationBody,
-                        data: {
-                            bookingId: booking._id.toString(),
-                            requestId: newRequest._id.toString(),
-                            type: "NEW_RIDE_REQUEST",
-                            pickup: booking.pickup?.address ?? '',
-                            drop: booking.drop?.address ?? '',
-                            fare: (booking.fareEstimate ?? 0).toString(),
-                            distance: (booking.estimatedDistanceKm ?? 0).toString(),
-                            rideType: booking.rideType ?? 'Private',
-                            stopsCount: (booking.stops?.length ?? 0).toString(),
-                            expiresAt: (Date.now() + 16000).toString(),
-                        }
+                        data: payloadData
                     });
                     console.log(`[TRIP-DEBUG] FCM Success for Driver ${driver.name}:`, fcmResult);
                 } catch (fcmErr) {
