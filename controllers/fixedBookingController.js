@@ -408,8 +408,10 @@ exports.createOnlinePayment = async (req, res) => {
         const protocol = req.get('host').includes('localhost') ? 'http' : 'https';
         const return_url = `${protocol}://${req.get('host')}/api/fixed-routes/bookings/${booking._id}/verify-payment?source=${source}`;
 
+        const finalAmount = (booking.finalPrice && booking.finalPrice > 0) ? booking.finalPrice : booking.price;
         const sessionResponse = await razorpayHandler.orderSession({
-            amount: booking.price, // the full fare
+            amount: finalAmount, // full fare including extra time charges
+
             currency: 'INR',
             order_id: `fb_${booking._id.toString().slice(-6)}_${Date.now()}`,
             customer_id: booking.user.name || "Customer",
@@ -456,7 +458,8 @@ exports.verifyOnlinePayment = async (req, res) => {
         const Transaction = require("../models/Transaction");
         const Admin = require("../models/Admin");
 
-        const driverEarning = booking.price - booking.adminCommission;
+        const totalPaid = (booking.finalPrice && booking.finalPrice > 0) ? booking.finalPrice : booking.price;
+        const driverEarning = totalPaid - (booking.adminCommission || 0);
         
         if (booking.assignedDriver) {
             const driver = await Driver.findById(booking.assignedDriver);
