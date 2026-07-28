@@ -33,7 +33,11 @@ exports.bookFixedRoute = async (req, res) => {
             adminCommission: route.adminCommission,
             pickupDate,
             pickupTime,
-            paymentMethod: paymentMethod || 'Cash'
+            paymentMethod: paymentMethod || 'Cash',
+            tripType: route.tripType || 'One-Way',
+            maxTimeHours: route.maxTimeHours || 0,
+            extraTimeChargePerHour: route.extraTimeChargePerHour || 0,
+            startOtp: Math.floor(1000 + Math.random() * 9000).toString()
         });
 
         await newBooking.save();
@@ -156,7 +160,7 @@ exports.getDriverAcceptedBookings = async (req, res) => {
         
         const bookings = await FixedBooking.find({ 
             assignedDriver: driverId,
-            status: { $in: ['Accepted', 'Completed', 'Cancelled'] }
+            status: { $in: ['Accepted', 'Started', 'Completed', 'Cancelled'] }
         }).populate('user', 'name phone').populate('carCategory', 'name icon').sort({ acceptedAt: -1 });
 
         res.status(200).json({ success: true, bookings });
@@ -510,6 +514,56 @@ exports.verifyOnlinePayment = async (req, res) => {
     }
 };
 
+// Driver starts booking (OTP Verification)
+exports.startBookingDriver = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { otp } = req.body;
+        const driverId = req.user.id;
+
+        const booking = await FixedBooking.findById(id);
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        if (booking.assignedDriver.toString() !== driverId.toString()) {
+            return res.status(403).json({ success: false, message: "You are not assigned to this booking" });
+        }
+        if (booking.status !== 'Accepted') {
+            return res.status(400).json({ success: false, message: "Only accepted bookings can be started" });
+        }
+        if (booking.startOtp !== otp) {
+            return res.status(400).json({ success: false, message: "Invalid OTP" });
+        }
+
+        booking.status = 'Started';
+        booking.startedAt = new Date();
+        await booking.save();
+
+        try {
+            const io = getIO();
+            if (io) {
+                io.to(booking.user.toString()).emit('booking_update', { bookingId: booking._id });
+                io.to(booking.user.toString()).emit('fixedBookingStarted', { bookingId: booking._id });
+            }
+
+            const user = await User.findById(booking.user);
+            if (user && user.fcmToken) {
+                sendPushNotification(user.fcmToken, {
+                    title: "Ride Started! 🚖",
+                    body: "Your package ride has successfully started.",
+                    data: { bookingId: booking._id.toString(), type: "FIXED_BOOKING_STARTED" }
+                });
+            }
+        } catch (err) {
+            console.error("Error sending start notifications:", err);
+        }
+
+        res.status(200).json({ success: true, message: "Booking started successfully", booking });
+    } catch (error) {
+        console.error("Error starting booking:", error);
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
 // Driver completes booking
 exports.completeBookingDriver = async (req, res) => {
     try {
@@ -519,16 +573,35 @@ exports.completeBookingDriver = async (req, res) => {
         const booking = await FixedBooking.findById(id);
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
 
-        // Ensure the booking is assigned to this driver and is currently Accepted
+        // Ensure the booking is assigned to this driver and is currently Started
         if (booking.assignedDriver.toString() !== driverId.toString()) {
             return res.status(403).json({ success: false, message: "You are not assigned to this booking" });
         }
-        if (booking.status !== 'Accepted') {
-            return res.status(400).json({ success: false, message: "Only accepted bookings can be completed" });
+        if (booking.status !== 'Started' && booking.status !== 'Accepted') {
+            return res.status(400).json({ success: false, message: "Booking is not in a state to be completed" });
         }
 
         booking.status = 'Completed';
-        // Add completed timestamp if you have one, or just update status
+        booking.completedAt = new Date();
+
+        // Calculate time penalty if applicable
+        let finalPrice = booking.price;
+        let extraCharges = 0;
+
+        if (booking.startedAt && booking.maxTimeHours > 0) {
+            const durationMs = booking.completedAt - booking.startedAt;
+            const durationHours = durationMs / (1000 * 60 * 60);
+
+            if (durationHours > booking.maxTimeHours) {
+                const extraHours = Math.ceil(durationHours - booking.maxTimeHours);
+                extraCharges = extraHours * booking.extraTimeChargePerHour;
+                finalPrice += extraCharges;
+            }
+        }
+
+        booking.extraTimeCharges = extraCharges;
+        booking.finalPrice = finalPrice;
+
         await booking.save();
 
         // Socket and FCM to User

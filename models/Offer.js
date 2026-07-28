@@ -25,6 +25,15 @@ const offerSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  discountType: {
+    type: String,
+    enum: ["FLAT", "PERCENTAGE"],
+    default: "FLAT"
+  },
+  maxDiscountAmount: {
+    type: Number,
+    default: null
   }
 }, { timestamps: true });
 

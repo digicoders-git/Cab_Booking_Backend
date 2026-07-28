@@ -33,6 +33,7 @@ router.delete('/bookings/:id/admin', auth, adminOnly, fixedBookingController.del
 
 router.get('/bookings/marketplace/driver', auth, driverOnly, fixedBookingController.getDriverMarketplaceBookings);
 router.post('/bookings/:id/accept-driver', auth, driverOnly, fixedBookingController.acceptBookingDriver);
+router.post('/bookings/:id/start-driver', auth, driverOnly, fixedBookingController.startBookingDriver);
 router.post('/bookings/:id/complete-driver', auth, driverOnly, fixedBookingController.completeBookingDriver);
 router.get('/bookings/my-accepted/driver', auth, driverOnly, fixedBookingController.getDriverAcceptedBookings);
 

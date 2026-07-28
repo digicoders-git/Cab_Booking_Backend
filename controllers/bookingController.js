@@ -105,9 +105,9 @@ exports.estimateFare = async (req, res) => {
         const { carCategoryId, distanceKm, rideType, seatsBooked, pickupLat, pickupLng } = req.body;
         
         // --- NEW: Service Availability Enforcement (GPS VERSION) ---
-        const isServiceable = await serviceAreaController.checkServiceAvailability(pickupLat, pickupLng);
+        const serviceZone = await serviceAreaController.checkServiceAvailability(pickupLat, pickupLng);
         
-        if (!isServiceable) {
+        if (!serviceZone) {
             return res.status(400).json({
                 success: false,
                 message: "No rides available at your location right now. Try again later or check nearby areas."
@@ -117,6 +117,11 @@ exports.estimateFare = async (req, res) => {
         const category = await CarCategory.findById(carCategoryId);
         if (!category) {
             return res.status(404).json({ success: false, message: "Car Category not found" });
+        }
+        
+        // Prevent booking if category is disabled in this zone
+        if (serviceZone.disabledCategories && serviceZone.disabledCategories.some(id => id.toString() === carCategoryId.toString())) {
+            return res.status(400).json({ success: false, message: "This car category is not available in your area." });
         }
 
         // --- NEW: Area Wise Pricing Logic ---
@@ -187,9 +192,9 @@ exports.getAllFareEstimates = async (req, res) => {
         console.log("--------------------------------------------------");
         console.log(`🚀 [BOOKING API] Search request GPS: ${pickupLat}, ${pickupLng}`);
 
-        const isServiceable = await serviceAreaController.checkServiceAvailability(pickupLat, pickupLng);
+        const serviceZone = await serviceAreaController.checkServiceAvailability(pickupLat, pickupLng);
         
-        if (!isServiceable) {
+        if (!serviceZone) {
             console.log("🚫 [BOOKING API] GPS outside service area.");
             return res.status(400).json({
                 success: false,
@@ -198,7 +203,11 @@ exports.getAllFareEstimates = async (req, res) => {
         }
         console.log("✅ [BOOKING API] Service Allowed. Proceeding to fare estimates...");
 
-        const categories = await CarCategory.find({ isActive: true });
+        const disabledCats = serviceZone.disabledCategories || [];
+        const categories = await CarCategory.find({ 
+            isActive: true,
+            _id: { $nin: disabledCats }
+        });
         const seats = seatsBooked || 1;
 
         // Fetch all currently active, online drivers to calculate real ETA
@@ -387,9 +396,9 @@ exports.createBooking = async (req, res) => {
         console.log("-----------------------------------------");
         console.log(`📝 [BOOKING API] Booking GPS Check: ${pickupLat}, ${pickupLng}`);
 
-        const isServiceable = await serviceAreaController.checkServiceAvailability(pickupLat, pickupLng);
+        const serviceZone = await serviceAreaController.checkServiceAvailability(pickupLat, pickupLng);
         
-        if (!isServiceable) {
+        if (!serviceZone) {
             console.log("🚫 [BOOKING API] GPS Denied.");
             return res.status(400).json({
                 success: false,
@@ -402,6 +411,11 @@ exports.createBooking = async (req, res) => {
         const category = await CarCategory.findById(carCategoryId);
         if (!category) {
             return res.status(404).json({ success: false, message: "Car Category not found" });
+        }
+        
+        // Prevent booking if category is disabled in this zone
+        if (serviceZone.disabledCategories && serviceZone.disabledCategories.some(id => id.toString() === carCategoryId.toString())) {
+            return res.status(400).json({ success: false, message: "This car category is not available in your area." });
         }
 
         // --- NEW: Area Wise Pricing Logic (GEO-SPATIAL) ---
@@ -450,7 +464,15 @@ exports.createBooking = async (req, res) => {
                 if (req.user && req.user.role === "agent") {
                     return res.status(403).json({ success: false, message: "You cannot access/use this coupon. Only users can use offers." });
                 }
-                discountAmount = offer.discountAmount;
+                if (offer.discountType === "PERCENTAGE") {
+                    let calculatedDiscount = (fareEstimate * offer.discountAmount) / 100;
+                    if (offer.maxDiscountAmount && calculatedDiscount > offer.maxDiscountAmount) {
+                        calculatedDiscount = offer.maxDiscountAmount;
+                    }
+                    discountAmount = Math.round(calculatedDiscount);
+                } else {
+                    discountAmount = offer.discountAmount;
+                }
                 appliedOfferId = offer._id;
             } else {
                 return res.status(400).json({ success: false, message: "Invalid, expired, or inapplicable offer code." });

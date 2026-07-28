@@ -99,6 +99,10 @@ exports.createBulkBooking = async (req, res) => {
         for (const item of carsRequired) {
             const category = await CarCategory.findById(item.category);
             if (category) {
+                // Prevent booking if category is disabled in this zone
+                if (isServiceable.disabledCategories && isServiceable.disabledCategories.some(id => id.toString() === category._id.toString())) {
+                    return res.status(400).json({ success: false, message: `The vehicle category ${category.name} is not available in your area.` });
+                }
                 systemEstimatedPrice += (category.bulkBookingBasePrice || 0) * (item.quantity || 1) * (numberOfDays || 1) * (totalDistance * distanceMultiplier);
             }
         }

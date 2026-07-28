@@ -13,7 +13,7 @@ exports.getAllServiceAreas = async (req, res) => {
 // 2. Create new service area (GPS ONLY)
 exports.createServiceArea = async (req, res) => {
     try {
-        const { cityName, centerLat, centerLng, radiusKm } = req.body;
+        const { cityName, centerLat, centerLng, radiusKm, disabledCategories } = req.body;
         
         if (!cityName) return res.status(400).json({ success: false, message: "City name label is required" });
         if (!centerLat || !centerLng) return res.status(400).json({ success: false, message: "GPS Coordinates are mandatory" });
@@ -23,6 +23,7 @@ exports.createServiceArea = async (req, res) => {
             centerLat,
             centerLng,
             radiusKm: radiusKm || 50,
+            disabledCategories: disabledCategories || [],
             location: {
                 type: "Point",
                 coordinates: [parseFloat(centerLng), parseFloat(centerLat)] // [lng, lat]
@@ -39,9 +40,12 @@ exports.createServiceArea = async (req, res) => {
 // 3. Update service area (GPS ONLY)
 exports.updateServiceArea = async (req, res) => {
     try {
-        const { cityName, centerLat, centerLng, radiusKm, isActive } = req.body;
+        const { cityName, centerLat, centerLng, radiusKm, isActive, disabledCategories } = req.body;
         
         const updateData = { cityName, radiusKm, isActive };
+        if (disabledCategories) {
+            updateData.disabledCategories = disabledCategories;
+        }
         if (centerLat && centerLng) {
             updateData.centerLat = centerLat;
             updateData.centerLng = centerLng;
@@ -89,7 +93,7 @@ exports.checkServiceAvailability = async (pickupLat, pickupLng) => {
 
         if (!pickupLat || !pickupLng) {
             console.log("🚫 [STRICT GPS CHECK] Coordinates missing!");
-            return false;
+            return null;
         }
         
         // Find any active service zones nearby (Max 100km sweep for optimization)
@@ -109,7 +113,7 @@ exports.checkServiceAvailability = async (pickupLat, pickupLng) => {
         if (activeZones.length === 0) {
             console.log("🚫 [STRICT GPS CHECK] No service zones within 100KM. Access Denied.");
             console.log("-----------------------------------------");
-            return false;
+            return null;
         }
 
         // Test each nearby zone's defined radius
@@ -121,16 +125,16 @@ exports.checkServiceAvailability = async (pickupLat, pickupLng) => {
             if (distance <= zone.radiusKm) {
                 console.log(`✅ [STRICT GPS CHECK] MATCH! Riding permitted in ${zone.cityName}`);
                 console.log("-----------------------------------------");
-                return true;
+                return zone;
             }
         }
 
         console.log("🚫 [STRICT GPS CHECK] Outside all authorized circular zones.");
         console.log("-----------------------------------------");
-        return false;
+        return null;
     } catch (err) {
         console.error("🔥 [STRICT GPS CHECK] CRITICAL ERROR:", err.message);
-        return false;
+        return null;
     }
 };
 

@@ -38,6 +38,19 @@ const fixedRouteSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
+    tripType: {
+        type: String,
+        enum: ['One-Way', 'Round-Trip'],
+        default: 'One-Way'
+    },
+    maxTimeHours: {
+        type: Number,
+        default: 0 // 0 means no time limit
+    },
+    extraTimeChargePerHour: {
+        type: Number,
+        default: 0
+    },
     isActive: {
         type: Boolean,
         default: true

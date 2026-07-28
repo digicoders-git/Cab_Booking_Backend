@@ -3,7 +3,7 @@ const Offer = require("../models/Offer");
 // 1. Create Offer (Admin Only)
 exports.createOffer = async (req, res) => {
     try {
-        const { code, discountAmount, bookingType, validTill, isActive } = req.body;
+        const { code, discountAmount, discountType, maxDiscountAmount, bookingType, validTill, isActive } = req.body;
 
         // Check if code already exists
         const existingOffer = await Offer.findOne({ code: code.toUpperCase() });
@@ -14,6 +14,8 @@ exports.createOffer = async (req, res) => {
         const newOffer = new Offer({
             code: code.toUpperCase(),
             discountAmount,
+            discountType: discountType || "FLAT",
+            maxDiscountAmount: maxDiscountAmount || null,
             bookingType,
             validTill,
             isActive
@@ -110,6 +112,8 @@ exports.validateOffer = async (req, res) => {
             success: true,
             message: "Offer applied successfully",
             discountAmount: offer.discountAmount,
+            discountType: offer.discountType,
+            maxDiscountAmount: offer.maxDiscountAmount,
             offerId: offer._id
         });
 

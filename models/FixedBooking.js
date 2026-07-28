@@ -49,6 +49,18 @@ const fixedBookingSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
+    tripType: {
+        type: String,
+        default: 'One-Way'
+    },
+    maxTimeHours: {
+        type: Number,
+        default: 0
+    },
+    extraTimeChargePerHour: {
+        type: Number,
+        default: 0
+    },
     pickupDate: {
         type: Date,
         required: true
@@ -69,7 +81,7 @@ const fixedBookingSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['Marketplace', 'Accepted', 'Completed', 'Cancelled'],
+        enum: ['Marketplace', 'Accepted', 'Started', 'Completed', 'Cancelled'],
         default: 'Marketplace'
     },
     assignedDriver: {
@@ -90,6 +102,26 @@ const fixedBookingSchema = new mongoose.Schema({
     commissionDeducted: {
         type: Boolean,
         default: false
+    },
+    startOtp: {
+        type: String,
+        default: null
+    },
+    startedAt: {
+        type: Date,
+        default: null
+    },
+    completedAt: {
+        type: Date,
+        default: null
+    },
+    extraTimeCharges: {
+        type: Number,
+        default: 0
+    },
+    finalPrice: {
+        type: Number,
+        default: 0
     }
 }, { timestamps: true });
 

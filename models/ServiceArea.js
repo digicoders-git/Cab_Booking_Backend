@@ -31,6 +31,11 @@ const ServiceAreaSchema = new mongoose.Schema({
             required: true
         }
     },
+    // 🚫 Categories restricted in this specific area
+    disabledCategories: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "CarCategory"
+    }],
     isActive: {
         type: Boolean,
         default: true
