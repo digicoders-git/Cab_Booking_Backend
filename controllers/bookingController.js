@@ -994,4 +994,27 @@ exports.getDriverReviews = async (req, res) => {
     }
 };
 
+// GET ACTIVE BOOKING
+exports.getActiveBooking = async (req, res) => {
+    try {
+        const activeBooking = await Booking.findOne({
+            user: req.user.id,
+            bookingStatus: { $in: ["Pending", "Accepted", "Ongoing", "Payment_Pending"] }
+        })
+        .populate("assignedDriver", "-password")
+        .populate("carCategory", "name image type")
+        .populate("assignedCar", "vehicleNumber model color")
+        .sort({ createdAt: -1 }); // Get the most recent one
+
+        if (!activeBooking) {
+            return res.status(200).json({ success: true, data: null, message: "No active bookings" });
+        }
+
+        res.status(200).json({ success: true, data: activeBooking });
+    } catch (error) {
+        console.error("Get Active Booking Error:", error);
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
 exports.getAreaSpecificRates = getAreaSpecificRates;

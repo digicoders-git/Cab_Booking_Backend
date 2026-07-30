@@ -13,7 +13,8 @@ const {
     rateDriver,
     rateUser,
     getUserReviews,
-    getDriverReviews
+    getDriverReviews,
+    getActiveBooking
 } = require("../controllers/bookingController");
 
 const { auth, adminOnly, agentOnly } = require("../middleware/auth");
@@ -34,6 +35,9 @@ router.get("/my-bookings", auth, getMyBookings);
 
 // 3b. View All Bookings (Admin Only)
 router.get("/all", auth, checkPermission("BOOKING_READ"), getAllBookings);
+
+// 3c. Get Active Booking (User)
+router.get("/active", auth, getActiveBooking);
 
 // 4. Cancel Booking (User/Agent/Admin)
 router.put("/cancel/:bookingId", auth, cancelBooking);
