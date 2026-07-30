@@ -30,6 +30,10 @@ const fixedRouteSchema = new mongoose.Schema({
         ref: 'CarCategory',
         required: true
     },
+    distanceKm: {
+        type: Number,
+        default: 0
+    },
     price: {
         type: Number,
         required: true

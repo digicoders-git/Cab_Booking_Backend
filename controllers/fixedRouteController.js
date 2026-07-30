@@ -6,7 +6,7 @@ const { sendPushNotification } = require("../utils/fcmNotification");
 // Create a new Fixed Route (Admin)
 exports.createRoute = async (req, res) => {
     try {
-        const { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour } = req.body;
+        const { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour, distanceKm } = req.body;
         
         const newRoute = new FixedRoute({
             pickupLocation,
@@ -21,7 +21,8 @@ exports.createRoute = async (req, res) => {
             isActive,
             tripType: tripType || 'One-Way',
             maxTimeHours: maxTimeHours || 0,
-            extraTimeChargePerHour: extraTimeChargePerHour || 0
+            extraTimeChargePerHour: extraTimeChargePerHour || 0,
+            distanceKm: distanceKm || 0
         });
 
         await newRoute.save();
@@ -86,11 +87,11 @@ exports.getActiveRoutes = async (req, res) => {
 // Update a Fixed Route (Admin)
 exports.updateRoute = async (req, res) => {
     try {
-        const { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour } = req.body;
+        const { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour, distanceKm } = req.body;
         
         const route = await FixedRoute.findByIdAndUpdate(
             req.params.id, 
-            { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour },
+            { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour, distanceKm },
             { new: true }
         );
 
