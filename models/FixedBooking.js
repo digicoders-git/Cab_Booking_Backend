@@ -61,7 +61,16 @@ const fixedBookingSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    maxDistanceKm: {
+        type: Number,
+        default: 0
+    },
+    extraDistanceChargePerKm: {
+        type: Number,
+        default: 0
+    },
     pickupDate: {
+
         type: Date,
         required: true
     },
@@ -116,6 +125,14 @@ const fixedBookingSchema = new mongoose.Schema({
         default: null
     },
     extraTimeCharges: {
+        type: Number,
+        default: 0
+    },
+    totalDistanceDriven: {
+        type: Number,
+        default: 0
+    },
+    extraDistanceCharges: {
         type: Number,
         default: 0
     },

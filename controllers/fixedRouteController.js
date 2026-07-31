@@ -6,7 +6,7 @@ const { sendPushNotification } = require("../utils/fcmNotification");
 // Create a new Fixed Route (Admin)
 exports.createRoute = async (req, res) => {
     try {
-        const { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour, distanceKm } = req.body;
+        const { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour, distanceKm, maxDistanceKm, extraDistanceChargePerKm } = req.body;
         
         const newRoute = new FixedRoute({
             pickupLocation,
@@ -22,7 +22,9 @@ exports.createRoute = async (req, res) => {
             tripType: tripType || 'One-Way',
             maxTimeHours: maxTimeHours || 0,
             extraTimeChargePerHour: extraTimeChargePerHour || 0,
-            distanceKm: distanceKm || 0
+            distanceKm: distanceKm || 0,
+            maxDistanceKm: maxDistanceKm || 0,
+            extraDistanceChargePerKm: extraDistanceChargePerKm || 0
         });
 
         await newRoute.save();
@@ -87,11 +89,11 @@ exports.getActiveRoutes = async (req, res) => {
 // Update a Fixed Route (Admin)
 exports.updateRoute = async (req, res) => {
     try {
-        const { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour, distanceKm } = req.body;
+        const { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour, distanceKm, maxDistanceKm, extraDistanceChargePerKm } = req.body;
         
         const route = await FixedRoute.findByIdAndUpdate(
             req.params.id, 
-            { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour, distanceKm },
+            { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour, distanceKm, maxDistanceKm, extraDistanceChargePerKm },
             { new: true }
         );
 

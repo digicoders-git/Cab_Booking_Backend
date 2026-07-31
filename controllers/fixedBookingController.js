@@ -37,6 +37,8 @@ exports.bookFixedRoute = async (req, res) => {
             tripType: route.tripType || 'One-Way',
             maxTimeHours: route.maxTimeHours || 0,
             extraTimeChargePerHour: route.extraTimeChargePerHour || 0,
+            maxDistanceKm: route.maxDistanceKm || 0,
+            extraDistanceChargePerKm: route.extraDistanceChargePerKm || 0,
             startOtp: Math.floor(1000 + Math.random() * 9000).toString()
         });
 
@@ -572,6 +574,7 @@ exports.completeBookingDriver = async (req, res) => {
     try {
         const { id } = req.params;
         const driverId = req.user.id;
+        const { totalDistanceDriven } = req.body; // Extract total distance
 
         const booking = await FixedBooking.findById(id);
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
@@ -602,8 +605,22 @@ exports.completeBookingDriver = async (req, res) => {
             }
         }
 
+        let extraDistanceCharges = 0;
+        let actualDistance = totalDistanceDriven ? parseFloat(totalDistanceDriven) : 0;
+        
+        if (actualDistance > 0 && booking.maxDistanceKm > 0) {
+            if (actualDistance > booking.maxDistanceKm) {
+                const extraKm = Math.ceil(actualDistance - booking.maxDistanceKm);
+                extraDistanceCharges = extraKm * booking.extraDistanceChargePerKm;
+                finalPrice += extraDistanceCharges;
+            }
+        }
+
         booking.extraTimeCharges = extraCharges;
+        booking.totalDistanceDriven = actualDistance;
+        booking.extraDistanceCharges = extraDistanceCharges;
         booking.finalPrice = finalPrice;
+
 
         await booking.save();
 

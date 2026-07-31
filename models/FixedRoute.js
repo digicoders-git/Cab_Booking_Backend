@@ -55,7 +55,16 @@ const fixedRouteSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    maxDistanceKm: {
+        type: Number,
+        default: 0 // 0 means no distance limit
+    },
+    extraDistanceChargePerKm: {
+        type: Number,
+        default: 0
+    },
     isActive: {
+
         type: Boolean,
         default: true
     }
