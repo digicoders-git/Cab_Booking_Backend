@@ -35,6 +35,7 @@ router.get('/bookings/marketplace/driver', auth, driverOnly, fixedBookingControl
 router.post('/bookings/:id/accept-driver', auth, driverOnly, fixedBookingController.acceptBookingDriver);
 router.post('/bookings/:id/start-driver', auth, driverOnly, fixedBookingController.startBookingDriver);
 router.post('/bookings/:id/complete-driver', auth, driverOnly, fixedBookingController.completeBookingDriver);
+router.post('/bookings/:id/confirm-cash', auth, driverOnly, fixedBookingController.confirmCashDriver);
 router.get('/bookings/my-accepted/driver', auth, driverOnly, fixedBookingController.getDriverAcceptedBookings);
 
 module.exports = router;

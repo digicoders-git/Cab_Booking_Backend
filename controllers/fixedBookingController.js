@@ -495,8 +495,8 @@ exports.verifyOnlinePayment = async (req, res) => {
         }
 
         // Emit WebSocket Event
-        const { io } = require('../socket/socket');
         try {
+            const io = getIO();
             if (io) {
                 io.emit('fixedBookingPaymentSuccess', { bookingId: booking._id, status: 'Completed' });
             }
@@ -613,7 +613,11 @@ exports.completeBookingDriver = async (req, res) => {
             if (io) {
                 // Notify user to refresh UI (e.g. show Pay Now button)
                 io.to(booking.user.toString()).emit('booking_update', { bookingId: booking._id });
-                io.to(booking.user.toString()).emit('fixedBookingCompleted', { bookingId: booking._id });
+                io.to(booking.user.toString()).emit('fixedBookingCompleted', { 
+                    bookingId: booking._id,
+                    price: booking.finalPrice,
+                    paymentMethod: booking.paymentMethod
+                });
             }
 
             const user = await User.findById(booking.user);
@@ -634,6 +638,31 @@ exports.completeBookingDriver = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
+
+// Driver confirms cash collected
+exports.confirmCashDriver = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const driverId = req.user.id;
+
+        const booking = await FixedBooking.findById(id);
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        // Ensure the booking is assigned to this driver
+        if (booking.assignedDriver.toString() !== driverId.toString()) {
+            return res.status(403).json({ success: false, message: "You are not assigned to this booking" });
+        }
+        
+        booking.paymentStatus = 'Completed';
+        await booking.save();
+
+        res.status(200).json({ success: true, message: "Cash collection confirmed", booking });
+    } catch (error) {
+        console.error("Error confirming cash for fixed booking:", error);
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
 
 // Admin accepts/assigns booking
 exports.acceptBookingAdmin = async (req, res) => {
