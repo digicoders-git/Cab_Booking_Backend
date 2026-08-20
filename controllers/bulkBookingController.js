@@ -22,6 +22,7 @@ const { generateBulkBookingReceipt } = require("../utils/pdfGenerator");
 
 const Driver = require("../models/Driver");
 const Vendor = require("../models/Vendor");
+const { getAreaSpecificRates } = require("./bookingController");
 // const { PaymentHandler, validateHMAC_SHA256 } = require("../utils/PaymentHandler");
 // const paymentHandler = PaymentHandler.getInstance();
 const { RazorpayHandler } = require("../utils/RazorpayHandler");
@@ -90,8 +91,19 @@ exports.createBulkBooking = async (req, res) => {
         }
 
 
+        // --- NEW: Area Pricing for Bulk Bookings ---
+        const areaRates = await getAreaSpecificRates(pickup.latitude, pickup.longitude, 1, 1, 1);
+        const bulkMultiplier = areaRates.bulkRateMultiplier || 1;
+        let appliedAreaPricing = null;
+        if (areaRates.isSpecial) {
+            appliedAreaPricing = {
+                areaName: areaRates.areaName,
+                appliedMultiplier: bulkMultiplier
+            };
+        }
+
         // Calculate System Estimated Price
-        // Formula: Rate (per KM) * Quantity * Days * Distance
+        // Formula: Rate (per KM) * Quantity * Days * Distance * bulkMultiplier
         // If Round Trip, we double the distance
         let systemEstimatedPrice = 0;
         const distanceMultiplier = tripType === 'RoundTrip' ? 2 : 1;
@@ -103,7 +115,7 @@ exports.createBulkBooking = async (req, res) => {
                 if (isServiceable.disabledCategories && isServiceable.disabledCategories.some(id => id.toString() === category._id.toString())) {
                     return res.status(400).json({ success: false, message: `The vehicle category ${category.name} is not available in your area.` });
                 }
-                systemEstimatedPrice += (category.bulkBookingBasePrice || 0) * (item.quantity || 1) * (numberOfDays || 1) * (totalDistance * distanceMultiplier);
+                systemEstimatedPrice += (category.bulkBookingBasePrice || 0) * (item.quantity || 1) * (numberOfDays || 1) * (totalDistance * distanceMultiplier) * bulkMultiplier;
             }
         }
 
@@ -157,6 +169,7 @@ exports.createBulkBooking = async (req, res) => {
             isOutstation: isOutstation || false,
             mcdStateTaxApplied,
             taxBreakdown,
+            appliedAreaPricing,
             startOtp: Math.floor(1000 + Math.random() * 9000).toString()
         });
 
@@ -1756,5 +1769,19 @@ exports.downloadSecurityReceipt = async (req, res) => {
         if (!res.headersSent) {
             res.status(500).json({ success: false, message: "Error generating security receipt" });
         }
+    }
+};
+
+// 16. Check Area Surcharge
+exports.checkAreaSurcharge = async (req, res) => {
+    try {
+        const { latitude, longitude } = req.body;
+        if (!latitude || !longitude) return res.json({ multiplier: 1 });
+        const { getAreaSpecificRates } = require("./bookingController");
+        const areaRates = await getAreaSpecificRates(latitude, longitude, 1, 1, 1);
+        res.json({ multiplier: areaRates.bulkRateMultiplier || 1 });
+    } catch (error) {
+        console.error("Error checking area surcharge:", error.message);
+        res.json({ multiplier: 1 });
     }
 };

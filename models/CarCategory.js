@@ -62,6 +62,15 @@ const carCategorySchema = new mongoose.Schema({
     type: Number,
     default: 2 // Default ₹2 per extra minute
   },
+  // NEW: Traffic Surcharge Rules
+  ratePerMinute: {
+    type: Number,
+    default: 0 // Default ₹0 per extra minute in traffic
+  },
+  trafficBufferMin: {
+    type: Number,
+    default: 10 // Free extra time limit before charging
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Admin"

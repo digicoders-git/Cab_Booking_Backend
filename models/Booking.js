@@ -76,6 +76,11 @@ const bookingSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  // NEW: Store estimated time from Google Maps for traffic calculation
+  estimatedTimeMin: {
+    type: Number,
+    default: 0
+  },
   pickupDate: {
     type: Date,
     default: Date.now // Default to now if not provided
@@ -99,6 +104,14 @@ const bookingSchema = new mongoose.Schema({
     default: null
   },
   discountAmount: {
+    type: Number,
+    default: 0
+  },
+  previousDues: {
+    type: Number,
+    default: 0
+  },
+  trafficSurcharge: {
     type: Number,
     default: 0
   },

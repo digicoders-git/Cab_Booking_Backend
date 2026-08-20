@@ -56,6 +56,9 @@ router.get("/payment-return", bulkBookingController.paymentReturn);
 // 15. Admin Only: View all bulk bookings history
 router.get("/admin/all-history", auth, bulkBookingController.getAllBulkBookingsForAdmin);
 
+// 16. Check Area Surcharge
+router.post("/check-surcharge", bulkBookingController.checkAreaSurcharge);
+
 module.exports = router;
 
 

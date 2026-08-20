@@ -11,11 +11,11 @@ const { sendPushNotification } = require("../utils/fcmNotification");
 const Agent = require("../models/Agent");
 const Offer = require("../models/Offer");
 const stateTaxController = require("./stateTaxController");
-
+const Transaction = require("../models/Transaction");
 // Helper: Calculate Area-specific pricing overrides (GEO-SPATIAL VERSION)
 const getAreaSpecificRates = async (pickupLat, pickupLng, defaultBase, defaultPrivateRate, defaultSharedRate) => {
     try {
-        if (!pickupLat || !pickupLng) return { baseFare: defaultBase, privateRate: defaultPrivateRate, sharedRate: defaultSharedRate, isSpecial: false };
+        if (!pickupLat || !pickupLng) return { baseFare: defaultBase, privateRate: defaultPrivateRate, sharedRate: defaultSharedRate, bulkRateMultiplier: 1, isSpecial: false };
 
         // 🚀 SMART GEO SEARCH: Find zones near the rider (Max 50KM buffer)
         const now = new Date();
@@ -73,6 +73,7 @@ const getAreaSpecificRates = async (pickupLat, pickupLng, defaultBase, defaultPr
                     baseFare: defaultBase * (area.baseFareMultiplier || 1), 
                     privateRate: defaultPrivateRate * (area.privateRateMultiplier || 1), 
                     sharedRate: defaultSharedRate * (area.sharedRateMultiplier || 1),
+                    bulkRateMultiplier: (area.bulkRateMultiplier || 1),
                     isSpecial: true, 
                     areaName: area.areaName 
                 };
@@ -81,7 +82,7 @@ const getAreaSpecificRates = async (pickupLat, pickupLng, defaultBase, defaultPr
     } catch (error) {
         console.error("Geo Pricing Lookup Error:", error.message);
     }
-    return { baseFare: defaultBase, privateRate: defaultPrivateRate, sharedRate: defaultSharedRate, isSpecial: false };
+    return { baseFare: defaultBase, privateRate: defaultPrivateRate, sharedRate: defaultSharedRate, bulkRateMultiplier: 1, isSpecial: false };
 };
 
 // Haversine helper to calculate distance between coordinates
@@ -376,7 +377,8 @@ exports.createBooking = async (req, res) => {
             distanceKm, pickupDate, pickupTime,
             selectedSeats, // NEW: If coming from shared flow
             stops, // NEW: Multiple stoppages
-            offerCode // NEW: Promo code
+            offerCode, // NEW: Promo code
+            estimatedTimeMin // NEW: Traffic time logic
         } = req.body;
 
         // Validate basic inputs (Simplified for example)
@@ -428,6 +430,14 @@ exports.createBooking = async (req, res) => {
         );
 
         const normalizedRideType = rideType ? rideType.toLowerCase() : "";
+        
+        // Traffic Surcharge / Free Time Logic
+        let calculatedTimeMin = estimatedTimeMin;
+        if (!calculatedTimeMin) {
+            // Fallback if frontend didn't pass it: distance / speed * 60
+            calculatedTimeMin = Math.ceil((distanceKm / category.avgSpeedKmH) * 60);
+        }
+
         // Calculate Fare Internally to prevent tampering from Client side
         let fareEstimate = areaRates.baseFare;
         let finalSeats = 1;
@@ -495,6 +505,7 @@ exports.createBooking = async (req, res) => {
             pickup: { address: pickupAddress, latitude: pickupLat, longitude: pickupLng },
             drop: { address: dropAddress, latitude: dropLat, longitude: dropLng },
             estimatedDistanceKm: distanceKm,
+            estimatedTimeMin: calculatedTimeMin, // NEW: Traffic logic
             pickupDate: pickupDate || new Date(),
             pickupTime: pickupTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             selectedSeats: selectedSeats || [], // Track chosen spots
@@ -508,6 +519,20 @@ exports.createBooking = async (req, res) => {
         // If User is making the booking
         if (req.user && req.user.role === "user") {
             bookingData.user = req.user.id;
+            
+            // --- NEW: CARRY FORWARD PREVIOUS DUES ---
+            try {
+                const userDoc = await User.findById(req.user.id);
+                if (userDoc && userDoc.walletBalance < 0) {
+                    const dues = Math.abs(userDoc.walletBalance);
+                    bookingData.previousDues = dues;
+                    bookingData.fareEstimate += dues; // Add to current bill
+                    fareEstimate += dues; // Update the local variable for response
+                }
+            } catch (err) {
+                console.error("Error fetching user wallet for dues:", err.message);
+            }
+            // ----------------------------------------
         }
 
         // If Agent is making the booking (Calculate their commission!)
@@ -722,6 +747,75 @@ exports.cancelBooking = async (req, res) => {
         booking.cancelReason = reason || "No reason provided";
         booking.cancelledBy = req.user.role === "user" ? "User" : (req.user.role === "agent" ? "Agent" : "Admin");
 
+        // --- NEW: LATE CANCELLATION PENALTY LOGIC ---
+        if (booking.tripData && booking.tripData.arrivedAt && booking.cancelledBy === "User") {
+            try {
+                const penaltyAmount = 50; // Fixed penalty
+                const userDoc = await User.findById(booking.user);
+                
+                if (userDoc) {
+                    // Deduct from User Wallet
+                    userDoc.walletBalance = (userDoc.walletBalance || 0) - penaltyAmount;
+                    await userDoc.save();
+                    
+                    // Log Transaction for User
+                    await Transaction.create({
+                        user: userDoc._id,
+                        userModel: "User",
+                        amount: penaltyAmount,
+                        type: "Debit",
+                        category: "Wallet Recharge", // Or "Adjustment" depending on allowed enums, using Wallet Recharge temporarily if Adjustment fails enum check, actually let's use Admin Adjustment if that's an enum, wait Transaction category enum check! Let's check Transaction model.
+                        // I will assume "Trip" or "Fine" is allowed. For now I will omit category if it has default or use a generic one. Wait, in walletController they use "Admin Adjustment". I will use "Admin Adjustment" for safety.
+                        category: "Admin Adjustment",
+                        status: "Completed",
+                        description: "Late Cancellation Penalty"
+                    });
+
+                    // Add to Driver Wallet
+                    if (booking.assignedDriver) {
+                        const driverDoc = await Driver.findById(booking.assignedDriver);
+                        if (driverDoc) {
+                            driverDoc.walletBalance = (driverDoc.walletBalance || 0) + penaltyAmount;
+                            driverDoc.totalEarnings = (driverDoc.totalEarnings || 0) + penaltyAmount;
+                            await driverDoc.save();
+
+                            // Log Transaction for Driver
+                            await Transaction.create({
+                                user: driverDoc._id,
+                                userModel: "Driver",
+                                amount: penaltyAmount,
+                                type: "Credit",
+                                category: "Admin Adjustment",
+                                status: "Completed",
+                                description: "Cancellation Compensation"
+                            });
+                            
+                            // Deduct from Admin Wallet (Since Admin is paying the driver now, and will recover later from User)
+                            const Admin = require("../models/Admin");
+                            const adminDoc = await Admin.findOne();
+                            if (adminDoc) {
+                                adminDoc.walletBalance = (adminDoc.walletBalance || 0) - penaltyAmount;
+                                await adminDoc.save();
+                                await Transaction.create({
+                                    user: adminDoc._id,
+                                    userModel: "Admin",
+                                    amount: penaltyAmount,
+                                    type: "Debit",
+                                    category: "Admin Adjustment",
+                                    status: "Completed",
+                                    description: `Cancellation Compensation paid to Driver ${driverDoc.name}`
+                                });
+                            }
+                        }
+                    }
+                    console.log(`Penalty of ₹${penaltyAmount} applied to User ${userDoc._id} and credited to Driver ${booking.assignedDriver}`);
+                }
+            } catch (penaltyError) {
+                console.error("Error applying cancellation penalty:", penaltyError.message);
+            }
+        }
+        // --------------------------------------------
+
         await booking.save();
 
         // 🟢 FIX: Reset Driver Availability
@@ -901,8 +995,10 @@ exports.rateDriver = async (req, res) => {
             const Driver = require("../models/Driver");
             const driver = await Driver.findById(booking.assignedDriver);
             if (driver) {
-                const newTotal = driver.totalRatings + 1;
-                const newAvg = ((driver.rating * driver.totalRatings) + rating) / newTotal;
+                const currentTotal = driver.totalRatings || 0;
+                const currentRating = driver.rating || 0;
+                const newTotal = currentTotal + 1;
+                const newAvg = ((currentRating * currentTotal) + rating) / newTotal;
                 driver.totalRatings = newTotal;
                 driver.rating = parseFloat(newAvg.toFixed(2));
                 await driver.save();

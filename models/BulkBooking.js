@@ -85,6 +85,10 @@ const bulkBookingSchema = new mongoose.Schema({
         type: Array,
         default: []
     },
+    appliedAreaPricing: {
+        areaName: { type: String, default: null },
+        appliedMultiplier: { type: Number, default: 1 }
+    },
 
     // 🚀 Marketplace Status
     status: {

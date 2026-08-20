@@ -1545,7 +1545,8 @@ exports.processTripSettlement = async (booking, driver) => {
             const fleet = await Fleet.findById(driver.createdBy);
             if (fleet && fleet.commissionPercentage !== undefined) adminPercentage = fleet.commissionPercentage;
         }
-        const adminCut = Math.round(totalFare * (adminPercentage / 100));
+        const rideFareForCommission = Math.max(0, totalFare - (booking.previousDues || 0));
+        const adminCut = Math.round(rideFareForCommission * (adminPercentage / 100));
 
         if (admin) {
             admin.walletBalance = (admin.walletBalance || 0) + adminCut;
@@ -1614,19 +1615,46 @@ exports.processTripSettlement = async (booking, driver) => {
         }
 
         // 4. Driver/Fleet Profit
+        let previousDues = booking.previousDues || 0;
         const commissionTotal = agentCut + adminCut;
-        const driverProfit = totalFare - commissionTotal;
+        const driverProfit = totalFare - commissionTotal - previousDues;
+        const driverDebtForCash = commissionTotal + previousDues;
+
+        // Clear User's negative wallet & Give to Admin
+        if (previousDues > 0 && booking.user) {
+            try {
+                const userDoc = await User.findById(booking.user);
+                if (userDoc) {
+                    userDoc.walletBalance = (userDoc.walletBalance || 0) + previousDues;
+                    await userDoc.save();
+                    await Transaction.create({
+                        user: userDoc._id, userModel: 'User', amount: previousDues, type: 'Credit',
+                        category: 'Admin Adjustment', status: 'Completed', relatedBooking: booking._id,
+                        description: `Cleared previous dues after payment`
+                    });
+                }
+                if (admin) {
+                    admin.walletBalance = (admin.walletBalance || 0) + previousDues;
+                    await admin.save();
+                    await Transaction.create({
+                        user: admin._id, userModel: 'Admin', amount: previousDues, type: 'Credit',
+                        category: 'Admin Adjustment', status: 'Completed', relatedBooking: booking._id,
+                        description: `Recovered previous dues from Trip ${booking._id}`
+                    });
+                }
+            } catch(e) { console.error("Error recovering dues:", e.message); }
+        }
 
         if (driver.createdByModel === "Fleet") {
             const fleet = await Fleet.findById(driver.createdBy);
             if (fleet) {
                 if (isCash) {
-                    fleet.walletBalance -= commissionTotal;
+                    fleet.walletBalance -= driverDebtForCash;
                     fleet.totalEarnings += driverProfit; // Record earnings even if collected as cash
                     await Transaction.create({
-                        user: fleet._id, userModel: 'Fleet', amount: commissionTotal, type: 'Debit',
+                        user: fleet._id, userModel: 'Fleet', amount: driverDebtForCash, type: 'Debit',
                         category: 'Commission', status: 'Completed', relatedBooking: booking._id,
-                        description: `Commission debt for Cash Trip ${booking._id}`
+                        description: `Commission & Dues debt for Cash Trip ${booking._id}`
                     });
                 } else {
                     fleet.walletBalance += driverProfit;
@@ -1641,12 +1669,12 @@ exports.processTripSettlement = async (booking, driver) => {
             }
         } else {
             if (isCash) {
-                driver.walletBalance -= commissionTotal;
+                driver.walletBalance -= driverDebtForCash;
                 driver.totalEarnings += driverProfit; // Record earnings even if collected as cash
                 await Transaction.create({
-                    user: driver._id, userModel: 'Driver', amount: commissionTotal, type: 'Debit',
+                    user: driver._id, userModel: 'Driver', amount: driverDebtForCash, type: 'Debit',
                     category: 'Commission', status: 'Completed', relatedBooking: booking._id,
-                    description: `Commission debt (Cash Trip)`
+                    description: `Commission & Dues debt (Cash Trip)`
                 });
             } else {
                 driver.walletBalance += driverProfit;
@@ -1758,10 +1786,35 @@ exports.initiateTripCompletion = async (req, res) => {
                 }
 
                 finalFareToCollect = newFare;
+                
+                // Add previousDues ONLY if we recalculated from distance (since fareEstimate already has them)
+                if (booking.previousDues) {
+                    finalFareToCollect += booking.previousDues;
+                }
             }
         }
 
-        booking.actualFare = finalFareToCollect + waitCharges;
+        // --- NEW: Traffic Surcharge Logic ---
+        let trafficSurcharge = 0;
+        if (booking.tripData && booking.tripData.startedAt) {
+            const actualMinutes = Math.floor((Date.now() - booking.tripData.startedAt.getTime()) / 60000);
+            
+            const categoryRules = await CarCategory.findById(booking.carCategory);
+
+            if (categoryRules) {
+                const bufferMin = categoryRules.trafficBufferMin !== undefined ? categoryRules.trafficBufferMin : 10;
+                const ratePerMin = categoryRules.ratePerMinute || 0;
+                const allowedTime = (booking.estimatedTimeMin || 0) + bufferMin;
+
+                if (actualMinutes > allowedTime) {
+                    const extraMinutes = actualMinutes - allowedTime;
+                    trafficSurcharge = extraMinutes * ratePerMin;
+                }
+            }
+        }
+        
+        booking.trafficSurcharge = trafficSurcharge;
+        booking.actualFare = finalFareToCollect + waitCharges + trafficSurcharge;
         booking.bookingStatus = "Payment_Pending";
         await booking.save();
 

@@ -47,6 +47,10 @@ const areaPricingSchema = new mongoose.Schema({
         type: Number,
         default: 1
     },
+    bulkRateMultiplier: {
+        type: Number,
+        default: 1
+    },
     isActive: {
         type: Boolean,
         default: true
