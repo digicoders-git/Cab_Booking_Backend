@@ -139,6 +139,18 @@ const fixedBookingSchema = new mongoose.Schema({
     finalPrice: {
         type: Number,
         default: 0
+    },
+    cgst: {
+        type: Number,
+        default: 0
+    },
+    sgst: {
+        type: Number,
+        default: 0
+    },
+    totalWithTax: {
+        type: Number,
+        default: 0
     }
 }, { timestamps: true });
 

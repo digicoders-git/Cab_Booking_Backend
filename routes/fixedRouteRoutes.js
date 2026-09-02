@@ -24,6 +24,7 @@ router.get('/bookings/my-bookings', auth, fixedBookingController.getMyFixedBooki
 router.put('/bookings/:id/cancel', auth, fixedBookingController.cancelBookingUser); // User cancels their own booking
 router.post('/bookings/:id/pay', auth, fixedBookingController.createOnlinePayment); // User creates payment
 router.get('/bookings/:id/verify-payment', fixedBookingController.verifyOnlinePayment); // User verifies payment via Redirect
+router.get('/bookings/:id/receipt', auth, fixedBookingController.downloadReceipt); // Download Fixed Booking Receipt
 
 // === Marketplace & All Bookings (Admin) ===
 router.get('/bookings/admin/all', auth, adminOnly, fixedBookingController.getAllAdminFixedBookings);

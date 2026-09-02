@@ -252,6 +252,10 @@ exports.getAllFareEstimates = async (req, res) => {
                 sharedFare += taxResult.totalTax;
             }
 
+            // --- Apply 5% Exclusive GST (2.5% CGST + 2.5% SGST) ---
+            privateFare = privateFare * 1.05;
+            sharedFare = sharedFare * 1.05;
+
             // --- REAL ETA CALCULATION LOGIC ---
             let arrivalMins = 0;
             let minDriverDist = Infinity;
@@ -461,6 +465,9 @@ exports.createBooking = async (req, res) => {
         if (taxResult && taxResult.totalTax > 0) {
             fareEstimate += taxResult.totalTax;
         }
+
+        // --- Apply 5% Exclusive GST (2.5% CGST + 2.5% SGST) ---
+        fareEstimate = fareEstimate * 1.05;
 
         fareEstimate = Math.round(fareEstimate);
 
@@ -1114,3 +1121,29 @@ exports.getActiveBooking = async (req, res) => {
 };
 
 exports.getAreaSpecificRates = getAreaSpecificRates;
+
+// Download Normal Booking Receipt
+exports.downloadReceipt = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const booking = await Booking.findById(bookingId).populate('user carCategory assignedDriver');
+
+        if (!booking) {
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        const fileName = `KwikCabs_Receipt_${booking._id.toString().slice(-6).toUpperCase()}.pdf`;
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+        const pdfGenerator = require('../utils/pdfGenerator');
+        await pdfGenerator.generateNormalBookingReceipt(booking, res);
+
+    } catch (error) {
+        console.error("Receipt generation error:", error);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: "Error generating receipt" });
+        }
+    }
+};

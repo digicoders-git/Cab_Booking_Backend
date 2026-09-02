@@ -1779,6 +1779,9 @@ exports.initiateTripCompletion = async (req, res) => {
                     newFare += taxResult.totalTax;
                 }
 
+                // --- Apply 5% Exclusive GST (2.5% CGST + 2.5% SGST) ---
+                newFare = newFare * 1.05;
+
                 newFare = Math.round(newFare);
 
                 if (booking.discountAmount && booking.discountAmount > 0) {

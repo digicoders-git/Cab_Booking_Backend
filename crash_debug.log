@@ -1,11 +1,11 @@
-TypeError: argument handler must be a function
-    at Route.<computed> [as delete] (C:\Users\vivekvkraj\OneDrive\Desktop\Cab booking\CapBokkin\node_modules\router\lib\route.js:228:15)
-    at Router.<computed> [as delete] (C:\Users\vivekvkraj\OneDrive\Desktop\Cab booking\CapBokkin\node_modules\router\index.js:448:19)
-    at Object.<anonymous> (C:\Users\vivekvkraj\OneDrive\Desktop\Cab booking\CapBokkin\routes\bulkBookingRoutes.js:31:14)
+Error: listen EADDRINUSE: address already in use :::5000
+    at Server.setupListenHandle [as _listen2] (node:net:1948:16)
+    at listenInCluster (node:net:2005:12)
+    at Server.listen (node:net:2110:7)
+    at Object.<anonymous> (C:\Users\vivekvkraj\OneDrive\Desktop\Cab booking\CapBokkin\server.js:79:8)
     at Module._compile (node:internal/modules/cjs/loader:1812:14)
     at Object..js (node:internal/modules/cjs/loader:1943:10)
     at Module.load (node:internal/modules/cjs/loader:1533:32)
     at Module._load (node:internal/modules/cjs/loader:1335:12)
     at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
-    at Module.require (node:internal/modules/cjs/loader:1556:12)
-    at require (node:internal/modules/helpers:152:16)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)

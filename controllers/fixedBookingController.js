@@ -42,6 +42,13 @@ exports.bookFixedRoute = async (req, res) => {
             startOtp: Math.floor(1000 + Math.random() * 9000).toString()
         });
 
+        // GST Calculation
+        newBooking.cgst = Math.round(newBooking.price * 0.025);
+        newBooking.sgst = Math.round(newBooking.price * 0.025);
+        newBooking.totalWithTax = newBooking.price + newBooking.cgst + newBooking.sgst;
+        // finalPrice initially equals totalWithTax unless extra charges are added later
+        newBooking.finalPrice = newBooking.totalWithTax;
+
         await newBooking.save();
 
         // 1. WebSocket Event to Admin & Driver Marketplace
@@ -616,10 +623,20 @@ exports.completeBookingDriver = async (req, res) => {
             }
         }
 
-        booking.extraTimeCharges = extraCharges;
-        booking.totalDistanceDriven = actualDistance;
         booking.extraDistanceCharges = extraDistanceCharges;
-        booking.finalPrice = finalPrice;
+        
+        const totalExtra = extraCharges + extraDistanceCharges;
+        if (totalExtra > 0) {
+            // Recalculate tax on the new final price if there are extra charges
+            booking.cgst = Math.round(finalPrice * 0.025);
+            booking.sgst = Math.round(finalPrice * 0.025);
+            booking.totalWithTax = finalPrice + booking.cgst + booking.sgst;
+            booking.finalPrice = booking.totalWithTax;
+        } else {
+            // Keep original if no extra charges
+            // booking.finalPrice is already totalWithTax from creation
+            booking.finalPrice = booking.totalWithTax;
+        }
 
 
         await booking.save();
@@ -809,5 +826,31 @@ exports.deleteBookingAdmin = async (req, res) => {
     } catch (error) {
         console.error("Error deleting booking:", error);
         res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// Download Receipt for Fixed Booking
+exports.downloadReceipt = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const booking = await FixedBooking.findById(id)
+            .populate('user', 'name phone email')
+            .populate('assignedDriver', 'name phone carDetails')
+            .populate('carCategory', 'name')
+            .populate('fixedRoute', 'routeName pickupLocation dropLocation');
+
+        if (!booking) {
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        const { generateFixedBookingReceipt } = require('../utils/pdfGenerator');
+        
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="Fixed_Receipt_${booking._id.toString().slice(-6).toUpperCase()}.pdf"`);
+        
+        await generateFixedBookingReceipt(booking, res);
+    } catch (error) {
+        console.error("Error downloading fixed booking receipt:", error);
+        res.status(500).json({ success: false, message: "Server error generating receipt", error: error.message });
     }
 };

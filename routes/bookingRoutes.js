@@ -14,7 +14,8 @@ const {
     rateUser,
     getUserReviews,
     getDriverReviews,
-    getActiveBooking
+    getActiveBooking,
+    downloadReceipt
 } = require("../controllers/bookingController");
 
 const { auth, adminOnly, agentOnly } = require("../middleware/auth");
@@ -59,5 +60,8 @@ router.get("/user/:userId/reviews", auth, getUserReviews);
 
 // 10. Get Driver Reviews (Admin/Driver)
 router.get("/driver/:driverId/reviews", auth, getDriverReviews);
+
+// 11. Download Receipt
+router.get("/receipt/:bookingId", auth, downloadReceipt);
 
 module.exports = router;
