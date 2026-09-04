@@ -205,6 +205,11 @@ const bookingSchema = new mongoose.Schema({
   driverReview: {
     type: String,
     default: null
+  },
+
+  adminRead: {
+    type: Boolean,
+    default: false
   }
 
 }, { timestamps: true });

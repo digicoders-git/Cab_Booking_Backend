@@ -98,6 +98,11 @@ const agentLeadSchema = new mongoose.Schema({
     transactionId: {
         type: String,
         default: null
+    },
+
+    adminRead: {
+        type: Boolean,
+        default: false
     }
 
 }, { timestamps: true });

@@ -151,6 +151,10 @@ const fixedBookingSchema = new mongoose.Schema({
     totalWithTax: {
         type: Number,
         default: 0
+    },
+    adminRead: {
+        type: Boolean,
+        default: false
     }
 }, { timestamps: true });
 

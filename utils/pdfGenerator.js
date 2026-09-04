@@ -16,8 +16,8 @@ exports.generateBulkBookingReceipt = (booking, res) => {
 
             doc.pipe(res);
 
-            // Path to logo (from frontend assets)
-            const logoPath = 'C:\\Users\\vivekvkraj\\OneDrive\\Desktop\\Cab booking\\Carbookig_Website\\Cab_Booking_Website\\src\\assets\\logo.png';
+            // Path to logo (from backend assets)
+            const logoPath = path.join(__dirname, '..', 'assets', 'logo.png');
             let hasLogo = fs.existsSync(logoPath);
 
             // 1. External Border
@@ -160,38 +160,52 @@ exports.generateBulkBookingReceipt = (booking, res) => {
             // 7. Totals Section
             doc.font('Helvetica-Bold');
             const advancePaid = booking.advancePayment?.amount || 0;
-            let remainingBalance = offeredPrice - advancePaid;
+            const cgst = Math.round(offeredPrice * 0.025);
+            const sgst = Math.round(offeredPrice * 0.025);
+            const totalPriceWithTax = offeredPrice + cgst + sgst;
+            let remainingBalance = totalPriceWithTax - advancePaid;
             
             const isCompleted = booking.status === 'Completed' || booking.finalPayment?.isPaid;
 
-            doc.text("TOTAL PRICE", mm(130), mm(tableBottom + 5));
+            doc.text("BASE FARE", mm(130), mm(tableBottom + 5));
             doc.text(`${offeredPrice.toLocaleString()}`, mm(180), mm(tableBottom + 5));
-            doc.moveTo(mm(80), mm(tableBottom + 10)).lineTo(mm(205), mm(tableBottom + 10)).stroke();
+            
+            doc.text("CGST (2.5%)", mm(130), mm(tableBottom + 10));
+            doc.text(`+ ${cgst.toLocaleString()}`, mm(180), mm(tableBottom + 10));
+            
+            doc.text("SGST (2.5%)", mm(130), mm(tableBottom + 15));
+            doc.text(`+ ${sgst.toLocaleString()}`, mm(180), mm(tableBottom + 15));
+            
+            doc.moveTo(mm(80), mm(tableBottom + 18)).lineTo(mm(205), mm(tableBottom + 18)).stroke();
 
-            doc.text("ADVANCE PAID", mm(130), mm(tableBottom + 15));
-            doc.text(`${advancePaid.toLocaleString()}`, mm(180), mm(tableBottom + 15));
-            doc.moveTo(mm(80), mm(tableBottom + 20)).lineTo(mm(205), mm(tableBottom + 20)).stroke();
+            doc.text("TOTAL PRICE WITH GST", mm(130), mm(tableBottom + 22));
+            doc.text(`${totalPriceWithTax.toLocaleString()}`, mm(180), mm(tableBottom + 22));
+            doc.moveTo(mm(80), mm(tableBottom + 26)).lineTo(mm(205), mm(tableBottom + 26)).stroke();
 
-            doc.rect(mm(80), mm(tableBottom + 20), mm(125), mm(10)).fill('#E6E6E6');
+            doc.text("ADVANCE PAID", mm(130), mm(tableBottom + 30));
+            doc.text(`${advancePaid.toLocaleString()}`, mm(180), mm(tableBottom + 30));
+            doc.moveTo(mm(80), mm(tableBottom + 34)).lineTo(mm(205), mm(tableBottom + 34)).stroke();
+
+            doc.rect(mm(80), mm(tableBottom + 34), mm(125), mm(10)).fill('#E6E6E6');
             doc.fill('#000000'); // Reset text color
             
             if (isCompleted) {
-                doc.text("FINAL PAYMENT PAID", mm(130), mm(tableBottom + 24));
-                doc.text(`INR ${remainingBalance.toLocaleString()}`, mm(180), mm(tableBottom + 24));
+                doc.text("FINAL PAYMENT PAID", mm(130), mm(tableBottom + 38));
+                doc.text(`INR ${remainingBalance.toLocaleString()}`, mm(180), mm(tableBottom + 38));
             } else {
-                doc.text("REMAINING BALANCE", mm(130), mm(tableBottom + 24));
-                doc.text(`INR ${remainingBalance.toLocaleString()}`, mm(180), mm(tableBottom + 24));
+                doc.text("REMAINING BALANCE", mm(130), mm(tableBottom + 38));
+                doc.text(`INR ${remainingBalance.toLocaleString()}`, mm(180), mm(tableBottom + 38));
             }
-            doc.moveTo(mm(80), mm(tableBottom + 30)).lineTo(mm(205), mm(tableBottom + 30)).stroke();
+            doc.moveTo(mm(80), mm(tableBottom + 44)).lineTo(mm(205), mm(tableBottom + 44)).stroke();
 
             // 8. Bottom Footer
             doc.fontSize(8);
-            doc.text(`Total Amount (in words) : RUPEES ${offeredPrice.toLocaleString()} ONLY`, mm(10), mm(tableBottom + 35));
+            doc.text(`Total Amount (in words) : RUPEES ${totalPriceWithTax.toLocaleString()} ONLY`, mm(10), mm(tableBottom + 48));
             
             if (isCompleted) {
-                doc.text(`Note: Full payment of INR ${offeredPrice.toLocaleString()} has been settled.`, mm(10), mm(tableBottom + 40));
+                doc.text(`Note: Full payment of INR ${totalPriceWithTax.toLocaleString()} has been settled.`, mm(10), mm(tableBottom + 52));
             } else {
-                doc.text(`Note: Balance of INR ${remainingBalance.toLocaleString()} to be paid directly to the fleet owner.`, mm(10), mm(tableBottom + 40));
+                doc.text(`Note: Balance of INR ${remainingBalance.toLocaleString()} to be paid directly to the fleet owner.`, mm(10), mm(tableBottom + 52));
             }
 
             doc.font('Helvetica-Bold');
@@ -216,8 +230,12 @@ exports.generateSecurityReceipt = (booking, res) => {
             const doc = new PDFDocument({ size: 'A4', margin: 0 });
             doc.pipe(res);
 
-            const logoPath = 'C:\\Users\\vivekvkraj\\OneDrive\\Desktop\\Cab booking\\Carbookig_Website\\Cab_Booking_Website\\src\\assets\\logo.png';
+            const logoPath = path.join(__dirname, '..', 'assets', 'logo.png');
             let hasLogo = fs.existsSync(logoPath);
+
+            const signaturePath = path.join(__dirname, '..', 'assets', 'signature.png');
+            const hasSignature = fs.existsSync(signaturePath);
+
 
             doc.lineWidth(1);
             doc.rect(mm(5), mm(5), mm(200), mm(287)).stroke();
@@ -281,7 +299,7 @@ exports.generateSecurityReceipt = (booking, res) => {
             } else {
                 doc.text(`Duration : ${booking.numberOfDays || 1} Day(s)`, mm(130), mm(95));
             }
-            doc.text(`Total Deal : INR ${booking.offeredPrice?.toLocaleString()}`, mm(130), mm(101));
+            doc.text(`Total Deal : INR ${(booking.totalPriceWithTax || booking.offeredPrice)?.toLocaleString()}`, mm(130), mm(101));
             doc.text(`Booking ID : #${booking._id.toString().slice(-8).toUpperCase()}`, mm(130), mm(107));
             
             const customerName = booking.customerName || booking.createdBy?.name || 'Customer';
@@ -310,18 +328,18 @@ exports.generateSecurityReceipt = (booking, res) => {
             
             const carsReq = booking.carsRequired || [];
             const carNames = carsReq.map(c => `${c.quantity}x ${c.category?.name || 'Vehicle'}`).join(', ');
-            const securityAmount = Math.round((booking.offeredPrice || 0) * 0.20);
+            const securityAmount = booking.fleetSecurityPayment?.amount || Math.round((booking.totalPriceWithTax || booking.offeredPrice || 0) * 0.20);
             
             if (isCompleted) {
                 doc.text("1", mm(11), mm(currentY));
                 doc.text(`Total Deal Value for ${carNames}`, mm(20), mm(currentY));
                 doc.text("1", mm(156), mm(currentY));
-                doc.font('Helvetica-Bold').text(`${(booking.offeredPrice || 0).toLocaleString()}`, mm(180), mm(currentY));
+                doc.font('Helvetica-Bold').text(`${(booking.totalPriceWithTax || booking.offeredPrice || 0).toLocaleString()}`, mm(180), mm(currentY));
                 
                 currentY += 10;
                 doc.font('Helvetica');
                 doc.text("2", mm(11), mm(currentY));
-                doc.text(`Security Deposit Paid (20%)`, mm(20), mm(currentY));
+                doc.text(`Security Deposit Paid`, mm(20), mm(currentY));
                 doc.text("1", mm(156), mm(currentY));
                 doc.font('Helvetica-Bold').text(`${securityAmount.toLocaleString()}`, mm(180), mm(currentY));
                 
@@ -335,7 +353,7 @@ exports.generateSecurityReceipt = (booking, res) => {
                 
                 currentY += 10;
                 doc.font('Helvetica');
-                const remainingBalance = (booking.offeredPrice || 0) - advanceAmount;
+                const remainingBalance = (booking.totalPriceWithTax || booking.offeredPrice || 0) - advanceAmount;
                 const finalAmount = booking.finalPayment?.amount || remainingBalance;
                 doc.text("4", mm(11), mm(currentY));
                 doc.text(`Final Balance Paid by Customer`, mm(20), mm(currentY));
@@ -353,7 +371,7 @@ exports.generateSecurityReceipt = (booking, res) => {
                 }
             } else {
                 doc.text("1", mm(11), mm(currentY));
-                const descText = `Security Deposit for ${carNames || 'Bulk Deal'} (20%)`;
+                const descText = `Security Deposit for ${carNames || 'Bulk Deal'}`;
                 doc.text(descText, mm(20), mm(currentY));
                 doc.text("1", mm(156), mm(currentY));
                 doc.font('Helvetica-Bold').text(`${securityAmount.toLocaleString()}`, mm(180), mm(currentY));
@@ -420,7 +438,7 @@ exports.generateAgentLeadReceipt = async (lead, res) => {
             doc.text("Registration Number : 09LUGPK1138L2Z4", mm(10), mm(11), { baseline: 'bottom' });
             doc.text("AGENT LEAD BOOKING RECEIPT", mm(145), mm(11), { baseline: 'bottom' });
 
-            const logoPath = 'C:\\\\Users\\\\vivekvkraj\\\\OneDrive\\\\Desktop\\\\Cab booking\\\\Carbookig_Website\\\\Cab_Booking_Website\\\\src\\\\assets\\\\logo.png';
+            const logoPath = path.join(__dirname, '..', 'assets', 'logo.png');
             const hasLogo = fs.existsSync(logoPath);
 
             if (hasLogo) {
@@ -571,7 +589,7 @@ exports.generateDriverCommissionReceipt = async (lead, res) => {
             doc.text("Registration Number : 09LUGPK1138L2Z4", mm(10), mm(11), { baseline: 'bottom' });
             doc.text("DRIVER COMMISSION INVOICE", mm(145), mm(11), { baseline: 'bottom' });
 
-            const logoPath = 'C:\\\\Users\\\\vivekvkraj\\\\OneDrive\\\\Desktop\\\\Cab booking\\\\Carbookig_Website\\\\Cab_Booking_Website\\\\src\\\\assets\\\\logo.png';
+            const logoPath = path.join(__dirname, '..', 'assets', 'logo.png');
             const hasLogo = fs.existsSync(logoPath);
 
             if (hasLogo) {
@@ -703,7 +721,7 @@ exports.generateFixedBookingReceipt = (booking, res) => {
             const doc = new PDFDocument({ size: 'A4', margin: 0 });
             doc.pipe(res);
 
-            const logoPath = 'C:\\Users\\vivekvkraj\\OneDrive\\Desktop\\Cab booking\\Carbookig_Website\\Cab_Booking_Website\\src\\assets\\logo.png';
+            const logoPath = path.join(__dirname, '..', 'assets', 'logo.png');
             let hasLogo = fs.existsSync(logoPath);
 
             doc.lineWidth(1);
@@ -777,23 +795,34 @@ exports.generateFixedBookingReceipt = (booking, res) => {
             const totalWithTax = booking.finalPrice || (baseFare + cgst + sgst);
 
             let currentY = tableTop + 13.5;
+            let serialNo = 1;
             
             doc.font('Helvetica');
-            doc.text("1", mm(11), mm(currentY));
+            doc.text(`${serialNo++}`, mm(11), mm(currentY));
             doc.text("Fixed Package (" + pickupAddr.slice(0,15) + " to " + dropAddr.slice(0,15) + ") - Base Fare", mm(20), mm(currentY));
             doc.text(baseFare.toFixed(2), mm(187), mm(currentY));
             currentY += 10;
             
-            doc.text("2", mm(11), mm(currentY));
+            doc.text(`${serialNo++}`, mm(11), mm(currentY));
+            doc.text("Extra Time Charges", mm(20), mm(currentY));
+            doc.text((booking.extraTimeCharges || 0).toFixed(2), mm(187), mm(currentY));
+            currentY += 10;
+
+            doc.text(`${serialNo++}`, mm(11), mm(currentY));
+            doc.text("Extra Distance Charges", mm(20), mm(currentY));
+            doc.text((booking.extraDistanceCharges || 0).toFixed(2), mm(187), mm(currentY));
+            currentY += 10;
+
+            doc.text(`${serialNo++}`, mm(11), mm(currentY));
             doc.text("CGST (2.5%)", mm(20), mm(currentY));
             doc.text(cgst.toFixed(2), mm(187), mm(currentY));
             currentY += 10;
 
-            doc.text("3", mm(11), mm(currentY));
+            doc.text(`${serialNo++}`, mm(11), mm(currentY));
             doc.text("SGST (2.5%)", mm(20), mm(currentY));
             doc.text(sgst.toFixed(2), mm(187), mm(currentY));
 
-            const tableBottom = 165;
+            const tableBottom = tableTop + ((serialNo - 1) * 10) + 10;
             for (let i = tableTop + 20; i < tableBottom; i += 10) {
                 doc.moveTo(mm(5), mm(i)).lineTo(mm(205), mm(i)).stroke();
             }
@@ -831,7 +860,7 @@ exports.generateNormalBookingReceipt = (booking, res) => {
             const doc = new PDFDocument({ size: 'A4', margin: 0 });
             doc.pipe(res);
 
-            const logoPath = 'C:\\Users\\vivekvkraj\\OneDrive\\Desktop\\Cab booking\\Carbookig_Website\\Cab_Booking_Website\\src\\assets\\logo.png';
+            const logoPath = path.join(__dirname, '..', 'assets', 'logo.png');
             let hasLogo = fs.existsSync(logoPath);
 
             doc.lineWidth(1);

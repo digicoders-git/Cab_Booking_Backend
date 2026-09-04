@@ -1038,3 +1038,272 @@ exports.toggleDriverOnlineByAdmin = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
+
+// 30. Export Tax Report (GST)
+exports.exportTaxReport = async (req, res) => {
+    try {
+        const Booking = require("../models/Booking");
+        const BulkBooking = require("../models/BulkBooking");
+        const FixedBooking = require("../models/FixedBooking");
+
+        const { timeframe } = req.query;
+        let dateFilter = {};
+
+        const now = new Date();
+        if (timeframe === 'daily') {
+            const startOfDay = new Date(now);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(now);
+            endOfDay.setHours(23, 59, 59, 999);
+            dateFilter = { $gte: startOfDay, $lte: endOfDay };
+        } else if (timeframe === 'weekly') {
+            const lastWeek = new Date(now);
+            lastWeek.setDate(now.getDate() - 7);
+            dateFilter = { $gte: lastWeek, $lte: new Date() };
+        } else if (timeframe === 'monthly') {
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            dateFilter = { $gte: startOfMonth, $lte: new Date() };
+        } else if (timeframe === 'yearly') {
+            const startOfYear = new Date(now.getFullYear(), 0, 1);
+            dateFilter = { $gte: startOfYear, $lte: new Date() };
+        }
+
+        const filterNormal = { bookingStatus: 'Completed' };
+        const filterBulk = { status: 'Completed' };
+        const filterFixed = { status: 'Completed' };
+
+        if (Object.keys(dateFilter).length > 0) {
+            filterNormal.updatedAt = dateFilter;
+            filterBulk.updatedAt = dateFilter;
+            filterFixed.updatedAt = dateFilter;
+        }
+
+        // Fetch completed bookings
+        const normalBookings = await Booking.find(filterNormal).populate('user', 'name');
+        const bulkBookings = await BulkBooking.find(filterBulk).populate('createdBy', 'name');
+        const fixedBookings = await FixedBooking.find(filterFixed).populate('user', 'name');
+
+        const exportData = [];
+
+        normalBookings.forEach(b => {
+            const finalFare = b.actualFare || b.fareEstimate || 0;
+            const baseFare = finalFare * (100 / 105); // reverse calc 5% gst
+            const totalTax = finalFare - baseFare;
+            const cgst = totalTax / 2;
+            const sgst = totalTax / 2;
+
+            exportData.push({
+                "Date": new Date(b.tripData?.endedAt || b.updatedAt).toLocaleString('en-IN'),
+                "Booking ID": b._id.toString(),
+                "Ride Type": "Normal",
+                "Customer Name": b.passengerDetails?.name || b.user?.name || "Unknown",
+                "Base Fare": baseFare.toFixed(2),
+                "CGST (2.5%)": cgst.toFixed(2),
+                "SGST (2.5%)": sgst.toFixed(2),
+                "Total Tax": totalTax.toFixed(2),
+                "Final Fare": finalFare.toFixed(2)
+            });
+        });
+
+        bulkBookings.forEach(b => {
+            const baseFare = b.offeredPrice || 0;
+            const cgst = b.cgst || 0;
+            const sgst = b.sgst || 0;
+            const totalTax = cgst + sgst;
+            const finalFare = b.totalPriceWithTax ? b.totalPriceWithTax : (baseFare + totalTax);
+
+            exportData.push({
+                "Date": new Date(b.updatedAt).toLocaleString('en-IN'),
+                "Booking ID": b._id.toString(),
+                "Ride Type": "Bulk Booking",
+                "Customer Name": b.customerName || b.createdBy?.name || "Unknown",
+                "Base Fare": baseFare.toFixed(2),
+                "CGST (2.5%)": cgst.toFixed(2),
+                "SGST (2.5%)": sgst.toFixed(2),
+                "Total Tax": totalTax.toFixed(2),
+                "Final Fare": finalFare.toFixed(2)
+            });
+        });
+
+        fixedBookings.forEach(b => {
+            const baseFare = b.price || 0;
+            const cgst = b.cgst || 0;
+            const sgst = b.sgst || 0;
+            const totalTax = cgst + sgst;
+            const finalFare = b.finalPrice ? b.finalPrice : (baseFare + totalTax);
+
+            exportData.push({
+                "Date": new Date(b.completedAt || b.updatedAt).toLocaleString('en-IN'),
+                "Booking ID": b._id.toString(),
+                "Ride Type": "Fixed Package",
+                "Customer Name": b.passengerDetails?.name || b.user?.name || "Unknown",
+                "Base Fare": baseFare.toFixed(2),
+                "CGST (2.5%)": cgst.toFixed(2),
+                "SGST (2.5%)": sgst.toFixed(2),
+                "Total Tax": totalTax.toFixed(2),
+                "Final Fare": finalFare.toFixed(2)
+            });
+        });
+
+        // Sort by Date (newest first)
+        exportData.sort((a, b) => new Date(b.Date) - new Date(a.Date));
+
+        // Calculate Totals
+        const totals = { baseFare: 0, cgst: 0, sgst: 0, totalTax: 0, finalFare: 0 };
+        exportData.forEach(row => {
+            totals.baseFare += parseFloat(row["Base Fare"]) || 0;
+            totals.cgst += parseFloat(row["CGST (2.5%)"]) || 0;
+            totals.sgst += parseFloat(row["SGST (2.5%)"]) || 0;
+            totals.totalTax += parseFloat(row["Total Tax"]) || 0;
+            totals.finalFare += parseFloat(row["Final Fare"]) || 0;
+        });
+
+        const ExcelJS = require('exceljs');
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Tax Report');
+
+        // Add Header Row
+        const headerRow = sheet.addRow([
+            "Date", "Booking ID", "Ride Type", "Customer Name",
+            "Base Fare", "CGST (2.5%)", "SGST (2.5%)", "Total Tax", "Final Fare"
+        ]);
+        // Style Header (Blue Background, White Text, Bold)
+        headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
+        
+        // Add Data Rows
+        exportData.forEach(row => {
+            sheet.addRow([
+                row["Date"], row["Booking ID"], row["Ride Type"], row["Customer Name"],
+                row["Base Fare"], row["CGST (2.5%)"], row["SGST (2.5%)"], row["Total Tax"], row["Final Fare"]
+            ]);
+        });
+
+        // Add Empty Row for separation
+        sheet.addRow([]);
+
+        // Add Total Row
+        const totalRow = sheet.addRow([
+            "TOTAL", "", "", "",
+            totals.baseFare.toFixed(2), totals.cgst.toFixed(2), totals.sgst.toFixed(2),
+            totals.totalTax.toFixed(2), totals.finalFare.toFixed(2)
+        ]);
+        // Style Total Row (Red/Orange Background, White Text, Bold)
+        totalRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC0504D' } };
+
+        // Auto adjust column widths slightly
+        sheet.columns.forEach((column, index) => {
+            column.width = index === 1 ? 25 : 18; // Make Booking ID column wider
+        });
+
+        res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.attachment('tax_report.xlsx');
+        
+        await workbook.xlsx.write(res);
+        return res.end();
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error exporting tax report", error: error.message });
+    }
+};
+
+exports.getNewBookings = async (req, res) => {
+    try {
+        const Booking = require("../models/Booking");
+        const BulkBooking = require("../models/BulkBooking");
+        const AgentLead = require("../models/AgentLead");
+        const FixedBooking = require("../models/FixedBooking");
+
+        // Fetch unread normal bookings
+        const normalBookings = await Booking.find({ adminRead: false }).populate("user", "name phone").lean();
+        // Fetch unread bulk bookings
+        const bulkBookings = await BulkBooking.find({ adminRead: false }).populate("createdBy", "name phone").lean();
+        // Fetch unread fixed bookings
+        const fixedBookings = await FixedBooking.find({ adminRead: false }).populate("user", "name phone").lean();
+        // Fetch unread agent leads
+        const agentLeads = await AgentLead.find({ adminRead: false }).populate("agent", "name phone").lean();
+
+        let allBookings = [];
+
+        normalBookings.forEach(b => {
+            allBookings.push({
+                _id: b._id,
+                type: 'Normal Booking',
+                customerName: b.user ? b.user.name : "Unknown",
+                phone: b.user ? b.user.phone : "Unknown",
+                date: b.createdAt,
+                pickup: b.pickupLocation ? b.pickupLocation.address : "N/A",
+                drop: b.dropLocation ? b.dropLocation.address : "N/A",
+                status: b.bookingStatus
+            });
+        });
+
+        bulkBookings.forEach(b => {
+            allBookings.push({
+                _id: b._id,
+                type: 'Bulk Booking',
+                customerName: b.customerName || (b.createdBy ? b.createdBy.name : "Unknown"),
+                phone: b.customerPhone || (b.createdBy ? b.createdBy.phone : "Unknown"),
+                date: b.createdAt,
+                pickup: b.pickup ? b.pickup.address : "N/A",
+                drop: b.drop ? b.drop.address : "N/A",
+                status: b.status
+            });
+        });
+
+        fixedBookings.forEach(b => {
+            allBookings.push({
+                _id: b._id,
+                type: 'Fixed Package',
+                customerName: b.passengerDetails ? b.passengerDetails.name : (b.user ? b.user.name : "Unknown"),
+                phone: b.passengerDetails ? b.passengerDetails.phone : (b.user ? b.user.phone : "Unknown"),
+                date: b.createdAt,
+                pickup: b.pickupLocation || "N/A",
+                drop: b.dropLocation || "N/A",
+                status: b.status
+            });
+        });
+
+        agentLeads.forEach(b => {
+            allBookings.push({
+                _id: b._id,
+                type: 'Agent Lead',
+                customerName: b.passengerName || "Unknown",
+                phone: b.passengerPhone || "Unknown",
+                date: b.createdAt,
+                pickup: b.pickupLocation ? b.pickupLocation.address : "N/A",
+                drop: b.dropLocation ? b.dropLocation.address : "N/A",
+                status: b.status
+            });
+        });
+
+        // Sort descending by date
+        allBookings.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        res.json({ success: true, count: allBookings.length, data: allBookings });
+    } catch (error) {
+        console.error("Error fetching new bookings:", error);
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+exports.markAllBookingsRead = async (req, res) => {
+    try {
+        const Booking = require("../models/Booking");
+        const BulkBooking = require("../models/BulkBooking");
+        const AgentLead = require("../models/AgentLead");
+        const FixedBooking = require("../models/FixedBooking");
+
+        await Promise.all([
+            Booking.updateMany({ adminRead: false }, { adminRead: true }),
+            BulkBooking.updateMany({ adminRead: false }, { adminRead: true }),
+            FixedBooking.updateMany({ adminRead: false }, { adminRead: true }),
+            AgentLead.updateMany({ adminRead: false }, { adminRead: true })
+        ]);
+
+        res.json({ success: true, message: "All bookings marked as read." });
+    } catch (error) {
+        console.error("Error marking bookings as read:", error);
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};

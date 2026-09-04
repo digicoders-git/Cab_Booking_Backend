@@ -35,7 +35,7 @@ exports.createBulkBooking = async (req, res) => {
         let {
             pickup, drop, pickupDateTime, tripType, returnDateTime,
             numberOfDays, totalDistance, carsRequired, offeredPrice, notes,
-            isOutstation
+            isOutstation, customerName, customerPhone
         } = req.body;
 
         // Validation
@@ -153,6 +153,11 @@ exports.createBulkBooking = async (req, res) => {
         }
 
         const advanceAmount = Math.round(offeredPrice * (advancePct / 100));
+        
+        // Calculate GST
+        const cgst = Math.round(offeredPrice * 0.025);
+        const sgst = Math.round(offeredPrice * 0.025);
+        const totalPriceWithTax = offeredPrice + cgst + sgst;
 
         // Create Booking DB Record (Initially PendingPayment)
         const newBooking = await BulkBooking.create({
@@ -164,12 +169,15 @@ exports.createBulkBooking = async (req, res) => {
             numberOfDays: numberOfDays || 1,
             totalDistance: totalDistance || 0,
             carsRequired, systemEstimatedPrice, offeredPrice, priceModifiedPercentage, notes,
+            cgst, sgst, totalPriceWithTax,
             status: 'PendingPayment',
             advancePayment: { amount: advanceAmount, isPaid: false },
             isOutstation: isOutstation || false,
             mcdStateTaxApplied,
             taxBreakdown,
             appliedAreaPricing,
+            customerName: customerName || null,
+            customerPhone: customerPhone || null,
             startOtp: Math.floor(1000 + Math.random() * 9000).toString()
         });
 

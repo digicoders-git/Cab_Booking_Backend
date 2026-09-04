@@ -73,6 +73,18 @@ const bulkBookingSchema = new mongoose.Schema({
         type: Number,
         required: true // Custom Price set by Rider
     },
+    cgst: {
+        type: Number,
+        default: 0
+    },
+    sgst: {
+        type: Number,
+        default: 0
+    },
+    totalPriceWithTax: {
+        type: Number,
+        default: 0
+    },
     priceModifiedPercentage: {
         type: Number,
         default: 0 // Track if user increased/decreased vs system
@@ -184,7 +196,10 @@ const bulkBookingSchema = new mongoose.Schema({
         default: 0
     },
     // duplicate removed
-
+    adminRead: {
+        type: Boolean,
+        default: false
+    }
 
 }, { timestamps: true });
 
