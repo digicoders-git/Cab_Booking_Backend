@@ -44,6 +44,7 @@ exports.createLead = async (req, res) => {
             totalPrice,
             agentCommission,
             driverEarning,
+            startOtp: Math.floor(1000 + Math.random() * 9000).toString(),
             status: 'Marketplace',
             paymentStatus: 'Pending'
         });
@@ -254,6 +255,9 @@ exports.verifyAcceptLeadPayment = async (req, res) => {
         lead.paymentStatus = 'Held_In_Escrow';
         lead.assignedDriver = driverId;
         lead.acceptedAt = new Date();
+        if (!lead.startOtp) {
+            lead.startOtp = Math.floor(1000 + Math.random() * 9000).toString();
+        }
         await lead.save();
 
         // Put money in Admin Wallet as Escrow directly
@@ -377,6 +381,64 @@ exports.paymentReturn = async (req, res) => {
     } catch (e) {
         console.error("Payment Return Error:", e);
         return res.redirect((req.query.redirect || `${fallbackUrl}/driver/marketplace`) + '?error=server_error');
+    }
+};
+
+// 3d. Driver Starts Ride with OTP
+exports.startLeadRide = async (req, res) => {
+    try {
+        const { leadId } = req.params;
+        const { otp } = req.body;
+        const driverId = req.user.id;
+
+        if (!otp) {
+            return res.status(400).json({ success: false, message: "OTP is required to start ride" });
+        }
+
+        const lead = await AgentLead.findById(leadId);
+        if (!lead) {
+            return res.status(404).json({ success: false, message: "Lead not found" });
+        }
+
+        if (!lead.assignedDriver || lead.assignedDriver.toString() !== driverId.toString()) {
+            return res.status(403).json({ success: false, message: "Unauthorized driver for this lead" });
+        }
+
+        if (lead.status === 'Ongoing') {
+            return res.json({ success: true, message: "Ride is already ongoing", lead });
+        }
+
+        if (lead.status === 'Completed') {
+            return res.status(400).json({ success: false, message: "Ride is already completed" });
+        }
+
+        if (lead.status !== 'Accepted') {
+            return res.status(400).json({ success: false, message: `Cannot start ride. Status is ${lead.status}` });
+        }
+
+        // Verify OTP
+        if (lead.startOtp && lead.startOtp.toString().trim() !== otp.toString().trim()) {
+            return res.status(400).json({ success: false, message: "Invalid Start OTP. Please ask customer for correct OTP." });
+        }
+
+        lead.status = 'Ongoing';
+        lead.startedAt = new Date();
+        await lead.save();
+
+        try {
+            const { getIO } = require("../socket/socket");
+            const io = getIO();
+            io.emit('leadStatusChanged', { leadId: lead._id, status: 'Ongoing' });
+        } catch (_) {}
+
+        res.json({
+            success: true,
+            message: "Ride Started Successfully!",
+            lead
+        });
+    } catch (error) {
+        console.error("Start Lead Error:", error.message);
+        res.status(500).json({ success: false, message: "Failed to start ride", error: error.message });
     }
 };
 

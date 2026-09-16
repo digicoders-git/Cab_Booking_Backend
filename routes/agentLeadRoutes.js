@@ -14,6 +14,7 @@ router.get('/driver/my-accepted-leads', auth, agentLeadController.getDriverAccep
 router.post('/:leadId/initiate-payment', auth, agentLeadController.initiateAcceptPayment);
 router.post('/execute/payment-return', agentLeadController.paymentReturn);
 router.get('/execute/payment-return', agentLeadController.paymentReturn);
+router.post('/:leadId/start', auth, agentLeadController.startLeadRide);
 router.post('/:leadId/complete', auth, agentLeadController.completeLead);
 router.get('/agent/my-leads', auth, agentLeadController.getMyLeads);
 

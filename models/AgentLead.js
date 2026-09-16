@@ -82,6 +82,14 @@ const agentLeadSchema = new mongoose.Schema({
         type: Date,
         default: null
     },
+    startOtp: {
+        type: String,
+        default: null
+    },
+    startedAt: {
+        type: Date,
+        default: null
+    },
 
     // 💳 Escrow / Financial Tracking
     paymentStatus: {
