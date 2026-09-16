@@ -24,7 +24,8 @@ const {
     resubmitDriverDocuments,
     updateFcmToken,
     setDestinationFilter,
-    clearDestinationFilter
+    clearDestinationFilter,
+    changeDriverOwnership
 } = require("../controllers/driverController");
 
 const { auth, adminOnly, driverOnly, fleetOnly } = require("../middleware/auth");
@@ -95,6 +96,9 @@ router.put("/toggle-status/:id", auth, checkPermission("DRIVER_STATUS"), toggleD
 
 // Update Driver Manually (Admin Only)
 router.put("/update/:id", auth, checkPermission("DRIVER_EDIT"), uploadCarDocs, adminUpdateDriver);
+
+// Change Driver / Car Ownership (Admin Only)
+router.put("/change-ownership/:id", auth, checkPermission("DRIVER_EDIT"), changeDriverOwnership);
 
 // --- NEW: Destination Filter ---
 router.post("/set-destination", auth, setDestinationFilter);

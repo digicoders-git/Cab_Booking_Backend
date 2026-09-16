@@ -53,10 +53,10 @@ exports.createLead = async (req, res) => {
         try {
             const { getIO } = require("../socket/socket");
             const io = getIO();
-            
+
             // Find drivers matching the car category
-            const eligibleDrivers = await Driver.find({ 
-                isActive: true, 
+            const eligibleDrivers = await Driver.find({
+                isActive: true,
                 isApproved: true,
                 "carDetails.carType": carCategoryId
             });
@@ -104,18 +104,18 @@ exports.getMarketplaceLeads = async (req, res) => {
     try {
         const driverId = req.user.id;
         const driver = await Driver.findById(driverId);
-        
+
         if (!driver) {
             return res.status(404).json({ success: false, message: "Driver not found" });
         }
-        
+
         const driverCarTypeId = driver.carDetails?.carType;
-        
+
         if (!driverCarTypeId) {
             return res.status(400).json({ success: false, message: "Driver has no assigned car category. Cannot fetch leads." });
         }
 
-        const leads = await AgentLead.find({ 
+        const leads = await AgentLead.find({
             status: 'Marketplace',
             carCategory: driverCarTypeId
         })
@@ -137,12 +137,12 @@ exports.getMarketplaceLeads = async (req, res) => {
 exports.getDriverAcceptedLeads = async (req, res) => {
     try {
         const driverId = req.user.id;
-        const leads = await AgentLead.find({ 
+        const leads = await AgentLead.find({
             assignedDriver: driverId,
-            status: { $in: ['Accepted', 'Ongoing', 'Completed'] } 
+            status: { $in: ['Accepted', 'Ongoing', 'Completed'] }
         })
-        .populate('createdByAgent', 'name companyName phone')
-        .sort({ updatedAt: -1 });
+            .populate('createdByAgent', 'name companyName phone')
+            .sort({ updatedAt: -1 });
 
         res.json({
             success: true,
@@ -353,7 +353,7 @@ exports.paymentReturn = async (req, res) => {
                 // The order session doesn't easily store the driver ID unless we pass it.
                 req.leadId = lead._id.toString();
                 req.hdfcTransactionId = payload.transaction_id || orderId;
-                
+
                 const driverId = req.query.driverId || payload.customer_id || lead.pendingDriverId;
                 if (!driverId) {
                     console.error("Missing driverId in HDFC return!");
@@ -429,7 +429,7 @@ exports.startLeadRide = async (req, res) => {
             const { getIO } = require("../socket/socket");
             const io = getIO();
             io.emit('leadStatusChanged', { leadId: lead._id, status: 'Ongoing' });
-        } catch (_) {}
+        } catch (_) { }
 
         res.json({
             success: true,
@@ -642,7 +642,7 @@ exports.downloadReceipt = async (req, res) => {
             .populate('createdByAgent')
             .populate('carCategory')
             .populate('assignedDriver');
-            
+
         if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
 
         const fileName = `KwikCabs_Lead_${lead._id.toString().slice(-6).toUpperCase()}.pdf`;
@@ -667,7 +667,7 @@ exports.downloadDriverReceipt = async (req, res) => {
             .populate('createdByAgent')
             .populate('carCategory')
             .populate('assignedDriver');
-            
+
         if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
 
         // Driver receipt only makes sense if the driver exists
@@ -730,7 +730,7 @@ exports.adminCompleteLead = async (req, res) => {
         if (lead.status === 'Completed') {
             return res.status(400).json({ success: false, message: "Lead already completed" });
         }
-        
+
         if (lead.paymentStatus !== 'Admin_Bypass' || !lead.assignedAdmin) {
             return res.status(400).json({ success: false, message: "This lead was not accepted via Admin Bypass" });
         }
@@ -739,7 +739,7 @@ exports.adminCompleteLead = async (req, res) => {
         const agent = lead.createdByAgent;
 
         if (!admin || !agent) {
-             return res.status(400).json({ success: false, message: "Admin or Agent missing" });
+            return res.status(400).json({ success: false, message: "Admin or Agent missing" });
         }
 
         // Settlement: Admin keeps adminProfit, pays agentPayout to Agent from Admin Wallet

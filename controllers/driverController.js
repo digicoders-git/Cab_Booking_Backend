@@ -590,7 +590,7 @@ exports.getAllDrivers = async (req, res) => {
                     const creator = await Fleet.findById(driver.createdBy).select("name email").lean();
                     return { ...driver, createdBy: creator };
                 } else if (driver.createdByModel === "Vendor" && driver.createdBy) {
-                    const creator = await Vendor.findById(driver.createdBy).select("name email").lean();
+                    const creator = await Vendor.findById(driver.createdBy).select("name email companyName").lean();
                     return { ...driver, createdBy: creator };
                 }
                 // createdByModel === "Self" → createdBy null hi rahega
@@ -1359,6 +1359,101 @@ exports.clearDestinationFilter = async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// Change Driver / Car Ownership (Direct ↔ Vendor)
+exports.changeDriverOwnership = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { targetType, vendorId } = req.body; // targetType: 'Vendor' or 'Direct'
+
+        if (!targetType || !["Vendor", "Direct"].includes(targetType)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid targetType. Must be 'Vendor' or 'Direct'."
+            });
+        }
+
+        const driver = await Driver.findById(id);
+        if (!driver) {
+            return res.status(404).json({
+                success: false,
+                message: "Driver not found."
+            });
+        }
+
+        const Vendor = require("../models/Vendor");
+
+        // Step 1: Agar driver pehle kisi Vendor ke under tha, purane vendor ka count decrement karo
+        if (driver.createdByModel === "Vendor" && driver.createdBy) {
+            if (targetType === "Vendor" && driver.createdBy.toString() === vendorId) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Yeh driver pehle se hi is Vendor ke under assigned hai."
+                });
+            }
+            await Vendor.findByIdAndUpdate(driver.createdBy, { $inc: { totalDrivers: -1 } });
+        }
+
+        // Step 2: Target ke hisaab se ownership update karo
+        if (targetType === "Vendor") {
+            if (!vendorId) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Vendor ID is required when transferring to a Vendor."
+                });
+            }
+
+            const targetVendor = await Vendor.findById(vendorId);
+            if (!targetVendor) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Selected Vendor not found."
+                });
+            }
+
+            // Increment new vendor's driver count
+            await Vendor.findByIdAndUpdate(vendorId, { $inc: { totalDrivers: 1 } });
+
+            driver.createdBy = vendorId;
+            driver.createdByModel = "Vendor";
+            await driver.save();
+
+            return res.json({
+                success: true,
+                message: `Driver/Car successfully transferred to Vendor '${targetVendor.name}' (${targetVendor.companyName || ''})!`,
+                driver: {
+                    ...driver.toObject(),
+                    createdBy: {
+                        _id: targetVendor._id,
+                        name: targetVendor.name,
+                        email: targetVendor.email,
+                        companyName: targetVendor.companyName
+                    }
+                }
+            });
+        } else if (targetType === "Direct") {
+            driver.createdBy = req.user?.id || null;
+            driver.createdByModel = "Admin";
+            await driver.save();
+
+            return res.json({
+                success: true,
+                message: "Driver/Car successfully moved to Direct (Admin/Platform)!",
+                driver: {
+                    ...driver.toObject(),
+                    createdBy: null
+                }
+            });
+        }
+    } catch (error) {
+        console.error("Change Driver Ownership Error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Server error while changing ownership",
+            error: error.message
+        });
     }
 };
 
