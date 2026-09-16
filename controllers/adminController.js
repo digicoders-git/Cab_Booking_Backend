@@ -1220,8 +1220,8 @@ exports.getNewBookings = async (req, res) => {
         const bulkBookings = await BulkBooking.find({ adminRead: false }).populate("createdBy", "name phone").lean();
         // Fetch unread fixed bookings
         const fixedBookings = await FixedBooking.find({ adminRead: false }).populate("user", "name phone").lean();
-        // Fetch unread agent leads
-        const agentLeads = await AgentLead.find({ adminRead: false }).populate("agent", "name phone").lean();
+        // Fetch unread agent leads (createdByAgent, NOT agent)
+        const agentLeads = await AgentLead.find({ adminRead: false }).populate("createdByAgent", "name phone").lean();
 
         let allBookings = [];
 
@@ -1229,11 +1229,11 @@ exports.getNewBookings = async (req, res) => {
             allBookings.push({
                 _id: b._id,
                 type: 'Normal Booking',
-                customerName: b.user ? b.user.name : "Unknown",
-                phone: b.user ? b.user.phone : "Unknown",
+                customerName: b.passengerDetails?.name || (b.user ? b.user.name : "Unknown"),
+                phone: b.passengerDetails?.phone || (b.user ? b.user.phone : "Unknown"),
                 date: b.createdAt,
-                pickup: b.pickupLocation ? b.pickupLocation.address : "N/A",
-                drop: b.dropLocation ? b.dropLocation.address : "N/A",
+                pickup: b.pickup?.address || b.pickupLocation?.address || (typeof b.pickupLocation === 'string' ? b.pickupLocation : "N/A"),
+                drop: b.drop?.address || b.dropLocation?.address || (typeof b.dropLocation === 'string' ? b.dropLocation : "N/A"),
                 status: b.bookingStatus
             });
         });
@@ -1245,8 +1245,8 @@ exports.getNewBookings = async (req, res) => {
                 customerName: b.customerName || (b.createdBy ? b.createdBy.name : "Unknown"),
                 phone: b.customerPhone || (b.createdBy ? b.createdBy.phone : "Unknown"),
                 date: b.createdAt,
-                pickup: b.pickup ? b.pickup.address : "N/A",
-                drop: b.drop ? b.drop.address : "N/A",
+                pickup: b.pickup?.address || (typeof b.pickup === 'string' ? b.pickup : "N/A"),
+                drop: b.drop?.address || (typeof b.drop === 'string' ? b.drop : "N/A"),
                 status: b.status
             });
         });
@@ -1268,11 +1268,11 @@ exports.getNewBookings = async (req, res) => {
             allBookings.push({
                 _id: b._id,
                 type: 'Agent Lead',
-                customerName: b.passengerName || "Unknown",
-                phone: b.passengerPhone || "Unknown",
+                customerName: b.customerName || (b.createdByAgent ? b.createdByAgent.name : "Unknown"),
+                phone: b.customerPhone || (b.createdByAgent ? b.createdByAgent.phone : "Unknown"),
                 date: b.createdAt,
-                pickup: b.pickupLocation ? b.pickupLocation.address : "N/A",
-                drop: b.dropLocation ? b.dropLocation.address : "N/A",
+                pickup: b.pickup?.address || b.pickupLocation?.address || (typeof b.pickupLocation === 'string' ? b.pickupLocation : "N/A"),
+                drop: b.drop?.address || b.dropLocation?.address || (typeof b.dropLocation === 'string' ? b.dropLocation : "N/A"),
                 status: b.status
             });
         });
