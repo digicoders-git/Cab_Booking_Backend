@@ -1323,44 +1323,44 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
             });
         }
 
-        // Update driver specific status
+        // If it's the last driver and online payment, DO NOT mark completed yet.
+        if (isLastDriver && paymentMode === 'Online' && remainingBalance > 0) {
+            // Create HDFC Order for Final Balance
+            try {
+                const orderIdString = `bulk_final_${bookingId.slice(-6)}_${Date.now()}`;
+                const frontendOrigin = req.headers.origin || process.env.FRONTEND_DRIVER_URL || 'http://localhost:5174';
+                // const sessionResponse = await paymentHandler.orderSession({
+                const sessionResponse = await razorpayHandler.orderSession({
+                    order_id: orderIdString,
+                    amount: remainingBalance.toFixed(2),
+                    customer_id: booking.createdBy ? booking.createdBy.toString() : "guest",
+                    customer_email: "test@example.com",
+                    customer_phone: "9999999999",
+                    return_url: `${req.get('host').includes('localhost') || req.get('host').includes('127.0.0.1') ? req.protocol : 'https'}://${req.get('host')}/api/bulk-bookings/payment-return?redirect=${encodeURIComponent(frontendOrigin + '/scheduled-jobs')}`
+                });
+
+                // Save temporary orderId for webhook to find it
+                booking.hdfcFinalOrderId = orderIdString;
+                await booking.save();
+
+                return res.json({
+                    success: true,
+                    isOnlinePayment: true,
+                    hdfcOrderId: orderIdString,
+                    amount: remainingBalance,
+                    paymentLinks: sessionResponse.payment_links || sessionResponse,
+                    bookingId: booking._id
+                });
+            } catch (err) {
+                return res.status(500).json({ success: false, message: "HDFC Payment Error", error: err.message });
+            }
+        }
+
+        // For Cash payment or non-last drivers, update driver specific status now
         assignment.status = 'Completed';
         assignment.endedAt = new Date();
 
-        // If it's the last driver, handle payment mode
         if (isLastDriver) {
-            if (paymentMode === 'Online' && remainingBalance > 0) {
-                // Create HDFC Order for Final Balance
-                try {
-                    const orderIdString = `bulk_final_${bookingId.slice(-6)}_${Date.now()}`;
-                    const frontendOrigin = req.headers.origin || process.env.FRONTEND_DRIVER_URL || 'http://localhost:5174';
-                    // const sessionResponse = await paymentHandler.orderSession({
-                    const sessionResponse = await razorpayHandler.orderSession({
-                        order_id: orderIdString,
-                        amount: remainingBalance.toFixed(2),
-                        customer_id: booking.createdBy ? booking.createdBy.toString() : "guest",
-                        customer_email: "test@example.com",
-                        customer_phone: "9999999999",
-                        return_url: `${req.get('host').includes('localhost') || req.get('host').includes('127.0.0.1') ? req.protocol : 'https'}://${req.get('host')}/api/bulk-bookings/payment-return?redirect=${encodeURIComponent(frontendOrigin + '/scheduled-jobs')}`
-                    });
-
-                    // Save temporary orderId for webhook to find it
-                    booking.hdfcFinalOrderId = orderIdString;
-                    await booking.save();
-
-                    return res.json({
-                        success: true,
-                        isOnlinePayment: true,
-                        hdfcOrderId: orderIdString,
-                        amount: remainingBalance,
-                        paymentLinks: sessionResponse.payment_links || sessionResponse,
-                        bookingId: booking._id
-                    });
-                } catch (err) {
-                    return res.status(500).json({ success: false, message: "HDFC Payment Error", error: err.message });
-                }
-            }
-
             booking.status = 'Completed';
 
             // Record final payment info (Cash case)
@@ -1545,6 +1545,15 @@ exports.verifyBulkPayment = async (req, res) => {
         const remainingBalance = displayPrice - (booking.advancePayment?.amount || 0);
 
         booking.status = 'Completed';
+        // Mark any remaining Ongoing assignments as Completed
+        if (booking.assignedDrivers && booking.assignedDrivers.length > 0) {
+            booking.assignedDrivers.forEach(d => {
+                if (d.status === 'Ongoing') {
+                    d.status = 'Completed';
+                    d.endedAt = new Date();
+                }
+            });
+        }
         booking.finalPayment = {
             amount: remainingBalance,
             method: 'Online',
