@@ -8,7 +8,8 @@ exports.createCarCategory = async (req, res) => {
             baseFare, seatLayout, avgSpeedKmH, bulkBookingBasePrice,
             freeWaitingMin, waitingChargePerMin,
             ratePerMinute, trafficBufferMin,
-            minKmPerDay, driverAllowancePerDay
+            minKmPerDay, driverAllowancePerDay,
+            enableWaterfallUpgrade
         } = req.body;
 
         const image = req.file ? req.file.filename : null;
@@ -53,6 +54,7 @@ exports.createCarCategory = async (req, res) => {
             trafficBufferMin: trafficBufferMin || 10,
             minKmPerDay: minKmPerDay || 250,
             driverAllowancePerDay: driverAllowancePerDay || 300,
+            enableWaterfallUpgrade: enableWaterfallUpgrade !== undefined ? String(enableWaterfallUpgrade) === 'true' : true,
             createdBy: req.user.id
         });
 
@@ -119,7 +121,8 @@ exports.updateCarCategory = async (req, res) => {
             baseFare, isActive, seatLayout, avgSpeedKmH, bulkBookingBasePrice,
             freeWaitingMin, waitingChargePerMin,
             ratePerMinute, trafficBufferMin,
-            minKmPerDay, driverAllowancePerDay
+            minKmPerDay, driverAllowancePerDay,
+            enableWaterfallUpgrade
         } = req.body;
 
         const category = await CarCategory.findById(id);
@@ -145,6 +148,7 @@ exports.updateCarCategory = async (req, res) => {
         if (trafficBufferMin !== undefined) category.trafficBufferMin = trafficBufferMin;
         if (minKmPerDay !== undefined) category.minKmPerDay = minKmPerDay;
         if (driverAllowancePerDay !== undefined) category.driverAllowancePerDay = driverAllowancePerDay;
+        if (enableWaterfallUpgrade !== undefined) category.enableWaterfallUpgrade = String(enableWaterfallUpgrade) === 'true';
 
         if (seatLayout) {
             if (typeof seatLayout === "string") {

@@ -96,12 +96,15 @@ exports.autoMatchDriver = async (bookingId) => {
         if (timeElapsedSecs >= 120) {
             const CarCategory = require("../models/CarCategory");
             const originalCategory = await CarCategory.findById(booking.carCategory);
-            if (originalCategory) {
+            // Check if this category allows waterfall upgrade (defaults to true if undefined)
+            if (originalCategory && originalCategory.enableWaterfallUpgrade !== false) {
                 const largerCategories = await CarCategory.find({
                     seatCapacity: { $gte: originalCategory.seatCapacity }
                 }).select('_id');
                 targetCategoryIds = largerCategories.map(c => c._id);
                 console.log(`🚀 [WATERFALL UPGRADE] Time elapsed ${Math.round(timeElapsedSecs)}s. Expanding search to ${targetCategoryIds.length} categories with >= ${originalCategory.seatCapacity} seats.`);
+            } else {
+                console.log(`🚫 [WATERFALL UPGRADE] Waterfall upgrade is disabled for category: ${originalCategory?.name || booking.carCategory}`);
             }
         }
 
