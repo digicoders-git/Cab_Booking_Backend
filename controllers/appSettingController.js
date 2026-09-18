@@ -24,24 +24,28 @@ exports.getSettings = async (req, res) => {
 // 2. Toggle Share Ride Status (Admin Only)
 exports.toggleShareRide = async (req, res) => {
     try {
-        const { isShareRideEnabled } = req.body;
-        
-        if (typeof isShareRideEnabled !== 'boolean') {
-            return res.status(400).json({ success: false, message: "isShareRideEnabled must be a boolean" });
-        }
+        const { 
+            isShareRideEnabled,
+            enableDriverIncentive,
+            driverJoiningBonus,
+            driverReferralBonus
+        } = req.body;
         
         let settings = await AppSetting.findOne();
         if (!settings) {
-            settings = new AppSetting({ isShareRideEnabled });
-        } else {
-            settings.isShareRideEnabled = isShareRideEnabled;
+            settings = new AppSetting();
         }
+        
+        if (typeof isShareRideEnabled === 'boolean') settings.isShareRideEnabled = isShareRideEnabled;
+        if (typeof enableDriverIncentive === 'boolean') settings.enableDriverIncentive = enableDriverIncentive;
+        if (driverJoiningBonus !== undefined) settings.driverJoiningBonus = Number(driverJoiningBonus);
+        if (driverReferralBonus !== undefined) settings.driverReferralBonus = Number(driverReferralBonus);
         
         await settings.save();
         
         res.json({
             success: true,
-            message: `Share Ride feature has been ${isShareRideEnabled ? 'enabled' : 'disabled'} successfully.`,
+            message: `App settings updated successfully.`,
             settings
         });
     } catch (error) {

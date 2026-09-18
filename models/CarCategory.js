@@ -71,6 +71,16 @@ const carCategorySchema = new mongoose.Schema({
     type: Number,
     default: 10 // Free extra time limit before charging
   },
+  // NEW: Minimum KMs per day for Round Trip calculation
+  minKmPerDay: {
+    type: Number,
+    default: 250
+  },
+  // NEW: Driver Allowance per day for Round Trip
+  driverAllowancePerDay: {
+    type: Number,
+    default: 300
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Admin"

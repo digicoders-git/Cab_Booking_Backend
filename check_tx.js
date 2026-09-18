@@ -1,19 +1,28 @@
+require('dotenv').config();
 const mongoose = require('mongoose');
+const Driver = require('./models/Driver');
 const Transaction = require('./models/Transaction');
-const dotenv = require('dotenv');
 
-dotenv.config();
+const connectDB = async () => {
+    await mongoose.connect(process.env.MONGO_URI);
+};
 
-async function checkTx() {
-    try {
-        await mongoose.connect(process.env.MONGO_URI || "mongodb://localhost:27017/CabBooking");
-        const txs = await Transaction.find().sort({ createdAt: -1 }).limit(5);
-        console.log(JSON.stringify(txs, null, 2));
-        process.exit(0);
-    } catch (e) {
-        console.error(e);
-        process.exit(1);
+const check = async () => {
+    await connectDB();
+
+    const drivers = await Driver.find({}).sort({ createdAt: -1 }).limit(5);
+    console.log("Recent Drivers:");
+    for (let d of drivers) {
+        console.log(`- ${d.name} | Wallet: ${d.walletBalance} | RefCode: ${d.referralCode} | ReferredBy: ${d.referredBy}`);
     }
-}
 
-checkTx();
+    const txs = await Transaction.find({ context: "Referral Bonus" }).sort({ createdAt: -1 }).limit(5);
+    console.log("\nRecent Referral Transactions:");
+    for (let t of txs) {
+        console.log(`- User: ${t.userId} | Amt: ${t.amount} | Desc: ${t.description}`);
+    }
+
+    process.exit(0);
+};
+
+check();

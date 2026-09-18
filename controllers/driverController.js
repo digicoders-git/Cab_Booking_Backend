@@ -1,6 +1,7 @@
 const Driver = require("../models/Driver");
 const Booking = require("../models/Booking");
 const Transaction = require("../models/Transaction");
+const AppSetting = require("../models/AppSetting");
 const jwt = require("jsonwebtoken");
 const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness");
 const bcrypt = require("bcryptjs");
@@ -24,7 +25,10 @@ exports.registerDriver = async (req, res) => {
             
             // Car Details (Optional for direct registration)
             vehicleType, carNumber, carModel, carBrand, carType, seatCapacity, carColor, 
-            manufacturingYear, insuranceExpiry, permitExpiry, pucExpiry
+            manufacturingYear, insuranceExpiry, permitExpiry, pucExpiry,
+            
+            // Referral
+            referredByCode
         } = req.body;
 
         if (email) email = email.trim().toLowerCase();
@@ -89,6 +93,28 @@ exports.registerDriver = async (req, res) => {
             }
         } : undefined;
 
+        // Generate a random unique referral code
+        const generateReferralCode = async () => {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            let code;
+            let isUnique = false;
+            while (!isUnique) {
+                code = 'KWIK' + Array.from({length: 6}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+                const existing = await Driver.findOne({ referralCode: code });
+                if (!existing) isUnique = true;
+            }
+            return code;
+        };
+        const newReferralCode = await generateReferralCode();
+        
+        let referredById = null;
+        if (referredByCode) {
+            const referrer = await Driver.findOne({ referralCode: referredByCode.toUpperCase() });
+            if (referrer) {
+                referredById = referrer._id;
+            }
+        }
+
         // Saving password in plain text as requested
         const driver = await Driver.create({
             name,
@@ -96,6 +122,8 @@ exports.registerDriver = async (req, res) => {
             phone,
             password: password,
             image,
+            referralCode: newReferralCode,
+            referredBy: referredById,
             licenseNumber,
             licenseExpiry,
             address,
@@ -845,6 +873,49 @@ exports.approveDriver = async (req, res) => {
         driver.approvedBy = req.user.id;
         driver.approvedAt = new Date();
         await driver.save();
+        
+        // 🚀 INCENTIVE SYSTEM: Check for Joining & Referral Bonuses
+        try {
+            const settings = await AppSetting.findOne();
+            if (settings && settings.enableDriverIncentive) {
+                // Joining Bonus
+                if (settings.driverJoiningBonus > 0) {
+                    driver.walletBalance += settings.driverJoiningBonus;
+                    await driver.save();
+                    
+                    await Transaction.create({
+                        user: driver._id,
+                        userModel: "Driver",
+                        amount: settings.driverJoiningBonus,
+                        type: "Credit",
+                        category: "Joining Bonus",
+                        description: `Received joining bonus of ₹${settings.driverJoiningBonus}`,
+                        status: "Completed"
+                    });
+                }
+                
+                // Referral Bonus
+                if (settings.driverReferralBonus > 0 && driver.referredBy) {
+                    const referrer = await Driver.findById(driver.referredBy);
+                    if (referrer) {
+                        referrer.walletBalance += settings.driverReferralBonus;
+                        await referrer.save();
+                        
+                        await Transaction.create({
+                            user: referrer._id,
+                            userModel: "Driver",
+                            amount: settings.driverReferralBonus,
+                            type: "Credit",
+                            category: "Referral Bonus",
+                            description: `Received referral bonus for inviting ${driver.name}`,
+                            status: "Completed"
+                        });
+                    }
+                }
+            }
+        } catch (incentiveErr) {
+            console.error("Incentive error during approval:", incentiveErr.message);
+        }
 
         // 🚀 SYNC: If this is a Fleet Driver, approve their Fleet records too
         try {

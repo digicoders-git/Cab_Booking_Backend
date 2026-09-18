@@ -115,7 +115,24 @@ exports.createBulkBooking = async (req, res) => {
                 if (isServiceable.disabledCategories && isServiceable.disabledCategories.some(id => id.toString() === category._id.toString())) {
                     return res.status(400).json({ success: false, message: `The vehicle category ${category.name} is not available in your area.` });
                 }
-                systemEstimatedPrice += (category.bulkBookingBasePrice || 0) * (item.quantity || 1) * (numberOfDays || 1) * (totalDistance * distanceMultiplier) * bulkMultiplier;
+                const rate = category.bulkBookingBasePrice || 0;
+                const quantity = item.quantity || 1;
+                const days = numberOfDays || 1;
+                const actualKm = totalDistance * distanceMultiplier;
+                
+                if (tripType === 'RoundTrip') {
+                    const minKmPerDay = category.minKmPerDay || 250;
+                    const driverAllowancePerDay = category.driverAllowancePerDay || 300;
+                    
+                    const minimumKmRequired = minKmPerDay * days;
+                    const chargeableKm = Math.max(actualKm, minimumKmRequired);
+                    const totalDriverAllowance = driverAllowancePerDay * days;
+                    
+                    systemEstimatedPrice += ((chargeableKm * rate) + totalDriverAllowance) * quantity * bulkMultiplier;
+                } else {
+                    // One-Way Logic
+                    systemEstimatedPrice += rate * quantity * actualKm * bulkMultiplier;
+                }
             }
         }
 
@@ -364,9 +381,18 @@ exports.getMarketplace = async (req, res) => {
                 isActive: true
             });
             query["carsRequired.category"] = { $in: approvedCategories };
+        } else if (role === 'driver') {
+            const driver = await Driver.findById(id);
+            if (!driver || !driver.carDetails || !driver.carDetails.carType) {
+                return res.json({ success: true, count: 0, bookings: [] });
+            }
+            const driverCategory = driver.carDetails.carType;
+            query["carsRequired"] = { $size: 1 };
+            query["carsRequired.0.quantity"] = 1;
+            query["carsRequired.0.category"] = driverCategory;
         }
 
-        // Admins see everything in Marketplace, Fleets see relevant with enough quantity
+        // Admins see everything in Marketplace, Fleets see relevant with enough quantity, Drivers see 1-car bookings matching category
         const allBookings = await BulkBooking.find(query)
             .populate("carsRequired.category", "name image bulkBookingBasePrice")
             .populate("createdBy", "name phone image")
@@ -394,6 +420,14 @@ exports.getMarketplace = async (req, res) => {
             return res.json({ success: true, count: filteredBookings.length, bookings: filteredBookings });
         }
 
+        if (role === 'driver') {
+            // Hide customer details from drivers until accepted
+            allBookings.forEach(b => {
+                b.customerName = null;
+                b.customerPhone = null;
+            });
+        }
+
         res.json({ success: true, count: allBookings.length, bookings: allBookings });
 
 
@@ -402,11 +436,12 @@ exports.getMarketplace = async (req, res) => {
     }
 };
 
-// 3. Accept Bulk Booking (Fleet Action)
+// 3. Accept Bulk Booking (Fleet or Driver Action)
 exports.acceptBulkBooking = async (req, res) => {
     try {
         const { bookingId } = req.params;
-        const fleetId = req.user.id;
+        const userId = req.user.id;
+        const role = req.user.role;
 
         const booking = await BulkBooking.findById(bookingId);
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
@@ -416,9 +451,9 @@ exports.acceptBulkBooking = async (req, res) => {
         }
 
         // --- NEW ADMIN BYPASS LOGIC ---
-        if (req.user.role === 'admin' || req.user.role === 'SuperAdmin') {
+        if (role === 'admin' || role === 'SuperAdmin') {
             booking.status = 'Accepted';
-            booking.assignedAdmin = req.user.id;
+            booking.assignedAdmin = userId;
             booking.acceptedAt = new Date();
             await booking.save();
 
@@ -449,7 +484,7 @@ exports.acceptBulkBooking = async (req, res) => {
             });
         }
 
-        // --- NEW: Fetch dynamic percentages from Admin & Handle Wallet Bypass ---
+        // --- Fetch dynamic percentages from Admin & Handle Wallet Bypass ---
         const adminSettings = await Admin.findOne({ role: 'SuperAdmin' });
         const securityPct = adminSettings?.fleetBulkSecurityPct ?? 20;
         const payViaBank = adminSettings?.fleetSecurityPayViaBank ?? true;
@@ -459,9 +494,19 @@ exports.acceptBulkBooking = async (req, res) => {
 
         // --- BYPASS LOGIC: Wallet Deduction instead of Bank Gateway ---
         if (!payViaBank) {
-            const fleet = await Fleet.findById(fleetId);
-            if (fleet) {
-                const currentBalance = fleet.walletBalance || 0;
+            let userRecord;
+            let userModelName;
+            
+            if (role === 'fleet') {
+                userRecord = await Fleet.findById(userId);
+                userModelName = 'Fleet';
+            } else if (role === 'driver') {
+                userRecord = await Driver.findById(userId);
+                userModelName = 'Driver';
+            }
+
+            if (userRecord) {
+                const currentBalance = userRecord.walletBalance || 0;
                 
                 // If deduction pushes below limit
                 if (currentBalance - securityAmount < -maxNegativeWalletLimit) {
@@ -472,8 +517,8 @@ exports.acceptBulkBooking = async (req, res) => {
                 }
 
                 // Proceed with Wallet Deduction
-                fleet.walletBalance = currentBalance - securityAmount;
-                await fleet.save();
+                userRecord.walletBalance = currentBalance - securityAmount;
+                await userRecord.save();
 
                 // Credit Admin Wallet
                 if (adminSettings) {
@@ -488,9 +533,9 @@ exports.acceptBulkBooking = async (req, res) => {
                     });
                 }
 
-                // Debit Fleet Wallet
+                // Debit Fleet/Driver Wallet
                 await Transaction.create({
-                    user: fleet._id, userModel: 'Fleet', amount: securityAmount,
+                    user: userRecord._id, userModel: userModelName, amount: securityAmount,
                     type: 'Debit', category: 'Bulk Security', status: 'Completed',
                     relatedBooking: booking._id, description: `Security paid from Wallet to accept Bulk Deal #${booking._id.toString().slice(-6)}`
                 });
@@ -499,10 +544,20 @@ exports.acceptBulkBooking = async (req, res) => {
                     amount: securityAmount,
                     isPaid: true,
                     hdfcOrderId: "WALLET_BYPASS",
-                    fleetId: fleetId
+                    fleetId: role === 'fleet' ? userId : null
                 };
+                
                 booking.status = 'Accepted';
-                booking.assignedFleet = fleetId;
+                if (role === 'fleet') {
+                    booking.assignedFleet = userId;
+                } else if (role === 'driver') {
+                    booking.assignedDrivers.push({
+                        driver: userId,
+                        car: null, // Self-registered driver has no FleetCar
+                        status: 'Pending',
+                        assignedAt: new Date()
+                    });
+                }
                 booking.acceptedAt = new Date();
                 await booking.save();
 
@@ -510,15 +565,16 @@ exports.acceptBulkBooking = async (req, res) => {
                 try {
                     const io = getIO();
                     const creatorId = booking.createdBy.toString();
+                    const acceptorName = role === 'fleet' ? userRecord.companyName : userRecord.name;
 
                     io.to(creatorId).emit("bulk_booking_update", {
-                        bookingId: booking._id, status: "Accepted", fleetName: fleet.companyName,
+                        bookingId: booking._id, status: "Accepted", fleetName: acceptorName,
                         message: "Your bulk booking has been accepted!"
                     });
 
                     if (booking.createdByModel === 'Agent') {
                         io.to(`agent_${creatorId}`).emit("bulk_booking_update", {
-                            bookingId: booking._id, status: "Accepted", fleetName: fleet.companyName
+                            bookingId: booking._id, status: "Accepted", fleetName: acceptorName
                         });
                     }
 
@@ -529,7 +585,7 @@ exports.acceptBulkBooking = async (req, res) => {
                     if (creator && creator.fcmToken) {
                         await sendPushNotification(creator.fcmToken, {
                             title: "📦 Bulk Booking Accepted!",
-                            body: `Your booking has been accepted by ${fleet.companyName}.`,
+                            body: `Your booking has been accepted by ${acceptorName}.`,
                             data: { bookingId: booking._id.toString(), type: "BULK_BOOKING_ACCEPTED" }
                         });
                     }
@@ -554,14 +610,15 @@ exports.acceptBulkBooking = async (req, res) => {
 
         const frontendOrigin = req.headers.origin || process.env.FRONTEND_FLEET_URL || 'http://localhost:5178';
         const protocol = req.get('host').includes('localhost') || req.get('host').includes('127.0.0.1') ? req.protocol : 'https';
-        const returnUrl = `${protocol}://${req.get('host')}/api/bulk-bookings/payment-return?redirect=${encodeURIComponent(frontendOrigin + '/bulk-marketplace')}`;
+        const returnRedirectPath = role === 'driver' ? '/driver/bulk-marketplace' : '/bulk-marketplace';
+        const returnUrl = `${protocol}://${req.get('host')}/api/bulk-bookings/payment-return?redirect=${encodeURIComponent(frontendOrigin + returnRedirectPath)}`;
 
         // const sessionResponse = await paymentHandler.orderSession({
         const sessionResponse = await razorpayHandler.orderSession({
             order_id: orderIdString,
             amount: securityAmount.toFixed(2),
-            customer_id: fleetId.toString(),
-            customer_email: "fleet@example.com",
+            customer_id: userId.toString(),
+            customer_email: role === 'driver' ? "driver@example.com" : "fleet@example.com",
             customer_phone: "9999999999",
             return_url: returnUrl
         });
@@ -570,7 +627,7 @@ exports.acceptBulkBooking = async (req, res) => {
             amount: securityAmount,
             isPaid: false,
             hdfcOrderId: orderIdString,
-            fleetId: fleetId
+            fleetId: userId
         };
         await booking.save();
 
@@ -702,7 +759,16 @@ exports.verifyBulkPayment = async (req, res) => {
             booking.fleetSecurityPayment.isPaid = true;
             booking.fleetSecurityPayment.hdfcTransactionId = paymentId;
             booking.status = 'Accepted';
-            booking.assignedFleet = req.user.id;
+            if (req.user.role === 'fleet') {
+                booking.assignedFleet = req.user.id;
+            } else if (req.user.role === 'driver') {
+                booking.assignedDrivers.push({
+                    driver: req.user.id,
+                    car: null,
+                    status: 'Pending',
+                    assignedAt: new Date()
+                });
+            }
             booking.acceptedAt = new Date();
             await booking.save();
 
@@ -719,15 +785,23 @@ exports.verifyBulkPayment = async (req, res) => {
                 });
             }
 
-            // --- NEW: Debit Fleet Wallet Balance & History ---
-            const fleet = await Fleet.findById(req.user.id);
-            if (fleet) {
-                fleet.walletBalance -= booking.fleetSecurityPayment.amount;
-                await fleet.save();
+            // --- NEW: Debit Fleet/Driver Wallet Balance & History ---
+            if (req.user.role === 'fleet') {
+                const fleet = await Fleet.findById(req.user.id);
+                if (fleet) {
+                    fleet.walletBalance -= booking.fleetSecurityPayment.amount;
+                    await fleet.save();
+                }
+            } else if (req.user.role === 'driver') {
+                const driver = await Driver.findById(req.user.id);
+                if (driver) {
+                    driver.walletBalance -= booking.fleetSecurityPayment.amount;
+                    await driver.save();
+                }
             }
 
             await Transaction.create({
-                user: req.user.id, userModel: 'Fleet', amount: booking.fleetSecurityPayment.amount,
+                user: req.user.id, userModel: req.user.role === 'driver' ? 'Driver' : 'Fleet', amount: booking.fleetSecurityPayment.amount,
                 type: 'Debit', category: 'Bulk Security', status: 'Completed',
                 relatedBooking: booking._id, description: `Security paid to accept Bulk Deal #${booking._id.toString().slice(-6)}`
             });
@@ -1237,7 +1311,8 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
         const totalDrivers = booking.assignedDrivers.length;
         const isLastDriver = (completedCount === totalDrivers - 1);
 
-        const remainingBalance = booking.offeredPrice - (booking.advancePayment?.amount || 0);
+        const displayPrice = booking.totalPriceWithTax || booking.offeredPrice;
+        const remainingBalance = displayPrice - (booking.advancePayment?.amount || 0);
 
         if (isLastDriver && !paymentMode && remainingBalance > 0) {
             return res.status(400).json({
@@ -1361,6 +1436,42 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
                 }
             } catch (err) { console.error("Fleet Settlement Error:", err.message); }
 
+            // 2.5 Settlement with Driver (Refund part of Advance)
+            try {
+                if (!booking.assignedFleet && booking.assignedDrivers && booking.assignedDrivers.length === 1 && booking.advancePayment?.isPaid) {
+                    const driverAssigned = booking.assignedDrivers[0].driver;
+                    const driver = await Driver.findById(driverAssigned);
+                    if (driver) {
+                        const advanceAmount = booking.advancePayment.amount || 0;
+                        const agentComm = booking.agentCommissionAmount || 0;
+                        const refundToDriver = advanceAmount - agentComm;
+
+                        if (refundToDriver > 0) {
+                            driver.walletBalance += refundToDriver;
+                            await driver.save();
+
+                            await Transaction.create({
+                                user: driver._id, userModel: 'Driver', amount: refundToDriver,
+                                type: 'Credit', category: 'Refund', status: 'Completed',
+                                relatedBooking: booking._id, description: `Advance refund (Deal #${booking._id.toString().slice(-6)})`
+                            });
+
+                            // 🔴 Debit Admin (Payout to Driver)
+                            const admin = await Admin.findOne();
+                            if (admin) {
+                                admin.walletBalance -= refundToDriver;
+                                await admin.save();
+                                await Transaction.create({
+                                    user: admin._id, userModel: 'Admin', amount: refundToDriver,
+                                    type: 'Debit', category: 'Bulk Payout', status: 'Completed',
+                                    relatedBooking: booking._id, description: `Refunded advance to Driver (Deal #${booking._id.toString().slice(-6)})`
+                                });
+                            }
+                        }
+                    }
+                }
+            } catch (err) { console.error("Driver Settlement Error:", err.message); }
+
             // 3. Master Franchise Vendor Settlement
             try {
                 const uniqueVendorIds = new Set();
@@ -1430,7 +1541,8 @@ exports.verifyBulkPayment = async (req, res) => {
         const booking = await BulkBooking.findById(bookingId);
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
 
-        const remainingBalance = booking.offeredPrice - (booking.advancePayment?.amount || 0);
+        const displayPrice = booking.totalPriceWithTax || booking.offeredPrice;
+        const remainingBalance = displayPrice - (booking.advancePayment?.amount || 0);
 
         booking.status = 'Completed';
         booking.finalPayment = {
@@ -1518,6 +1630,38 @@ exports.verifyBulkPayment = async (req, res) => {
                     }
                 }
             } catch (err) { console.error("Fleet Verification Settlement Error:", err.message); }
+        }
+
+        // 2.5 Driver
+        if (!booking.assignedFleet && booking.assignedDrivers && booking.assignedDrivers.length === 1) {
+            try {
+                const driverAssigned = booking.assignedDrivers[0].driver;
+                const driver = await Driver.findById(driverAssigned);
+                if (driver) {
+                    const totalPayToDriver = (booking.offeredPrice || 0) - (booking.agentCommissionAmount || 0);
+                    if (totalPayToDriver > 0) {
+                        driver.walletBalance += totalPayToDriver;
+                        await driver.save();
+                        await Transaction.create({
+                            user: driver._id, userModel: 'Driver', amount: totalPayToDriver,
+                            type: 'Credit', category: 'Bulk Earnings', status: 'Completed',
+                            relatedBooking: booking._id, description: `Bulk deal earnings (Deal #${booking._id.toString().slice(-6)})`
+                        });
+
+                        // 🔴 Debit Admin (Payout to Driver)
+                        const admin = await Admin.findOne();
+                        if (admin) {
+                            admin.walletBalance -= totalPayToDriver;
+                            await admin.save();
+                            await Transaction.create({
+                                user: admin._id, userModel: 'Admin', amount: totalPayToDriver,
+                                type: 'Debit', category: 'Bulk Payout', status: 'Completed',
+                                relatedBooking: booking._id, description: `Final Payout to Driver (Deal #${booking._id.toString().slice(-6)})`
+                            });
+                        }
+                    }
+                }
+            } catch (err) { console.error("Driver Verification Settlement Error:", err.message); }
         }
 
         // 3. Master Franchise Vendor Settlement (Online Payment)
@@ -1669,10 +1813,22 @@ exports.paymentReturn = async (req, res) => {
                 // Wait, if req.user is empty, verifyBulkPayment relies on req.user.id for security payment!
                 // Let's set req.user to the assigned fleet if it's security, BUT wait, security payment assigns the fleet!
                 let actualPayerId = payload.customer_id;
-                if (!actualPayerId) {
-                    actualPayerId = (isSecurity && booking.fleetSecurityPayment?.fleetId) ? booking.fleetSecurityPayment.fleetId : booking.createdBy;
+                let actualRole = booking.createdByModel ? booking.createdByModel.toLowerCase() : 'user';
+
+                if (isSecurity && booking.fleetSecurityPayment) {
+                    actualPayerId = booking.fleetSecurityPayment.fleetId;
+                    const isFleet = await Fleet.findById(actualPayerId);
+                    if (isFleet) {
+                        actualRole = 'fleet';
+                    } else {
+                        const isDriver = await Driver.findById(actualPayerId);
+                        if (isDriver) actualRole = 'driver';
+                    }
+                } else if (!actualPayerId) {
+                    actualPayerId = booking.createdBy;
                 }
-                req.user = { id: actualPayerId, role: booking.createdByModel ? booking.createdByModel.toLowerCase() : 'user' };
+
+                req.user = { id: actualPayerId, role: actualRole };
 
                 const targetUrl = req.query.redirect || payload.redirect || (booking.createdByModel === 'Agent' ? `${fallbackAgentUrl}/agent/my-bulk-bookings` : `${fallbackUserUrl}/bulk-booking`);
                 console.log("[DEBUG] Target URL determined:", targetUrl);

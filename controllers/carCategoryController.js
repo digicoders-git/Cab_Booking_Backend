@@ -7,7 +7,8 @@ exports.createCarCategory = async (req, res) => {
             name, seatCapacity, privateRatePerKm, sharedRatePerSeatPerKm, 
             baseFare, seatLayout, avgSpeedKmH, bulkBookingBasePrice,
             freeWaitingMin, waitingChargePerMin,
-            ratePerMinute, trafficBufferMin
+            ratePerMinute, trafficBufferMin,
+            minKmPerDay, driverAllowancePerDay
         } = req.body;
 
         const image = req.file ? req.file.filename : null;
@@ -50,6 +51,8 @@ exports.createCarCategory = async (req, res) => {
             waitingChargePerMin: waitingChargePerMin || 2,
             ratePerMinute: ratePerMinute || 0,
             trafficBufferMin: trafficBufferMin || 10,
+            minKmPerDay: minKmPerDay || 250,
+            driverAllowancePerDay: driverAllowancePerDay || 300,
             createdBy: req.user.id
         });
 
@@ -115,7 +118,8 @@ exports.updateCarCategory = async (req, res) => {
             name, seatCapacity, privateRatePerKm, sharedRatePerSeatPerKm, 
             baseFare, isActive, seatLayout, avgSpeedKmH, bulkBookingBasePrice,
             freeWaitingMin, waitingChargePerMin,
-            ratePerMinute, trafficBufferMin
+            ratePerMinute, trafficBufferMin,
+            minKmPerDay, driverAllowancePerDay
         } = req.body;
 
         const category = await CarCategory.findById(id);
@@ -139,6 +143,8 @@ exports.updateCarCategory = async (req, res) => {
         if (waitingChargePerMin !== undefined) category.waitingChargePerMin = waitingChargePerMin;
         if (ratePerMinute !== undefined) category.ratePerMinute = ratePerMinute;
         if (trafficBufferMin !== undefined) category.trafficBufferMin = trafficBufferMin;
+        if (minKmPerDay !== undefined) category.minKmPerDay = minKmPerDay;
+        if (driverAllowancePerDay !== undefined) category.driverAllowancePerDay = driverAllowancePerDay;
 
         if (seatLayout) {
             if (typeof seatLayout === "string") {

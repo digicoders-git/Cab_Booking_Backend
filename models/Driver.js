@@ -309,6 +309,18 @@ const driverSchema = new mongoose.Schema({
   destinationFilterDate: {
     type: Date,
     default: null
+  },
+  // --- NEW: Referral System ---
+  referralCode: {
+    type: String,
+    default: null,
+    unique: true,
+    sparse: true
+  },
+  referredBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Driver",
+    default: null
   }
 }, { timestamps: true });
 

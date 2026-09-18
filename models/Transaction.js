@@ -22,7 +22,7 @@ const transactionSchema = new mongoose.Schema({
     },
     category: {
         type: String,
-        enum: ['Ride Earning', 'Ride Payment', 'Commission', 'Withdrawal', 'Refund', 'Admin Adjustment', 'Bulk Advance', 'Bulk Security', 'Bulk Earnings', 'Bulk Payout', 'Wallet Recharge'],
+        enum: ['Ride Earning', 'Ride Payment', 'Commission', 'Withdrawal', 'Refund', 'Admin Adjustment', 'Bulk Advance', 'Bulk Security', 'Bulk Earnings', 'Bulk Payout', 'Wallet Recharge', 'Joining Bonus', 'Referral Bonus'],
         required: true
     },
     status: {

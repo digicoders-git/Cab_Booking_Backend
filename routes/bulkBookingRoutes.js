@@ -6,8 +6,8 @@ const { auth, fleetOnly, fleetOrAdmin } = require("../middleware/auth");
 // 1. Marketplace Access for Fleets & Admins
 router.get("/marketplace", auth, bulkBookingController.getMarketplace);
 
-// 2. Acceptance for Fleets
-router.post("/accept/:bookingId", auth, fleetOrAdmin, bulkBookingController.acceptBulkBooking);
+// 2. Acceptance for Fleets and Drivers
+router.post("/accept/:bookingId", auth, bulkBookingController.acceptBulkBooking);
 
 // 3. Creation (Any protected role)
 router.post("/create", auth, bulkBookingController.createBulkBooking);

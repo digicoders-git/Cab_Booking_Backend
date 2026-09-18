@@ -43,7 +43,11 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/uploads", express.static("uploads"));
 
-connectDB();
+connectDB().then(() => {
+    // Run one-time migrations
+    const migrateReferralCodes = require('./migrations/migrateReferralCodes');
+    migrateReferralCodes();
+});
 
 app.get("/", (req, res) => {
     res.send("Cab Booking API Running");
