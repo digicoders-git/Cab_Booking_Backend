@@ -1307,3 +1307,51 @@ exports.markAllBookingsRead = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
+
+exports.markSingleBookingRead = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { type } = req.body;
+        const Booking = require("../models/Booking");
+        const BulkBooking = require("../models/BulkBooking");
+        const AgentLead = require("../models/AgentLead");
+        const FixedBooking = require("../models/FixedBooking");
+
+        let Model;
+        if (type === 'Normal Booking') Model = Booking;
+        else if (type === 'Bulk Booking') Model = BulkBooking;
+        else if (type === 'Fixed Package') Model = FixedBooking;
+        else if (type === 'Agent Lead') Model = AgentLead;
+        else return res.status(400).json({ success: false, message: "Invalid booking type" });
+
+        await Model.findByIdAndUpdate(id, { adminRead: true });
+        res.json({ success: true, message: "Booking marked as read." });
+    } catch (error) {
+        console.error("Error marking single booking read:", error);
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+exports.deleteSingleBooking = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { type } = req.body;
+        const Booking = require("../models/Booking");
+        const BulkBooking = require("../models/BulkBooking");
+        const AgentLead = require("../models/AgentLead");
+        const FixedBooking = require("../models/FixedBooking");
+
+        let Model;
+        if (type === 'Normal Booking') Model = Booking;
+        else if (type === 'Bulk Booking') Model = BulkBooking;
+        else if (type === 'Fixed Package') Model = FixedBooking;
+        else if (type === 'Agent Lead') Model = AgentLead;
+        else return res.status(400).json({ success: false, message: "Invalid booking type" });
+
+        await Model.findByIdAndDelete(id);
+        res.json({ success: true, message: "Booking deleted successfully." });
+    } catch (error) {
+        console.error("Error deleting single booking:", error);
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};

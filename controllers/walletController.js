@@ -173,9 +173,9 @@ exports.getAllTransactions = async (req, res) => {
         const filter = req.query.all === 'true' ? {} : { userModel: 'Admin' };
 
         const transactions = await Transaction.find(filter)
-            .populate("user", "name phone image")
+            .populate("user", "name phone email image walletBalance")
             .sort({ createdAt: -1 })
-            .limit(100);
+            .limit(200);
 
         res.json({
             success: true,
@@ -463,3 +463,95 @@ exports.addMoneyReturn = async (req, res) => {
         res.redirect(`${req.query.redirect || 'http://localhost:5174'}?error=server_error`);
     }
 };
+
+// 8. Admin: Get Customer / Entity Statement & Lifetime History
+exports.getCustomerStatement = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { userModel } = req.query;
+
+        let userDoc = null;
+        let resolvedModel = userModel || '';
+
+        // If userModel was provided, check that model first
+        if (resolvedModel === 'User') {
+            userDoc = await User.findById(userId).select("name phone email image walletBalance createdAt");
+        } else if (resolvedModel === 'Driver') {
+            userDoc = await Driver.findById(userId).select("name phone email image walletBalance createdAt");
+        } else if (resolvedModel === 'Agent') {
+            userDoc = await Agent.findById(userId).select("name phone email image walletBalance agencyName createdAt");
+        } else if (resolvedModel === 'Fleet') {
+            userDoc = await Fleet.findById(userId).select("name phone email image walletBalance fleetName createdAt");
+        }
+
+        // If not found yet, auto-detect across models
+        if (!userDoc) {
+            userDoc = await User.findById(userId).select("name phone email image walletBalance createdAt");
+            if (userDoc) resolvedModel = 'User';
+        }
+        if (!userDoc) {
+            userDoc = await Driver.findById(userId).select("name phone email image walletBalance createdAt");
+            if (userDoc) resolvedModel = 'Driver';
+        }
+        if (!userDoc) {
+            userDoc = await Agent.findById(userId).select("name phone email image walletBalance agencyName createdAt");
+            if (userDoc) resolvedModel = 'Agent';
+        }
+        if (!userDoc) {
+            userDoc = await Fleet.findById(userId).select("name phone email image walletBalance fleetName createdAt");
+            if (userDoc) resolvedModel = 'Fleet';
+        }
+
+        // Fetch transactions for this entity (either as user or recipient)
+        const transactions = await Transaction.find({
+            $or: [{ user: userId }, { recipient: userId }]
+        })
+            .populate("relatedBooking", "bookingId pickupAddress dropAddress finalFare status")
+            .sort({ createdAt: -1 });
+
+        // Calculate statistics
+        let totalCredit = 0;
+        let totalDebit = 0;
+        let pendingAmount = 0;
+
+        transactions.forEach(tx => {
+            const amt = Number(tx.amount) || 0;
+            if (tx.status === 'Pending') {
+                pendingAmount += amt;
+            } else if (tx.status === 'Completed') {
+                if (tx.type?.toLowerCase() === 'credit') {
+                    totalCredit += amt;
+                } else if (tx.type?.toLowerCase() === 'debit') {
+                    totalDebit += amt;
+                }
+            }
+        });
+
+        const walletBalance = userDoc?.walletBalance !== undefined ? userDoc.walletBalance : (totalCredit - totalDebit);
+
+        return res.json({
+            success: true,
+            user: userDoc ? {
+                ...userDoc.toObject(),
+                userModel: resolvedModel
+            } : {
+                _id: userId,
+                name: "Customer / Entity",
+                walletBalance,
+                userModel: resolvedModel || "User"
+            },
+            stats: {
+                walletBalance,
+                pendingAmount,
+                totalCredit,
+                totalDebit,
+                totalTransactions: transactions.length
+            },
+            transactions
+        });
+    } catch (error) {
+        console.error("getCustomerStatement error:", error);
+        return res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+

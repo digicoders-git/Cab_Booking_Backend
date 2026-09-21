@@ -6,6 +6,7 @@ const {
     sendOtp,
     getAllUsers,
     getUserProfile,
+    getUserRides,
     updateUserProfile,
     deleteUser,
     toggleUserStatus,
@@ -30,6 +31,7 @@ router.put("/first-location", auth, saveFirstLocation)
 // Secure routes (Admin / Sub-Admin)
 router.get("/all", auth, checkPermission("USER_READ"), getAllUsers)
 router.get("/profile/:id", auth, getUserProfile)
+router.get("/:id/rides", auth, checkPermission("USER_READ"), getUserRides)
 router.put("/update-profile/:id", auth, upload.single("image"), updateUserProfile)
 router.delete("/delete/:id", auth, checkPermission("USER_DELETE"), deleteUser)
 router.put("/toggle-status/:id", auth, checkPermission("USER_STATUS"), toggleUserStatus)

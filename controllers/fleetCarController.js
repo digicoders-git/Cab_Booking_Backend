@@ -343,3 +343,57 @@ exports.adminGetAllCars = async (req, res) => {
         });
     }
 };
+
+// ============================================================
+// Admin: Update Car (Admin Only)
+// ============================================================
+exports.adminUpdateCar = async (req, res) => {
+    try {
+        const { carId } = req.params;
+        const updateData = { ...req.body };
+        
+        const FleetCar = require("../models/FleetCar");
+        const updatedCar = await FleetCar.findByIdAndUpdate(carId, updateData, { new: true });
+        
+        if (!updatedCar) {
+            return res.status(404).json({ success: false, message: "Car not found" });
+        }
+        
+        res.json({ success: true, message: "Car updated successfully by admin", car: updatedCar });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error updating car", error: error.message });
+    }
+};
+
+// ============================================================
+// Admin: Delete Car (Admin Only)
+// ============================================================
+exports.adminDeleteCar = async (req, res) => {
+    try {
+        const { carId } = req.params;
+        const FleetCar = require("../models/FleetCar");
+        const Fleet = require("../models/Fleet");
+        
+        const car = await FleetCar.findById(carId);
+        if (!car) {
+            return res.status(404).json({ success: false, message: "Car not found" });
+        }
+        
+        const FleetAssignment = require("../models/FleetAssignment");
+        const assignment = await FleetAssignment.findOne({ carId: carId, isAssigned: true });
+        if (assignment) {
+            return res.status(400).json({ success: false, message: "Cannot delete car that is assigned to a driver" });
+        }
+        
+        await FleetCar.findByIdAndDelete(carId);
+        
+        // Update fleet total cars count
+        if (car.fleetId) {
+            await Fleet.findByIdAndUpdate(car.fleetId, { $inc: { totalCars: -1 } });
+        }
+        
+        res.json({ success: true, message: "Car deleted successfully by admin" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error deleting car", error: error.message });
+    }
+};

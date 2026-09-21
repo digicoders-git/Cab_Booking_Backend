@@ -25,7 +25,8 @@ const {
     updateFcmToken,
     setDestinationFilter,
     clearDestinationFilter,
-    changeDriverOwnership
+    changeDriverOwnership,
+    getDriverFullHistory
 } = require("../controllers/driverController");
 
 const { auth, adminOnly, driverOnly, fleetOnly } = require("../middleware/auth");
@@ -78,6 +79,9 @@ router.get("/locations/all", auth, getAllDriversLocation);
 
 // Get Driver Dashboard Report Summary (Protected - Driver Only) - MUST BE BEFORE /:id
 router.get("/report", auth, driverOnly, getDriverReport);
+
+// Get Driver Full History (Profile, Lifetime Transactions, Lifetime Rides) - MUST BE BEFORE /:id
+router.get("/:id/full-history", auth, checkPermission("DRIVER_READ"), getDriverFullHistory);
 
 // Get Single Driver (Admin/Fleet) - MUST BE LAST
 router.get("/:id", auth, checkPermission("DRIVER_READ"), getSingleDriver);

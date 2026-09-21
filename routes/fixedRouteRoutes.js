@@ -6,7 +6,7 @@ const fixedBookingController = require('../controllers/fixedBookingController');
 
 // Assume these middleware exist. I will use standard names from other routes if possible.
 // For now I'll just use standard middleware names that might exist or just protect it in server.js
-const { auth, driverOnly, adminOnly } = require('../middleware/auth');
+const { auth, driverOnly, adminOnly, fleetOnly } = require('../middleware/auth');
 
 // === Fixed Routes (Admin) ===
 router.post('/routes', auth, adminOnly, fixedRouteController.createRoute);
@@ -38,5 +38,8 @@ router.post('/bookings/:id/start-driver', auth, driverOnly, fixedBookingControll
 router.post('/bookings/:id/complete-driver', auth, driverOnly, fixedBookingController.completeBookingDriver);
 router.post('/bookings/:id/confirm-cash', auth, driverOnly, fixedBookingController.confirmCashDriver);
 router.get('/bookings/my-accepted/driver', auth, driverOnly, fixedBookingController.getDriverAcceptedBookings);
+
+// === Fixed Bookings (Fleet Admin) ===
+router.get('/fleet/bookings', auth, fleetOnly, fixedBookingController.getFleetFixedBookings);
 
 module.exports = router;

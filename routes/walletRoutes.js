@@ -10,7 +10,8 @@ const {
     exportTransactions,
     addManualBalance,
     createAddMoneyOrder,
-    addMoneyReturn
+    addMoneyReturn,
+    getCustomerStatement
 } = require("../controllers/walletController");
 const { auth, adminOnly } = require("../middleware/auth");
 const { checkPermission } = require("../middleware/rbac");
@@ -31,8 +32,9 @@ router.post("/fleet/withdraw", auth, requestWithdrawal); // Alias for Fleet Pane
 router.put("/admin/payouts/:transactionId/approve", auth, checkPermission("PAYOUT_APPROVE"), approveWithdrawal);
 router.put("/admin/payouts/:transactionId/reject", auth, checkPermission("PAYOUT_REJECT"), rejectWithdrawal);
 
-// 4. Admin: View Transaction History
+// 4. Admin: View Transaction History & Statements
 router.get("/admin/transactions/all", auth, checkPermission("TRANSACTION_READ"), getAllTransactions);
+router.get("/admin/customer-statement/:userId", auth, checkPermission("TRANSACTION_READ"), getCustomerStatement);
 router.get("/admin/transactions/export", auth, checkPermission("TRANSACTION_READ"), exportTransactions);
 router.get("/admin/payouts/pending", auth, checkPermission("PAYOUT_READ"), getPendingPayouts);
 

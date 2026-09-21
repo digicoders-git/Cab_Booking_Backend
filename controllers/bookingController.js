@@ -557,7 +557,10 @@ exports.createBooking = async (req, res) => {
                 console.error("Error fetching agent for commission calculation:", err.message);
             }
 
-            const commission = Math.round(fareEstimate * (commissionPercent / 100));
+            // Estimate Admin Profit first (using default 10% or similar)
+            // Note: Actual final calculation happens in tripController
+            const estimatedAdminProfit = Math.round(fareEstimate * 0.10); 
+            const commission = Math.round(estimatedAdminProfit * (commissionPercent / 100));
             bookingData.agentCommission = commission;
         }
 

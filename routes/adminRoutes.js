@@ -22,7 +22,9 @@ const {
     toggleDriverOnlineByAdmin,
     exportTaxReport,
     getNewBookings,
-    markAllBookingsRead
+    markAllBookingsRead,
+    markSingleBookingRead,
+    deleteSingleBooking
 } = require("../controllers/adminController")
 const { registerAgent } = require("../controllers/agentController")
 const { createFleet } = require("../controllers/fleetController")
@@ -47,6 +49,9 @@ router.get("/radius-search", auth, checkPermission("TRACKING_READ"), getDriversB
 router.get("/home-radius-search", auth, checkPermission("TRACKING_READ"), getDriversByHomeRadius)
 router.get("/new-bookings", auth, checkPermission("DASHBOARD_READ"), getNewBookings)
 router.put("/mark-bookings-read", auth, checkPermission("DASHBOARD_READ"), markAllBookingsRead)
+router.put("/mark-booking-read/:id", auth, checkPermission("DASHBOARD_READ"), markSingleBookingRead)
+router.delete("/booking/:id", auth, checkPermission("DASHBOARD_READ"), deleteSingleBooking)
+
 
 // Admin creates Agent / Fleet (Redundant but kept for compatibility)
 router.post("/create-agent", auth, checkPermission("AGENT_CREATE"), upload.single("image"), registerAgent)

@@ -1522,25 +1522,7 @@ exports.processTripSettlement = async (booking, driver) => {
         const totalFare = booking.actualFare;
         const isCash = booking.paymentMethod === 'Cash';
 
-        // 1. Agent Commission
-        let agentCut = 0;
-        if (booking.agent) {
-            const agent = await Agent.findById(booking.agent);
-            if (agent) {
-                agentCut = booking.agentCommission || 0;
-                agent.walletBalance += agentCut;
-                agent.totalEarnings += agentCut;
-                agent.totalBookings += 1;
-                await agent.save();
-                await Transaction.create({
-                    user: agent._id, userModel: 'Agent', amount: agentCut, type: 'Credit',
-                    category: 'Commission', status: 'Completed', relatedBooking: booking._id,
-                    description: `Commission for booking ${booking._id}`
-                });
-            }
-        }
-
-        // 2. Admin Commission
+        // 1. Calculate Initial Admin Commission (Company Profit)
         let adminPercentage = 10;
         let admin = await Admin.findOne();
         if (admin) adminPercentage = admin.defaultCommission || 10;
@@ -1549,9 +1531,41 @@ exports.processTripSettlement = async (booking, driver) => {
             if (fleet && fleet.commissionPercentage !== undefined) adminPercentage = fleet.commissionPercentage;
         }
         const rideFareForCommission = Math.max(0, totalFare - (booking.previousDues || 0));
-        const adminCut = Math.round(rideFareForCommission * (adminPercentage / 100));
+        const totalCompanyProfit = Math.round(rideFareForCommission * (adminPercentage / 100));
+        let adminCut = totalCompanyProfit;
 
-        if (admin) {
+        // 2. Agent Commission (Percentage of Company Profit - Option A)
+        let agentCut = 0;
+        if (booking.agent) {
+            const agent = await Agent.findById(booking.agent);
+            if (agent) {
+                const agentPercentage = agent.commissionPercentage !== undefined ? agent.commissionPercentage : 5;
+                
+                // Calculate Agent's share from the company profit
+                agentCut = Math.round(totalCompanyProfit * (agentPercentage / 100));
+                
+                // Deduct agent's share from Admin's cut (Company shares profit)
+                adminCut = totalCompanyProfit - agentCut;
+
+                agent.walletBalance += agentCut;
+                agent.totalEarnings += agentCut;
+                agent.totalBookings += 1;
+                await agent.save();
+                
+                await Transaction.create({
+                    user: agent._id, userModel: 'Agent', amount: agentCut, type: 'Credit',
+                    category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                    description: `Commission for booking ${booking._id} (Shared from Admin Profit)`
+                });
+                
+                // Update booking to reflect actual finalized payout
+                booking.agentCommission = agentCut;
+                await booking.save();
+            }
+        }
+
+        // 3. Credit Admin (Remaining Profit)
+        if (admin && adminCut > 0) {
             admin.walletBalance = (admin.walletBalance || 0) + adminCut;
             admin.totalEarnings = (admin.totalEarnings || 0) + adminCut;
             await admin.save();

@@ -9,6 +9,9 @@ const FleetCar = require("../models/FleetCar");
 const FleetDriver = require("../models/FleetDriver");
 const Admin = require("../models/Admin");
 const DriverLead = require("../models/DriverLead"); // Added DriverLead
+const FixedBooking = require("../models/FixedBooking");
+const CarCategory = require("../models/CarCategory");
+const User = require("../models/User");
 const { sendPushNotification } = require("../utils/fcmNotification");
 
 // Register Driver (Open Registration - Pending Admin Approval)
@@ -1527,4 +1530,221 @@ exports.changeDriverOwnership = async (req, res) => {
         });
     }
 };
+
+// Get Driver Full History (Profile, Day 1 Lifetime Transactions, Day 1 Lifetime Rides)
+exports.getDriverFullHistory = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const driverDoc = await Driver.findById(id)
+            .populate({ path: "carDetails.carType", select: "name seatLayout icon", strictPopulate: false })
+            .populate({ path: "referredBy", select: "name phone", strictPopulate: false })
+            .lean();
+
+        if (!driverDoc) {
+            return res.status(404).json({
+                success: false,
+                message: "Driver not found"
+            });
+        }
+
+        const driver = { ...driverDoc };
+
+        // Safely resolve createdBy if Admin, Fleet or Vendor
+        if (driver.createdBy && driver.createdByModel) {
+            try {
+                if (driver.createdByModel === "Admin") {
+                    const Admin = require("../models/Admin");
+                    driver.createdBy = await Admin.findById(driver.createdBy).select("name email").lean();
+                } else if (driver.createdByModel === "Fleet") {
+                    const Fleet = require("../models/Fleet");
+                    driver.createdBy = await Fleet.findById(driver.createdBy).select("name email").lean();
+                } else if (driver.createdByModel === "Vendor") {
+                    const Vendor = require("../models/Vendor");
+                    driver.createdBy = await Vendor.findById(driver.createdBy).select("name email companyName").lean();
+                }
+            } catch (popErr) {
+                console.warn("Could not populate createdBy:", popErr.message);
+            }
+        }
+
+        // 1. Fetch All Lifetime Transactions for this Driver (from Day 1)
+        const transactions = await Transaction.find({
+            user: id,
+            userModel: "Driver"
+        })
+            .populate("relatedBooking", "bookingStatus pickup drop")
+            .sort({ createdAt: -1 });
+
+        // Calculate Wallet Stats
+        const totalCredits = transactions
+            .filter(t => t.type === "Credit")
+            .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+        const totalDebits = transactions
+            .filter(t => t.type === "Debit")
+            .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+        const totalRideEarnings = transactions
+            .filter(t => t.category === "Ride Earning" && t.type === "Credit")
+            .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+        const totalCommissionPaid = transactions
+            .filter(t => t.category === "Commission" && t.type === "Debit")
+            .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+        // 2. Fetch All Lifetime Rides assigned to this Driver (from Day 1)
+        // City / Regular Bookings
+        const regularBookings = await Booking.find({ assignedDriver: id })
+            .populate("user", "name phone email image")
+            .populate("assignedCar", "carNumber carModel")
+            .sort({ createdAt: -1 });
+
+        // Fixed / Package Bookings
+        const fixedBookings = await FixedBooking.find({ assignedDriver: id })
+            .populate("user", "name phone email image")
+            .populate("agent", "name phone email")
+            .populate("carCategory", "name icon")
+            .sort({ createdAt: -1 });
+
+        // Unified format for rides
+        const formattedRegular = regularBookings.map(b => {
+            const fare = Number(b.actualFare || b.fareEstimate || 0);
+            const driverEarning = Math.max(0, fare - (Number(b.adminCommission) || 0) - (Number(b.agentCommission) || 0));
+            return {
+                _id: b._id,
+                bookingId: b._id.toString().slice(-8).toUpperCase(),
+                type: "City Ride",
+                rideType: b.tripType || "Regular Ride",
+                carCategory: b.assignedCar?.carModel || driver.carDetails?.carModel || "Standard",
+                pickup: b.pickup?.address || "N/A",
+                drop: b.drop?.address || "N/A",
+                fare,
+                driverEarning,
+                adminCommission: Number(b.adminCommission) || 0,
+                status: b.bookingStatus || "Pending",
+                paymentMethod: b.paymentMethod || "Cash",
+                paymentStatus: b.paymentStatus || "Pending",
+                createdAt: b.createdAt,
+                date: b.pickupDate || b.createdAt,
+                pickupTime: b.pickupTime || "",
+                distanceKm: b.estimatedDistanceKm || 0,
+                customer: {
+                    name: b.user?.name || b.customerName || "Passenger",
+                    phone: b.user?.phone || b.customerPhone || "N/A",
+                    email: b.user?.email || "",
+                    image: b.user?.image || null
+                }
+            };
+        });
+
+        const formattedFixed = fixedBookings.map(b => {
+            const fare = Number(b.totalWithTax || b.price || 0);
+            const driverEarning = Math.max(0, fare - (Number(b.adminCommission) || 0) - (Number(b.agentCommission) || 0));
+            return {
+                _id: b._id,
+                bookingId: b._id.toString().slice(-8).toUpperCase(),
+                type: "Package Ride",
+                rideType: b.tripType || "Fixed Package",
+                carCategory: b.carCategory?.name || driver.carDetails?.carModel || "Standard",
+                pickup: b.pickupLocation || "N/A",
+                drop: b.dropLocation || "N/A",
+                fare,
+                driverEarning,
+                adminCommission: Number(b.adminCommission) || 0,
+                status: b.status || "Marketplace",
+                paymentMethod: b.paymentMethod || "Cash",
+                paymentStatus: b.paymentStatus || "Pending",
+                createdAt: b.createdAt,
+                date: b.pickupDate || b.createdAt,
+                pickupTime: b.pickupTime || "",
+                distanceKm: b.maxDistanceKm || 0,
+                customer: {
+                    name: b.user?.name || b.customerName || (b.agent ? `Agent Client (${b.agent.name})` : "Passenger"),
+                    phone: b.user?.phone || b.customerPhone || b.agent?.phone || "N/A",
+                    email: b.user?.email || b.agent?.email || "",
+                    image: b.user?.image || null
+                }
+            };
+        });
+
+        const allRides = [...formattedRegular, ...formattedFixed].sort(
+            (a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)
+        );
+
+        // Ride Stats
+        const totalRides = allRides.length;
+        const completedRides = allRides.filter(r => r.status === "Completed").length;
+        const cancelledRides = allRides.filter(r => r.status === "Cancelled").length;
+        const activeRides = allRides.filter(r => ["Accepted", "Ongoing", "Started"].includes(r.status)).length;
+        const totalFareGenerated = allRides
+            .filter(r => r.status === "Completed")
+            .reduce((sum, r) => sum + (Number(r.fare) || 0), 0);
+        const totalDriverEarningsCalculated = allRides
+            .filter(r => r.status === "Completed")
+            .reduce((sum, r) => sum + (Number(r.driverEarning) || 0), 0);
+
+        // Calculate Driver Platform Tenure (Joined Age)
+        const joinDate = driver.createdAt ? new Date(driver.createdAt) : new Date();
+        const now = new Date();
+        const diffMs = now - joinDate;
+        const totalDays = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+        const years = Math.floor(totalDays / 365);
+        const remDaysAfterYears = totalDays % 365;
+        const months = Math.floor(remDaysAfterYears / 30);
+        const days = remDaysAfterYears % 30;
+
+        let tenureText = "";
+        if (years > 0) {
+            tenureText = `${years} Year${years > 1 ? "s" : ""}${months > 0 ? `, ${months} Month${months > 1 ? "s" : ""}` : ""}`;
+        } else if (months > 0) {
+            tenureText = `${months} Month${months > 1 ? "s" : ""}${days > 0 ? `, ${days} Day${days > 1 ? "s" : ""}` : ""}`;
+        } else if (days > 0) {
+            tenureText = `${days} Day${days > 1 ? "s" : ""}`;
+        } else {
+            tenureText = "Joined Today";
+        }
+
+        res.status(200).json({
+            success: true,
+            driver,
+            tenure: {
+                tenureText,
+                totalDays,
+                joinedDate: driver.createdAt
+            },
+            wallet: {
+                walletBalance: driver.walletBalance || 0,
+                totalEarnings: driver.totalEarnings || totalDriverEarningsCalculated,
+                debtLimit: driver.debtLimit || -500,
+                totalCredits,
+                totalDebits,
+                totalRideEarnings,
+                totalCommissionPaid,
+                transactionsCount: transactions.length,
+                transactions
+            },
+            rides: {
+                totalRides,
+                completedRides,
+                cancelledRides,
+                activeRides,
+                totalFareGenerated,
+                totalDriverEarningsCalculated,
+                allRides,
+                regularRides: formattedRegular,
+                fixedRides: formattedFixed
+            }
+        });
+
+    } catch (error) {
+        console.error("Error fetching driver full history:", error);
+        res.status(500).json({
+            success: false,
+            message: "Error fetching driver full history",
+            error: error.message
+        });
+    }
+};
+
 

@@ -4,23 +4,101 @@ const Driver = require("../models/Driver");
 const Transaction = require("../models/Transaction");
 const Admin = require("../models/Admin");
 const User = require("../models/User");
+const Agent = require("../models/Agent");
 const { RazorpayHandler } = require("../utils/RazorpayHandler");
 const razorpayHandler = RazorpayHandler.getInstance();
 const { getIO } = require("../socket/socket");
 const { sendPushNotification } = require("../utils/fcmNotification");
 
-// User books a fixed route
+// Helper to notify Client (either User or Agent) safely
+const notifyClient = async (booking, event, socketData, pushPayload) => {
+    try {
+        const io = getIO();
+        if (booking.user) {
+            if (io) io.to(booking.user.toString()).emit(event, socketData);
+            if (pushPayload) {
+                const user = await User.findById(booking.user);
+                if (user && user.fcmToken) sendPushNotification(user.fcmToken, pushPayload);
+            }
+        }
+        if (booking.agent) {
+            if (io) {
+                io.to(`agent_${booking.agent.toString()}`).emit(event, socketData);
+                io.to(booking.agent.toString()).emit(event, socketData);
+            }
+            if (pushPayload) {
+                const agent = await Agent.findById(booking.agent);
+                if (agent && agent.fcmToken) sendPushNotification(agent.fcmToken, pushPayload);
+            }
+        }
+    } catch (err) {
+        console.error("Client notification error:", err.message);
+    }
+};
+
+// Helper to payout Agent Commission on completion
+const payoutAgentCommission = async (booking) => {
+    if (booking.agent && !booking.agentCommissionPaid && booking.agentCommission > 0) {
+        try {
+            const agent = await Agent.findById(booking.agent);
+            if (agent) {
+                agent.walletBalance = (agent.walletBalance || 0) + booking.agentCommission;
+                agent.totalEarnings = (agent.totalEarnings || 0) + booking.agentCommission;
+                await agent.save();
+
+                booking.agentCommissionPaid = true;
+
+                await Transaction.create({
+                    user: agent._id, userModel: 'Agent', amount: booking.agentCommission,
+                    type: 'Credit', category: 'Commission', status: 'Completed',
+                    relatedBooking: booking._id,
+                    description: `Commission for Fixed Route Booking #${booking._id.toString().slice(-6).toUpperCase()}`
+                });
+
+                const admin = await Admin.findOne();
+                if (admin && admin.walletBalance >= booking.agentCommission) {
+                    admin.walletBalance -= booking.agentCommission;
+                    await admin.save();
+                    await Transaction.create({
+                        user: admin._id, userModel: 'Admin', amount: booking.agentCommission,
+                        type: 'Debit', category: 'Commission', status: 'Completed',
+                        relatedBooking: booking._id,
+                        description: `Paid Agent Commission for Fixed Booking #${booking._id.toString().slice(-6).toUpperCase()}`
+                    });
+                }
+            }
+        } catch (commErr) {
+            console.error("Error paying agent commission:", commErr.message);
+        }
+    }
+};
+
+// User or Agent books a fixed route
 exports.bookFixedRoute = async (req, res) => {
     try {
-        const { routeId, pickupDate, pickupTime, paymentMethod } = req.body;
-        const userId = req.user.id; // Assuming user auth middleware sets req.user
+        const { routeId, pickupDate, pickupTime, paymentMethod, customerName, customerPhone } = req.body;
+        const callerId = req.user.id;
+        const isAgent = req.user.role === 'agent';
 
         const route = await FixedRoute.findById(routeId);
         if (!route) return res.status(404).json({ success: false, message: "Route not found" });
         if (!route.isActive) return res.status(400).json({ success: false, message: "This route is currently inactive" });
 
+        let calculatedAgentCommission = 0;
+        if (isAgent) {
+            const agent = await Agent.findById(callerId);
+            const commPct = (agent && agent.commissionPercentage !== undefined) ? agent.commissionPercentage : 10;
+            // Calculate agent commission on Admin Profit / Commission:
+            calculatedAgentCommission = Math.round((route.adminCommission || 0) * (commPct / 100));
+        }
+
         const newBooking = new FixedBooking({
-            user: userId,
+            user: isAgent ? null : callerId,
+            agent: isAgent ? callerId : null,
+            bookedByModel: isAgent ? 'Agent' : 'User',
+            customerName: isAgent ? (customerName || '') : '',
+            customerPhone: isAgent ? (customerPhone || '') : '',
+            agentCommission: calculatedAgentCommission,
             fixedRoute: route._id,
             pickupLocation: route.pickupLocation,
             pickupLat: route.pickupLat,
@@ -58,6 +136,7 @@ exports.bookFixedRoute = async (req, res) => {
                 // Populate required fields for marketplace view before emitting
                 const populatedBooking = await FixedBooking.findById(newBooking._id)
                     .populate('user', 'name phone')
+                    .populate('agent', 'name phone')
                     .populate('carCategory', 'name icon');
                 io.emit('newFixedBookingMarketplace', { booking: populatedBooking });
             }
@@ -96,19 +175,22 @@ exports.bookFixedRoute = async (req, res) => {
     }
 };
 
-// Get User's own fixed bookings
+// Get User's or Agent's own fixed bookings
 exports.getMyFixedBookings = async (req, res) => {
     try {
-        const userId = req.user.id;
-        const bookings = await FixedBooking.find({ user: userId })
+        const callerId = req.user.id;
+        const isAgent = req.user.role === 'agent';
+        const query = isAgent ? { agent: callerId } : { user: callerId };
+
+        const bookings = await FixedBooking.find(query)
             .populate('fixedRoute')
-            .populate('assignedDriver', 'name phone profilePicture')
-            .populate('carCategory', 'name')
+            .populate('assignedDriver', 'name phone image carDetails')
+            .populate('carCategory', 'name icon')
             .sort({ createdAt: -1 });
             
         res.status(200).json({ success: true, bookings });
     } catch (error) {
-        console.error("Error fetching user's fixed bookings:", error);
+        console.error("Error fetching user's/agent's fixed bookings:", error);
         res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
@@ -118,6 +200,7 @@ exports.getAdminMarketplaceBookings = async (req, res) => {
     try {
         const bookings = await FixedBooking.find({ status: 'Marketplace' })
             .populate('user', 'name phone')
+            .populate('agent', 'name phone email businessName')
             .populate('carCategory', 'name icon');
         res.status(200).json({ success: true, bookings });
     } catch (error) {
@@ -131,6 +214,7 @@ exports.getAllAdminFixedBookings = async (req, res) => {
     try {
         const bookings = await FixedBooking.find({})
             .populate('user', 'name phone email')
+            .populate('agent', 'name phone email businessName')
             .populate('assignedDriver', 'name phone')
             .populate('carCategory', 'name icon')
             .sort({ createdAt: -1 });
@@ -153,7 +237,10 @@ exports.getDriverMarketplaceBookings = async (req, res) => {
         const bookings = await FixedBooking.find({ 
             status: 'Marketplace',
             carCategory: driver.carDetails.carType
-        }).populate('user', 'name phone').populate('carCategory', 'name icon');
+        })
+        .populate('user', 'name phone')
+        .populate('agent', 'name phone email')
+        .populate('carCategory', 'name icon');
 
         res.status(200).json({ success: true, bookings });
     } catch (error) {
@@ -170,7 +257,11 @@ exports.getDriverAcceptedBookings = async (req, res) => {
         const bookings = await FixedBooking.find({ 
             assignedDriver: driverId,
             status: { $in: ['Accepted', 'Started', 'Completed', 'Cancelled'] }
-        }).populate('user', 'name phone').populate('carCategory', 'name icon').sort({ acceptedAt: -1 });
+        })
+        .populate('user', 'name phone')
+        .populate('agent', 'name phone email')
+        .populate('carCategory', 'name icon')
+        .sort({ acceptedAt: -1 });
 
         res.status(200).json({ success: true, bookings });
     } catch (error) {
@@ -233,29 +324,18 @@ exports.acceptBookingDriver = async (req, res) => {
         booking.acceptedAt = new Date();
         await booking.save();
 
-        // Socket and FCM to User
+        // Socket and FCM to User or Agent
         try {
             const io = getIO();
             if (io) {
-                // Remove from marketplace for everyone
                 io.emit('removeFixedBookingMarketplace', { bookingId: booking._id });
-                // Notify user
-                io.to(booking.user.toString()).emit('booking_update', { bookingId: booking._id });
-                io.to(booking.user.toString()).emit('fixedBookingAccepted', { bookingId: booking._id });
             }
-
-            const user = await User.findById(booking.user);
-            console.log(`[FCM-DEBUG-FIXED] User fetched: ${user?.name}, Token: ${user?.fcmToken}`);
-            if (user && user.fcmToken) {
-                const fcmRes = await sendPushNotification(user.fcmToken, {
-                    title: "Ride Accepted! 🚖",
-                    body: `${driver.name} is arriving to pick you up.`,
-                    data: { bookingId: booking._id.toString(), type: "FIXED_BOOKING_ACCEPTED" }
-                });
-                console.log(`[FCM-DEBUG-FIXED] Push sent to user. Response:`, fcmRes);
-            } else {
-                console.log(`[FCM-DEBUG-FIXED] No FCM Token for User ID ${booking.user}`);
-            }
+            await notifyClient(booking, 'fixedBookingAccepted', { bookingId: booking._id }, {
+                title: "Ride Accepted! 🚖",
+                body: `${driver.name} is arriving to pick you up.`,
+                data: { bookingId: booking._id.toString(), type: "FIXED_BOOKING_ACCEPTED" }
+            });
+            await notifyClient(booking, 'booking_update', { bookingId: booking._id });
         } catch (err) {
             console.error("Error sending accept notifications:", err);
         }
@@ -323,7 +403,9 @@ exports.cancelBookingUser = async (req, res) => {
 
         const booking = await FixedBooking.findById(id);
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
-        if (booking.user.toString() !== userId.toString()) {
+        const isOwner = (booking.user && booking.user.toString() === userId.toString()) ||
+                        (booking.agent && booking.agent.toString() === userId.toString());
+        if (!isOwner) {
             return res.status(403).json({ success: false, message: "Not your booking" });
         }
         if (['Completed', 'Cancelled'].includes(booking.status)) {
@@ -503,6 +585,9 @@ exports.verifyOnlinePayment = async (req, res) => {
             });
         }
 
+        // Payout Agent Commission if online payment completed
+        await payoutAgentCommission(booking);
+
         // Emit WebSocket Event
         try {
             const io = getIO();
@@ -550,24 +635,12 @@ exports.startBookingDriver = async (req, res) => {
         booking.startedAt = new Date();
         await booking.save();
 
-        try {
-            const io = getIO();
-            if (io) {
-                io.to(booking.user.toString()).emit('booking_update', { bookingId: booking._id });
-                io.to(booking.user.toString()).emit('fixedBookingStarted', { bookingId: booking._id });
-            }
-
-            const user = await User.findById(booking.user);
-            if (user && user.fcmToken) {
-                sendPushNotification(user.fcmToken, {
-                    title: "Ride Started! 🚖",
-                    body: "Your package ride has successfully started.",
-                    data: { bookingId: booking._id.toString(), type: "FIXED_BOOKING_STARTED" }
-                });
-            }
-        } catch (err) {
-            console.error("Error sending start notifications:", err);
-        }
+        await notifyClient(booking, 'fixedBookingStarted', { bookingId: booking._id }, {
+            title: "Ride Started! 🚖",
+            body: "Your package ride has successfully started.",
+            data: { bookingId: booking._id.toString(), type: "FIXED_BOOKING_STARTED" }
+        });
+        await notifyClient(booking, 'booking_update', { bookingId: booking._id });
 
         res.status(200).json({ success: true, message: "Booking started successfully", booking });
     } catch (error) {
@@ -638,33 +711,25 @@ exports.completeBookingDriver = async (req, res) => {
             booking.finalPrice = booking.totalWithTax;
         }
 
+        if (booking.paymentMethod === 'Cash') {
+            booking.paymentStatus = 'Completed';
+        }
+        if (booking.paymentMethod === 'Cash' || booking.paymentStatus === 'Completed') {
+            await payoutAgentCommission(booking);
+        }
 
         await booking.save();
 
-        // Socket and FCM to User
-        try {
-            const io = getIO();
-            if (io) {
-                // Notify user to refresh UI (e.g. show Pay Now button)
-                io.to(booking.user.toString()).emit('booking_update', { bookingId: booking._id });
-                io.to(booking.user.toString()).emit('fixedBookingCompleted', { 
-                    bookingId: booking._id,
-                    price: booking.finalPrice,
-                    paymentMethod: booking.paymentMethod
-                });
-            }
-
-            const user = await User.findById(booking.user);
-            if (user && user.fcmToken) {
-                sendPushNotification(user.fcmToken, {
-                    title: "Ride Completed! 🎉",
-                    body: "Your package ride has been completed. Please proceed with payment if applicable.",
-                    data: { bookingId: booking._id.toString(), type: "FIXED_BOOKING_COMPLETED" }
-                });
-            }
-        } catch (err) {
-            console.error("Error sending complete notifications:", err);
-        }
+        await notifyClient(booking, 'fixedBookingCompleted', { 
+            bookingId: booking._id,
+            price: booking.finalPrice,
+            paymentMethod: booking.paymentMethod
+        }, {
+            title: "Ride Completed! 🎉",
+            body: "Your package ride has been completed. Please proceed with payment if applicable.",
+            data: { bookingId: booking._id.toString(), type: "FIXED_BOOKING_COMPLETED" }
+        });
+        await notifyClient(booking, 'booking_update', { bookingId: booking._id });
 
         res.status(200).json({ success: true, message: "Booking marked as completed", booking });
     } catch (error) {
@@ -688,6 +753,10 @@ exports.confirmCashDriver = async (req, res) => {
         }
         
         booking.paymentStatus = 'Completed';
+
+        // Payout Agent Commission on cash completion
+        await payoutAgentCommission(booking);
+
         await booking.save();
 
         res.status(200).json({ success: true, message: "Cash collection confirmed", booking });
@@ -752,28 +821,22 @@ exports.acceptBookingAdmin = async (req, res) => {
         booking.acceptedAt = new Date();
         await booking.save();
 
-        // Socket and FCM to User
+        // Socket and FCM to User or Agent
         try {
             const io = getIO();
             if (io) {
-                // Remove from marketplace for everyone
                 io.emit('removeFixedBookingMarketplace', { bookingId: booking._id });
-                // Notify user
-                io.to(booking.user.toString()).emit('booking_update', { bookingId: booking._id });
-                io.to(booking.user.toString()).emit('fixedBookingAccepted', { bookingId: booking._id });
             }
 
             if (driverId) {
-                const user = await User.findById(booking.user);
                 const driver = await Driver.findById(driverId);
-                if (user && user.fcmToken && driver) {
-                    sendPushNotification(user.fcmToken, {
-                        title: "Ride Assigned! 🚖",
-                        body: `${driver.name} has been assigned to your package ride.`,
-                        data: { bookingId: booking._id.toString(), type: "FIXED_BOOKING_ACCEPTED" }
-                    });
-                }
+                await notifyClient(booking, 'fixedBookingAccepted', { bookingId: booking._id }, {
+                    title: "Ride Assigned! 🚖",
+                    body: `${driver ? driver.name : 'Driver'} has been assigned to your package ride.`,
+                    data: { bookingId: booking._id.toString(), type: "FIXED_BOOKING_ACCEPTED" }
+                });
             }
+            await notifyClient(booking, 'booking_update', { bookingId: booking._id });
         } catch (err) {
             console.error("Error sending accept admin notifications:", err);
         }
@@ -799,23 +862,14 @@ exports.deleteBookingAdmin = async (req, res) => {
         try {
             const io = getIO();
             if (io) {
-                // 1. Remove from Driver & Admin Marketplace
                 io.emit('removeFixedBookingMarketplace', { bookingId: booking._id });
-                
-                // 2. Notify the User via WebSocket
-                io.to(booking.user.toString()).emit('fixedBookingCancelled', { bookingId: booking._id });
-                io.to(booking.user.toString()).emit('booking_update', { bookingId: booking._id });
             }
-
-            // 3. Notify the User via FCM Push Notification
-            const user = await User.findById(booking.user);
-            if (user && user.fcmToken) {
-                await sendPushNotification(user.fcmToken, {
-                    title: "Ride Cancelled ❌",
-                    body: "Your package ride request was cancelled by the administrator.",
-                    data: { bookingId: booking._id.toString(), type: "FIXED_BOOKING_CANCELLED" }
-                });
-            }
+            await notifyClient(booking, 'fixedBookingCancelled', { bookingId: booking._id }, {
+                title: "Ride Cancelled ❌",
+                body: "Your package ride request was cancelled by the administrator.",
+                data: { bookingId: booking._id.toString(), type: "FIXED_BOOKING_CANCELLED" }
+            });
+            await notifyClient(booking, 'booking_update', { bookingId: booking._id });
         } catch (notifyErr) {
             console.error("Error sending delete notifications from admin:", notifyErr);
         }
@@ -852,5 +906,41 @@ exports.downloadReceipt = async (req, res) => {
     } catch (error) {
         console.error("Error downloading fixed booking receipt:", error);
         res.status(500).json({ success: false, message: "Server error generating receipt", error: error.message });
+    }
+};
+
+
+// -----------------------------------------------------------------
+// Fleet Admin: Get all Fixed Bookings of their registered Drivers
+// -----------------------------------------------------------------
+exports.getFleetFixedBookings = async (req, res) => {
+    try {
+        const fleetId = req.user.id;
+
+        // Step 1: Find all Drivers created by this Fleet (after admin approval)
+        const fleetDrivers = await Driver.find({ createdBy: fleetId, createdByModel: 'Fleet' }).select('_id');
+        const driverIds = fleetDrivers.map(d => d._id);
+
+        if (driverIds.length === 0) {
+            return res.status(200).json({ success: true, bookings: [], total: 0 });
+        }
+
+        // Step 2: Find all Fixed Bookings assigned to these drivers
+        const { status } = req.query;
+        const query = { assignedDriver: { $in: driverIds } };
+        if (status && status !== 'all') {
+            query.status = status;
+        }
+
+        const bookings = await FixedBooking.find(query)
+            .populate('user', 'name phone email')
+            .populate('assignedDriver', 'name phone')
+            .populate('carCategory', 'name icon')
+            .sort({ createdAt: -1 });
+
+        res.status(200).json({ success: true, bookings, total: bookings.length });
+    } catch (error) {
+        console.error('Error fetching fleet fixed bookings:', error);
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };

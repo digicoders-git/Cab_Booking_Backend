@@ -4,7 +4,34 @@ const fixedBookingSchema = new mongoose.Schema({
     user: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        required: false,
+        default: null
+    },
+    agent: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Agent',
+        default: null
+    },
+    bookedByModel: {
+        type: String,
+        enum: ['User', 'Agent'],
+        default: 'User'
+    },
+    customerName: {
+        type: String,
+        default: ''
+    },
+    customerPhone: {
+        type: String,
+        default: ''
+    },
+    agentCommission: {
+        type: Number,
+        default: 0
+    },
+    agentCommissionPaid: {
+        type: Boolean,
+        default: false
     },
     fixedRoute: {
         type: mongoose.Schema.Types.ObjectId,

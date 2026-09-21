@@ -1155,7 +1155,17 @@ exports.endBulkBooking = async (req, res) => {
                 const agent = await Agent.findById(booking.createdBy);
                 if (agent) {
                     const commissionPercent = agent.bulkCommissionPercentage || 5;
-                    const commissionAmount = Math.round(booking.offeredPrice * (commissionPercent / 100));
+
+                    // Calculate from Admin Company Profit instead of total booking price
+                    let adminPercentage = 10;
+                    const adminDoc = await Admin.findOne({ role: 'SuperAdmin' }) || await Admin.findOne();
+                    if (adminDoc) adminPercentage = adminDoc.defaultCommission || 10;
+                    if (booking.assignedFleet) {
+                        const fleet = await Fleet.findById(booking.assignedFleet);
+                        if (fleet && fleet.commissionPercentage !== undefined) adminPercentage = fleet.commissionPercentage;
+                    }
+                    const totalCompanyProfit = Math.round((booking.offeredPrice || 0) * (adminPercentage / 100));
+                    const commissionAmount = Math.round(totalCompanyProfit * (commissionPercent / 100));
 
                     agent.walletBalance += commissionAmount;
                     agent.totalEarnings += commissionAmount;
@@ -1167,7 +1177,7 @@ exports.endBulkBooking = async (req, res) => {
                     await Transaction.create({
                         user: agent._id, userModel: 'Agent', amount: commissionAmount,
                         type: 'Credit', category: 'Commission', status: 'Completed',
-                        relatedBooking: booking._id, description: `Bulk deal commission (${commissionPercent}%)`
+                        relatedBooking: booking._id, description: `Bulk deal commission (${commissionPercent}% of Company Profit)`
                     });
 
                     // Deduct from Admin or Fleet
@@ -1380,8 +1390,17 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
                     const agent = await Agent.findById(booking.createdBy);
                     if (agent) {
                         const commissionPercent = agent.bulkCommissionPercentage || 5;
-                        const totalDealPrice = booking.offeredPrice || 0;
-                        const commissionAmount = Math.round(totalDealPrice * (commissionPercent / 100));
+
+                        // Calculate from Admin Company Profit instead of total booking price
+                        let adminPercentage = 10;
+                        const adminDoc = await Admin.findOne({ role: 'SuperAdmin' }) || await Admin.findOne();
+                        if (adminDoc) adminPercentage = adminDoc.defaultCommission || 10;
+                        if (booking.assignedFleet) {
+                            const fleet = await Fleet.findById(booking.assignedFleet);
+                            if (fleet && fleet.commissionPercentage !== undefined) adminPercentage = fleet.commissionPercentage;
+                        }
+                        const totalCompanyProfit = Math.round((booking.offeredPrice || 0) * (adminPercentage / 100));
+                        const commissionAmount = Math.round(totalCompanyProfit * (commissionPercent / 100));
 
                         if (commissionAmount > 0) {
                             agent.walletBalance += commissionAmount;
@@ -1394,7 +1413,7 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
                             await Transaction.create({
                                 user: agent._id, userModel: 'Agent', amount: commissionAmount,
                                 type: 'Credit', category: 'Commission', status: 'Completed',
-                                relatedBooking: booking._id, description: `Bulk deal commission (${commissionPercent}%)`
+                                relatedBooking: booking._id, description: `Bulk deal commission (${commissionPercent}% of Company Profit)`
                             });
                         }
                     }
@@ -1590,7 +1609,17 @@ exports.verifyBulkPayment = async (req, res) => {
                 const agent = await Agent.findById(booking.createdBy);
                 if (agent) {
                     const commissionPercent = agent.bulkCommissionPercentage || 5;
-                    const commissionAmount = Math.round((booking.offeredPrice || 0) * (commissionPercent / 100));
+
+                    // Calculate from Admin Company Profit instead of total booking price
+                    let adminPercentage = 10;
+                    const adminDoc = await Admin.findOne({ role: 'SuperAdmin' }) || await Admin.findOne();
+                    if (adminDoc) adminPercentage = adminDoc.defaultCommission || 10;
+                    if (booking.assignedFleet) {
+                        const fleet = await Fleet.findById(booking.assignedFleet);
+                        if (fleet && fleet.commissionPercentage !== undefined) adminPercentage = fleet.commissionPercentage;
+                    }
+                    const totalCompanyProfit = Math.round((booking.offeredPrice || 0) * (adminPercentage / 100));
+                    const commissionAmount = Math.round(totalCompanyProfit * (commissionPercent / 100));
 
                     if (commissionAmount > 0) {
                         agent.walletBalance += commissionAmount;
@@ -1603,7 +1632,7 @@ exports.verifyBulkPayment = async (req, res) => {
                         await Transaction.create({
                             user: agent._id, userModel: 'Agent', amount: commissionAmount,
                             type: 'Credit', category: 'Commission', status: 'Completed',
-                            relatedBooking: booking._id, description: `Bulk deal commission (Final Online)`
+                            relatedBooking: booking._id, description: `Bulk deal commission (${commissionPercent}% of Company Profit)`
                         });
                     }
                 }
