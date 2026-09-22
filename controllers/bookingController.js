@@ -222,6 +222,10 @@ exports.getAllFareEstimates = async (req, res) => {
         // Normalize rideType to handle lowercase/uppercase (shaired, SHARED, etc.)
         const normalizedRideType = rideType ? rideType.toLowerCase() : null;
 
+        // --- NEW: First Ride Discount Status ---
+        const firstRideHelper = require("../utils/firstRideHelper");
+        const firstRideStatus = await firstRideHelper.getFirstRideStatus(req.user ? req.user.id : null);
+
         const options = await Promise.all(categories.map(async (category) => {
             // 🚀 GEO-SPATIAL PRICING: Match by coordinates
             const areaRates = await getAreaSpecificRates(
@@ -328,7 +332,26 @@ exports.getAllFareEstimates = async (req, res) => {
                 taxBreakdown: taxResult.taxBreakdown || [] // Added tax breakdown
             };
 
+            // --- NEW: First Ride Welcome Discount Info (For Frontend Display) ---
+            let pDiscount = 0;
+            let sDiscount = 0;
+            
+            if (firstRideStatus && firstRideStatus.isEligible && firstRideStatus.enabled) {
+                if (firstRideStatus.discountType === "PERCENTAGE") {
+                    pDiscount = Math.min((privateFare * firstRideStatus.discountAmount) / 100, firstRideStatus.maxDiscount);
+                    sDiscount = Math.min((sharedFare * firstRideStatus.discountAmount) / 100, firstRideStatus.maxDiscount);
+                } else {
+                    pDiscount = firstRideStatus.discountAmount;
+                    sDiscount = firstRideStatus.discountAmount;
+                }
+                
+                cabOption.appliedDiscountAmount = Math.round(pDiscount); // Tells frontend how much they WILL save
+                cabOption.appliedSharedDiscountAmount = Math.round(sDiscount);
+            }
+
             // Only show the specific fare user asked for
+            // We DO NOT subtract the discount here, so we don't break existing frontends (like Website) 
+            // that manually apply the discount in their UI.
             if (normalizedRideType === "private") {
                 cabOption.fare = Math.round(privateFare);
                 cabOption.rideType = "Private";

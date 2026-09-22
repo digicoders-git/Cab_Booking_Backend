@@ -18,14 +18,14 @@ const {
     downloadReceipt
 } = require("../controllers/bookingController");
 
-const { auth, adminOnly, agentOnly } = require("../middleware/auth");
+const { auth, optionalAuth, adminOnly, agentOnly } = require("../middleware/auth");
 const { checkPermission } = require("../middleware/rbac");
 
 // 1. Get Fare Estimate (Single Choice)
 router.post("/estimate-fare", estimateFare); 
 
 // 1b. Search Cabs (Get all category options with fares)
-router.post("/search-cabs", getAllFareEstimates); 
+router.post("/search-cabs", optionalAuth, getAllFareEstimates); 
 
 // 2. Create a new Booking (User/Agent)
 // Requires Auth since we need to track who made the booking
