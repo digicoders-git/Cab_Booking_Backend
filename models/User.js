@@ -63,6 +63,10 @@ const userSchema = new mongoose.Schema({
     longitude: { type: Number, default: null },
     address: { type: String, default: null },
     recordedAt: { type: Date, default: null }
+  },
+  hasUsedFirstRideDiscount: {
+    type: Boolean,
+    default: false
   }
 }, { timestamps: true });
 

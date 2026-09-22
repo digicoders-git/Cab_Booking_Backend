@@ -169,12 +169,23 @@ exports.createBulkBooking = async (req, res) => {
             }
         }
 
-        const advanceAmount = Math.round(offeredPrice * (advancePct / 100));
+        // --- NEW: First Ride Welcome Discount (Automatic for 1st Time Users) ---
+        let firstRideDiscount = 0;
+        let finalOfferedPrice = offeredPrice;
+        if (creatorModel === 'User') {
+            const firstRideHelper = require('../utils/firstRideHelper');
+            firstRideDiscount = await firstRideHelper.checkAndCalculateFirstRideDiscount(req.user.id, finalOfferedPrice);
+            if (firstRideDiscount > 0) {
+                finalOfferedPrice = Math.max(0, finalOfferedPrice - firstRideDiscount);
+            }
+        }
+
+        const advanceAmount = Math.round(finalOfferedPrice * (advancePct / 100));
         
         // Calculate GST
-        const cgst = Math.round(offeredPrice * 0.025);
-        const sgst = Math.round(offeredPrice * 0.025);
-        const totalPriceWithTax = offeredPrice + cgst + sgst;
+        const cgst = Math.round(finalOfferedPrice * 0.025);
+        const sgst = Math.round(finalOfferedPrice * 0.025);
+        const totalPriceWithTax = finalOfferedPrice + cgst + sgst;
 
         // Create Booking DB Record (Initially PendingPayment)
         const newBooking = await BulkBooking.create({
@@ -185,7 +196,8 @@ exports.createBulkBooking = async (req, res) => {
             returnDateTime: tripType === 'RoundTrip' ? returnDateTime : null,
             numberOfDays: numberOfDays || 1,
             totalDistance: totalDistance || 0,
-            carsRequired, systemEstimatedPrice, offeredPrice, priceModifiedPercentage, notes,
+            carsRequired, systemEstimatedPrice, offeredPrice: finalOfferedPrice, priceModifiedPercentage, notes,
+            firstRideDiscount,
             cgst, sgst, totalPriceWithTax,
             status: 'PendingPayment',
             advancePayment: { amount: advanceAmount, isPaid: false },
@@ -197,6 +209,10 @@ exports.createBulkBooking = async (req, res) => {
             customerPhone: customerPhone || null,
             startOtp: Math.floor(1000 + Math.random() * 9000).toString()
         });
+
+        if (firstRideDiscount > 0 && creatorModel === 'User') {
+            await require('../models/User').findByIdAndUpdate(req.user.id, { hasUsedFirstRideDiscount: true });
+        }
 
         // --- BYPASS LOGIC: Wallet Deduction instead of Bank Gateway ---
         if (!payViaBank) {
@@ -306,6 +322,7 @@ exports.createBulkBooking = async (req, res) => {
                     message: "Bulk request created & published directly to Marketplace (Wallet Deduction).",
                     bookingId: newBooking._id,
                     advanceAmount: advanceAmount,
+                    firstRideDiscount: firstRideDiscount,
                     walletDeducted: true
                 };
 
@@ -348,6 +365,7 @@ exports.createBulkBooking = async (req, res) => {
             message: "Bulk request created. Redirecting to payment...",
             bookingId: newBooking._id,
             advanceAmount: advanceAmount,
+            firstRideDiscount: firstRideDiscount,
             paymentLinks: sessionResponse.payment_links || sessionResponse
         };
 
@@ -1042,6 +1060,12 @@ exports.cancelBulkBooking = async (req, res) => {
         booking.status = 'Cancelled';
         await booking.save();
 
+        // Restore first ride discount eligibility if bulk ride cancelled
+        if (booking.createdByModel === 'User' && booking.createdBy) {
+            const firstRideHelper = require("../utils/firstRideHelper");
+            await firstRideHelper.restoreFirstRideDiscountIfNeeded(booking.createdBy);
+        }
+
         // Socket notify
         try {
             getIO().emit("remove_bulk_deal", { bookingId: booking._id });
@@ -1148,6 +1172,10 @@ exports.endBulkBooking = async (req, res) => {
         }
 
         booking.status = "Completed";
+
+        if (booking.createdByModel === 'User' && booking.createdBy) {
+            await require('../models/User').findByIdAndUpdate(booking.createdBy, { hasUsedFirstRideDiscount: true });
+        }
 
         // 💰 AGENT COMMISSION LOGIC
         if (booking.createdByModel === 'Agent') {
@@ -1373,6 +1401,10 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
         if (isLastDriver) {
             booking.status = 'Completed';
 
+            if (booking.createdByModel === 'User' && booking.createdBy) {
+                await require('../models/User').findByIdAndUpdate(booking.createdBy, { hasUsedFirstRideDiscount: true });
+            }
+
             // Record final payment info (Cash case)
             booking.finalPayment = {
                 amount: remainingBalance,
@@ -1564,6 +1596,9 @@ exports.verifyBulkPayment = async (req, res) => {
         const remainingBalance = displayPrice - (booking.advancePayment?.amount || 0);
 
         booking.status = 'Completed';
+        if (booking.createdByModel === 'User' && booking.createdBy) {
+            await require('../models/User').findByIdAndUpdate(booking.createdBy, { hasUsedFirstRideDiscount: true });
+        }
         // Mark any remaining Ongoing assignments as Completed
         if (booking.assignedDrivers && booking.assignedDrivers.length > 0) {
             booking.assignedDrivers.forEach(d => {

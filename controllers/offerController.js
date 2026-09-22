@@ -3,7 +3,7 @@ const Offer = require("../models/Offer");
 // 1. Create Offer (Admin Only)
 exports.createOffer = async (req, res) => {
     try {
-        const { code, discountAmount, discountType, maxDiscountAmount, bookingType, validTill, isActive } = req.body;
+        const { code, discountAmount, discountType, maxDiscountAmount, bookingType, validTill, isActive, orderIndex } = req.body;
 
         // Check if code already exists
         const existingOffer = await Offer.findOne({ code: code.toUpperCase() });
@@ -18,7 +18,8 @@ exports.createOffer = async (req, res) => {
             maxDiscountAmount: maxDiscountAmount || null,
             bookingType,
             validTill,
-            isActive
+            isActive,
+            orderIndex: orderIndex !== undefined && orderIndex !== '' ? Number(orderIndex) : 0
         });
 
         await newOffer.save();
@@ -31,7 +32,7 @@ exports.createOffer = async (req, res) => {
 // 2. Get All Offers (Admin Only)
 exports.getAllOffers = async (req, res) => {
     try {
-        const offers = await Offer.find().sort({ createdAt: -1 });
+        const offers = await Offer.find().sort({ orderIndex: 1, createdAt: -1 });
         res.status(200).json({ success: true, offers });
     } catch (error) {
         res.status(500).json({ success: false, message: "Server Error", error: error.message });
@@ -51,6 +52,10 @@ exports.updateOffer = async (req, res) => {
             if (existingOffer) {
                 return res.status(400).json({ success: false, message: "Offer code already exists" });
             }
+        }
+
+        if (updates.orderIndex !== undefined && updates.orderIndex !== '') {
+            updates.orderIndex = Number(updates.orderIndex);
         }
 
         const updatedOffer = await Offer.findByIdAndUpdate(id, updates, { new: true });
@@ -129,7 +134,7 @@ exports.getActiveOffers = async (req, res) => {
         const activeOffers = await Offer.find({
             isActive: true,
             validTill: { $gte: currentDate }
-        }).sort({ createdAt: -1 }).select("-__v -createdAt -updatedAt");
+        }).sort({ orderIndex: 1, createdAt: -1 }).select("-__v -createdAt -updatedAt");
 
         res.status(200).json({ success: true, offers: activeOffers });
     } catch (error) {

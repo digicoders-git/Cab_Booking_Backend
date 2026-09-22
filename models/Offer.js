@@ -34,6 +34,10 @@ const offerSchema = new mongoose.Schema({
   maxDiscountAmount: {
     type: Number,
     default: null
+  },
+  orderIndex: {
+    type: Number,
+    default: 0
   }
 }, { timestamps: true });
 

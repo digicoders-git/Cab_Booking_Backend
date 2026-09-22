@@ -64,9 +64,12 @@ const fixedRouteSchema = new mongoose.Schema({
         default: 0
     },
     isActive: {
-
         type: Boolean,
         default: true
+    },
+    orderIndex: {
+        type: Number,
+        default: 0
     }
 }, { timestamps: true });
 

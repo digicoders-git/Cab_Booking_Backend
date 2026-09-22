@@ -117,6 +117,10 @@ const bulkBookingSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    firstRideDiscount: {
+        type: Number,
+        default: 0
+    },
 
     // 🏢 Assignment
     assignedFleet: {

@@ -470,6 +470,7 @@ exports.createBooking = async (req, res) => {
         fareEstimate = fareEstimate * 1.05;
 
         fareEstimate = Math.round(fareEstimate);
+        const originalGrossFare = fareEstimate; // 🚀 Gross Fare before any promo/welcome discounts
 
         // --- NEW: Offer/Promo Code Logic ---
         let discountAmount = 0;
@@ -500,6 +501,16 @@ exports.createBooking = async (req, res) => {
             fareEstimate = Math.max(0, fareEstimate - discountAmount); // Ensure it doesn't go below 0
         }
 
+        // --- NEW: First Ride Welcome Discount (Automatic for 1st Time Users) ---
+        let firstRideDiscount = 0;
+        if (req.user && req.user.role === "user") {
+            const firstRideHelper = require("../utils/firstRideHelper");
+            firstRideDiscount = await firstRideHelper.checkAndCalculateFirstRideDiscount(req.user.id, fareEstimate);
+            if (firstRideDiscount > 0) {
+                fareEstimate = Math.max(0, fareEstimate - firstRideDiscount);
+            }
+        }
+
         // Security code for trip start (OTP)
         const startOtp = Math.floor(1000 + Math.random() * 9000).toString(); // e.g. "4592"
 
@@ -517,9 +528,11 @@ exports.createBooking = async (req, res) => {
             pickupTime: pickupTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             selectedSeats: selectedSeats || [], // Track chosen spots
             stops: stops || [], // NEW: Multi-stop support
+            originalFare: originalGrossFare,
             fareEstimate,
             appliedOffer: appliedOfferId,
             discountAmount: discountAmount,
+            firstRideDiscount: firstRideDiscount,
             tripData: { startOtp }
         };
 
@@ -566,6 +579,11 @@ exports.createBooking = async (req, res) => {
 
         const newBooking = await Booking.create(bookingData);
 
+        // Mark first ride discount as used
+        if (firstRideDiscount > 0 && req.user && req.user.role === "user") {
+            await User.findByIdAndUpdate(req.user.id, { hasUsedFirstRideDiscount: true });
+        }
+
         // --- SEQUENTIAL MATCHING LOGIC (The Waterfall) ---
         const matchInterval = 16000; // 16 seconds (1s buffer for frontend timer sync)
         const maxTime = 240000;      // 4 minutes total wait time 
@@ -582,6 +600,12 @@ exports.createBooking = async (req, res) => {
                     checkBooking.bookingStatus = "Expired";
                     checkBooking.cancelReason = "No driver nearby accepted the request";
                     await checkBooking.save();
+
+                    // Restore first ride discount eligibility if ride expired
+                    if (checkBooking.user) {
+                        const firstRideHelper = require("../utils/firstRideHelper");
+                        await firstRideHelper.restoreFirstRideDiscountIfNeeded(checkBooking.user);
+                    }
 
                     // 📢 Emit Socket Event for Expiration
                     try {
@@ -676,6 +700,7 @@ exports.createBooking = async (req, res) => {
             message: "Booking created. We are connecting you to the nearest drivers one by one.",
             bookingId: newBooking._id,
             fareEstimate,
+            firstRideDiscount,
             startOtp
         });
 
@@ -827,6 +852,12 @@ exports.cancelBooking = async (req, res) => {
         // --------------------------------------------
 
         await booking.save();
+
+        // Restore first ride discount eligibility if ride was cancelled
+        if (booking.user) {
+            const firstRideHelper = require("../utils/firstRideHelper");
+            await firstRideHelper.restoreFirstRideDiscountIfNeeded(booking.user);
+        }
 
         // 🟢 FIX: Reset Driver Availability
         if (booking.assignedDriver) {

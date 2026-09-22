@@ -16,6 +16,23 @@ const appSettingSchema = new mongoose.Schema({
     driverReferralBonus: {
         type: Number,
         default: 0
+    },
+    enableFirstRideDiscount: {
+        type: Boolean,
+        default: true
+    },
+    firstRideDiscountType: {
+        type: String,
+        enum: ['FLAT', 'PERCENTAGE'],
+        default: 'FLAT'
+    },
+    firstRideDiscountAmount: {
+        type: Number,
+        default: 50
+    },
+    firstRideMaxDiscount: {
+        type: Number,
+        default: 100
     }
 }, {
     timestamps: true

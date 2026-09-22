@@ -6,7 +6,7 @@ const { sendPushNotification } = require("../utils/fcmNotification");
 // Create a new Fixed Route (Admin)
 exports.createRoute = async (req, res) => {
     try {
-        const { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour, distanceKm, maxDistanceKm, extraDistanceChargePerKm } = req.body;
+        const { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour, distanceKm, maxDistanceKm, extraDistanceChargePerKm, orderIndex } = req.body;
         
         const newRoute = new FixedRoute({
             pickupLocation,
@@ -24,7 +24,8 @@ exports.createRoute = async (req, res) => {
             extraTimeChargePerHour: extraTimeChargePerHour || 0,
             distanceKm: distanceKm || 0,
             maxDistanceKm: maxDistanceKm || 0,
-            extraDistanceChargePerKm: extraDistanceChargePerKm || 0
+            extraDistanceChargePerKm: extraDistanceChargePerKm || 0,
+            orderIndex: orderIndex !== undefined && orderIndex !== '' ? Number(orderIndex) : 0
         });
 
         await newRoute.save();
@@ -67,7 +68,7 @@ exports.createRoute = async (req, res) => {
 // Get all Fixed Routes (Admin)
 exports.getAllRoutes = async (req, res) => {
     try {
-        const routes = await FixedRoute.find().populate('carCategory', 'name icon');
+        const routes = await FixedRoute.find().populate('carCategory', 'name icon').sort({ orderIndex: 1, createdAt: -1 });
         res.status(200).json({ success: true, routes });
     } catch (error) {
         console.error("Error fetching fixed routes:", error);
@@ -78,7 +79,7 @@ exports.getAllRoutes = async (req, res) => {
 // Get active Fixed Routes (User)
 exports.getActiveRoutes = async (req, res) => {
     try {
-        const routes = await FixedRoute.find({ isActive: true }).populate('carCategory', 'name icon');
+        const routes = await FixedRoute.find({ isActive: true }).populate('carCategory', 'name icon').sort({ orderIndex: 1, createdAt: -1 });
         res.status(200).json({ success: true, routes });
     } catch (error) {
         console.error("Error fetching active fixed routes:", error);
@@ -89,11 +90,29 @@ exports.getActiveRoutes = async (req, res) => {
 // Update a Fixed Route (Admin)
 exports.updateRoute = async (req, res) => {
     try {
-        const { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour, distanceKm, maxDistanceKm, extraDistanceChargePerKm } = req.body;
+        const { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour, distanceKm, maxDistanceKm, extraDistanceChargePerKm, orderIndex } = req.body;
         
         const route = await FixedRoute.findByIdAndUpdate(
             req.params.id, 
-            { pickupLocation, pickupLat, pickupLng, dropLocation, dropLat, dropLng, carCategory, price, adminCommission, isActive, tripType, maxTimeHours, extraTimeChargePerHour, distanceKm, maxDistanceKm, extraDistanceChargePerKm },
+            { 
+                pickupLocation, 
+                pickupLat, 
+                pickupLng, 
+                dropLocation, 
+                dropLat, 
+                dropLng, 
+                carCategory, 
+                price, 
+                adminCommission, 
+                isActive, 
+                tripType, 
+                maxTimeHours, 
+                extraTimeChargePerHour, 
+                distanceKm, 
+                maxDistanceKm, 
+                extraDistanceChargePerKm,
+                orderIndex: orderIndex !== undefined && orderIndex !== '' ? Number(orderIndex) : 0
+            },
             { new: true }
         );
 

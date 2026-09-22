@@ -279,6 +279,9 @@ exports.autoMatchDriver = async (bookingId) => {
                 createdByModel: booking.user ? 'User' : 'Agent'
             });
 
+            const totalDiscount = (booking.discountAmount || 0) + (booking.firstRideDiscount || 0);
+            const fullFare = booking.originalFare || (booking.fareEstimate + totalDiscount);
+
             // 🎯 LIVE NOTIFICATION: Tell Driver about the New Request!
             try {
                 io.to(driver._id.toString()).emit("new_ride_request", {
@@ -291,10 +294,12 @@ exports.autoMatchDriver = async (bookingId) => {
                     stops: booking.stops || [],
                     distance: booking.estimatedDistanceKm,
                     rideType: booking.rideType,
-                    fare: booking.fareEstimate,
+                    fare: fullFare, // 🚀 Real Full Fare (e.g. ₹150)
+                    netFare: booking.fareEstimate, // Payable by Passenger
+                    subsidyAmount: totalDiscount, // Funded by Admin
                     expiresAt: Date.now() + 16000 // 🔥 Using immediate time for zero delay
                 });
-                console.log(`Driver ${driver.name} notified via Socket about New Request! 🟢`);
+                console.log(`Driver ${driver.name} notified via Socket about New Request! 🟢 Full Fare: ₹${fullFare}`);
             } catch (err) {
                 console.error("Socket error (autoMatchDriver):", err.message);
             }
@@ -302,7 +307,7 @@ exports.autoMatchDriver = async (bookingId) => {
             // 🎯 PUSH NOTIFICATION: If driver has a token, send a push!
             if (driver.fcmToken) {
                 console.log(`[TRIP-DEBUG] Attempting FCM to Driver: ${driver.name}. Token present.`);
-                let notificationBody = `${booking.estimatedDistanceKm} km | Pickup: ${booking.pickup.address.split(',')[0]}`;
+                let notificationBody = `${booking.estimatedDistanceKm} km | ₹${fullFare} | Pickup: ${booking.pickup.address.split(',')[0]}`;
 
                 // If Agent booked it, mention it in notification!
                 if (booking.agent) {
@@ -369,6 +374,11 @@ exports.getPendingRequests = async (req, res) => {
         const activeRequests = requests.filter(req => req.booking && req.booking.bookingStatus === "Pending").map(req => {
             const reqObj = req.toObject();
             reqObj.expiresAt = new Date(req.createdAt).getTime() + 16000;
+            if (reqObj.booking) {
+                const totalDiscount = (reqObj.booking.discountAmount || 0) + (reqObj.booking.firstRideDiscount || 0);
+                reqObj.booking.originalFare = reqObj.booking.originalFare || (reqObj.booking.fareEstimate + totalDiscount);
+                reqObj.booking.subsidyAmount = totalDiscount;
+            }
             return reqObj;
         });
 
@@ -818,13 +828,21 @@ exports.endTrip = async (req, res) => {
         booking.paymentStatus = "Completed";
         await booking.save();
 
+        // 🟢 Permanently mark First Ride Discount as used upon trip completion
+        if (booking.user) {
+            const User = require("../models/User");
+            await User.findByIdAndUpdate(booking.user, { hasUsedFirstRideDiscount: true });
+        }
+
         // 🚀 FCM Push to Driver & Rider for Completed Status
         try {
+            const totalDiscount = (booking.discountAmount || 0) + (booking.firstRideDiscount || 0);
+            const fullEarned = booking.actualFare + totalDiscount;
             const driverForFcm = await Driver.findById(driverId);
             if (driverForFcm && driverForFcm.fcmToken) {
                 await sendPushNotification(driverForFcm.fcmToken, {
                     title: "🏁 Trip Completed",
-                    body: `Trip ${booking._id.toString().slice(-6)} ended. ${booking.actualFare} INR earned.`,
+                    body: `Trip ${booking._id.toString().slice(-6)} ended. ₹${fullEarned} earned${totalDiscount > 0 ? ` (incl. ₹${totalDiscount} company subsidy)` : ''}.`,
                     data: { type: "TRIP_COMPLETED", bookingId: booking._id.toString() }
                 });
             }
@@ -1085,6 +1103,12 @@ exports.cancelTripByDriver = async (req, res) => {
         booking.cancelReason = reason || "Driver cancelled the trip";
         booking.cancelledBy = "Driver";
         await booking.save();
+
+        // Restore first ride discount eligibility if ride cancelled by driver
+        if (booking.user) {
+            const firstRideHelper = require("../utils/firstRideHelper");
+            await firstRideHelper.restoreFirstRideDiscountIfNeeded(booking.user);
+        }
 
         // 2. Reset Driver Availability
         if (booking.rideType === "Private") {
@@ -1521,8 +1545,10 @@ exports.processTripSettlement = async (booking, driver) => {
     try {
         const totalFare = booking.actualFare;
         const isCash = booking.paymentMethod === 'Cash';
+        const totalDiscount = (booking.discountAmount || 0) + (booking.firstRideDiscount || 0);
+        const fullRideFare = booking.originalFare || (totalFare + totalDiscount);
 
-        // 1. Calculate Initial Admin Commission (Company Profit)
+        // 1. Calculate Initial Admin Commission (Company Profit based on full ride value)
         let adminPercentage = 10;
         let admin = await Admin.findOne();
         if (admin) adminPercentage = admin.defaultCommission || 10;
@@ -1530,7 +1556,7 @@ exports.processTripSettlement = async (booking, driver) => {
             const fleet = await Fleet.findById(driver.createdBy);
             if (fleet && fleet.commissionPercentage !== undefined) adminPercentage = fleet.commissionPercentage;
         }
-        const rideFareForCommission = Math.max(0, totalFare - (booking.previousDues || 0));
+        const rideFareForCommission = Math.max(0, fullRideFare - (booking.previousDues || 0));
         const totalCompanyProfit = Math.round(rideFareForCommission * (adminPercentage / 100));
         let adminCut = totalCompanyProfit;
 
@@ -1576,7 +1602,7 @@ exports.processTripSettlement = async (booking, driver) => {
             });
         }
 
-        // 3. Vendor Commission Logic (Master Franchise Model)
+        // 3b. Vendor Commission Logic (Master Franchise Model)
         const uniqueVendorIds = new Set();
 
         // A. Driver's Creator
@@ -1631,7 +1657,46 @@ exports.processTripSettlement = async (booking, driver) => {
             }
         }
 
-        // 4. Driver/Fleet Profit
+        // 🚀 4. ADMIN PAYS OFFER SUBSIDY TO DRIVER / FLEET (Ola/Uber Subsidy Model)
+        if (totalDiscount > 0) {
+            // Deduct subsidy funding from Admin's wallet
+            if (admin) {
+                admin.walletBalance = (admin.walletBalance || 0) - totalDiscount;
+                await admin.save();
+                await Transaction.create({
+                    user: admin._id, userModel: 'Admin', amount: totalDiscount, type: 'Debit',
+                    category: 'Admin Adjustment', status: 'Completed', relatedBooking: booking._id,
+                    description: `Offer / Discount Subsidy funded for Trip #${booking._id.toString().slice(-6).toUpperCase()}`
+                });
+            }
+
+            // Always credit subsidy directly to Driver Wallet (so driver sees in Driver Panel)
+            driver.walletBalance = (driver.walletBalance || 0) + totalDiscount;
+            driver.totalEarnings = (driver.totalEarnings || 0) + totalDiscount;
+            await driver.save();
+            await Transaction.create({
+                user: driver._id, userModel: 'Driver', amount: totalDiscount, type: 'Credit',
+                category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
+                description: `Company Offer Subsidy for Trip #${booking._id.toString().slice(-6).toUpperCase()}`
+            });
+
+            // If driver belongs to a Fleet, also credit Fleet Wallet
+            if (driver.createdByModel === "Fleet" && driver.createdBy) {
+                const fleet = await Fleet.findById(driver.createdBy);
+                if (fleet) {
+                    fleet.walletBalance = (fleet.walletBalance || 0) + totalDiscount;
+                    fleet.totalEarnings = (fleet.totalEarnings || 0) + totalDiscount;
+                    await fleet.save();
+                    await Transaction.create({
+                        user: fleet._id, userModel: 'Fleet', amount: totalDiscount, type: 'Credit',
+                        category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
+                        description: `Company Offer Subsidy for Trip #${booking._id.toString().slice(-6).toUpperCase()}`
+                    });
+                }
+            }
+        }
+
+        // 5. Driver/Fleet Base Earnings & Commission Settlement
         let previousDues = booking.previousDues || 0;
         const commissionTotal = agentCut + adminCut;
         const driverProfit = totalFare - commissionTotal - previousDues;
@@ -1662,7 +1727,28 @@ exports.processTripSettlement = async (booking, driver) => {
             } catch(e) { console.error("Error recovering dues:", e.message); }
         }
 
-        if (driver.createdByModel === "Fleet") {
+        // Driver ALWAYS gets their wallet & transaction updated for this trip:
+        if (isCash) {
+            driver.walletBalance = (driver.walletBalance || 0) - driverDebtForCash;
+            driver.totalEarnings = (driver.totalEarnings || 0) + driverProfit; // Record earnings even if collected as cash
+            await Transaction.create({
+                user: driver._id, userModel: 'Driver', amount: driverDebtForCash, type: 'Debit',
+                category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                description: `Commission & Dues debt (Cash Trip #${booking._id.toString().slice(-6).toUpperCase()})`
+            });
+        } else {
+            driver.walletBalance = (driver.walletBalance || 0) + driverProfit;
+            driver.totalEarnings = (driver.totalEarnings || 0) + driverProfit;
+            await Transaction.create({
+                user: driver._id, userModel: 'Driver', amount: driverProfit, type: 'Credit',
+                category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
+                description: `Ride Earnings for Trip #${booking._id.toString().slice(-6).toUpperCase()}`
+            });
+        }
+        await driver.save();
+
+        // If driver belongs to a Fleet, Fleet also gets its accounting updated:
+        if (driver.createdByModel === "Fleet" && driver.createdBy) {
             const fleet = await Fleet.findById(driver.createdBy);
             if (fleet) {
                 if (isCash) {
@@ -1671,7 +1757,7 @@ exports.processTripSettlement = async (booking, driver) => {
                     await Transaction.create({
                         user: fleet._id, userModel: 'Fleet', amount: driverDebtForCash, type: 'Debit',
                         category: 'Commission', status: 'Completed', relatedBooking: booking._id,
-                        description: `Commission & Dues debt for Cash Trip ${booking._id}`
+                        description: `Commission & Dues debt for Fleet Driver ${driver.name} (Trip #${booking._id.toString().slice(-6).toUpperCase()})`
                     });
                 } else {
                     fleet.walletBalance += driverProfit;
@@ -1679,28 +1765,10 @@ exports.processTripSettlement = async (booking, driver) => {
                     await Transaction.create({
                         user: fleet._id, userModel: 'Fleet', amount: driverProfit, type: 'Credit',
                         category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
-                        description: `Earning from Fleet Driver ${driver.name}`
+                        description: `Ride Earnings from Fleet Driver ${driver.name} (Trip #${booking._id.toString().slice(-6).toUpperCase()})`
                     });
                 }
                 await fleet.save();
-            }
-        } else {
-            if (isCash) {
-                driver.walletBalance -= driverDebtForCash;
-                driver.totalEarnings += driverProfit; // Record earnings even if collected as cash
-                await Transaction.create({
-                    user: driver._id, userModel: 'Driver', amount: driverDebtForCash, type: 'Debit',
-                    category: 'Commission', status: 'Completed', relatedBooking: booking._id,
-                    description: `Commission & Dues debt (Cash Trip)`
-                });
-            } else {
-                driver.walletBalance += driverProfit;
-                driver.totalEarnings += driverProfit;
-                await Transaction.create({
-                    user: driver._id, userModel: 'Driver', amount: driverProfit, type: 'Credit',
-                    category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
-                    description: `Trip earnings`
-                });
             }
         }
 
@@ -1801,8 +1869,10 @@ exports.initiateTripCompletion = async (req, res) => {
 
                 newFare = Math.round(newFare);
 
-                if (booking.discountAmount && booking.discountAmount > 0) {
-                    newFare = Math.max(0, newFare - booking.discountAmount);
+                // Deduct both Promo Coupon and First Ride Welcome Discount
+                const totalDiscountToDeduct = (booking.discountAmount || 0) + (booking.firstRideDiscount || 0);
+                if (totalDiscountToDeduct > 0) {
+                    newFare = Math.max(0, newFare - totalDiscountToDeduct);
                 }
 
                 finalFareToCollect = newFare;

@@ -90,6 +90,10 @@ const bookingSchema = new mongoose.Schema({
     default: () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   },
 
+  originalFare: {
+    type: Number,
+    default: 0
+  },
   fareEstimate: {
     type: Number,
     required: true
@@ -104,6 +108,10 @@ const bookingSchema = new mongoose.Schema({
     default: null
   },
   discountAmount: {
+    type: Number,
+    default: 0
+  },
+  firstRideDiscount: {
     type: Number,
     default: 0
   },
