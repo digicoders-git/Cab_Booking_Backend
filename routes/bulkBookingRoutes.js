@@ -16,7 +16,7 @@ router.post("/create", auth, bulkBookingController.createBulkBooking);
 router.get("/my-bulk-rides", auth, fleetOnly, bulkBookingController.getMyBulkBookings);
 
 // 4.1. Assign Driver to Bulk Booking
-router.post("/assign-driver/:bookingId", auth, fleetOnly, bulkBookingController.assignDriversToBulk);
+router.post("/assign-driver/:bookingId", auth, fleetOrAdmin, bulkBookingController.assignDriversToBulk);
 
 // 5. View Own (Creator/Admin)
 router.get("/my-requests", auth, bulkBookingController.getMyCreatedRequests);

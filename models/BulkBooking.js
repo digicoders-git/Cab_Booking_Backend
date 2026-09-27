@@ -137,11 +137,18 @@ const bulkBookingSchema = new mongoose.Schema({
     assignedDrivers: [{
         driver: { type: mongoose.Schema.Types.ObjectId, ref: "Driver" },
         car: { type: mongoose.Schema.Types.ObjectId, ref: "FleetCar" },
+        category: { type: mongoose.Schema.Types.ObjectId, ref: "CarCategory" },
         status: { 
             type: String, 
             enum: ['Pending', 'Ongoing', 'Completed'], 
             default: 'Pending' 
         },
+        payoutAmount: { type: Number, default: 0 },
+        grossShare: { type: Number, default: 0 },
+        commission: { type: Number, default: 0 },
+        categoryName: { type: String, default: null },
+        payoutSettled: { type: Boolean, default: false },
+        payoutSettledAt: { type: Date, default: null },
         startedAt: { type: Date, default: null },
         endedAt: { type: Date, default: null },
         assignedAt: { type: Date, default: Date.now }

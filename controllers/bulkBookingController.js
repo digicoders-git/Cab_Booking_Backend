@@ -889,7 +889,9 @@ exports.assignDriversToBulk = async (req, res) => {
     try {
         const { bookingId } = req.params;
         const { assignments } = req.body; // Expecting [{ driverId, carId }, ...]
-        const fleetId = req.user.id;
+        const userId = req.user.id;
+        const userRole = req.user.role;
+        const isAdmin = userRole === 'admin' || userRole === 'SuperAdmin';
 
         if (!assignments || !Array.isArray(assignments)) {
             return res.status(400).json({ success: false, message: "Invalid assignments format." });
@@ -899,50 +901,59 @@ exports.assignDriversToBulk = async (req, res) => {
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
 
         // Security Check
-        if (booking.assignedFleet?.toString() !== fleetId) {
+        const isAuthorized = isAdmin || 
+            (booking.assignedAdmin?.toString() === userId) || 
+            (booking.assignedFleet?.toString() === userId);
+
+        if (!isAuthorized) {
             return res.status(403).json({ success: false, message: "You are not authorized to assign drivers to this booking." });
         }
 
-        // 🛡️ SECURITY CHECK: Don't allow re-assignment if any trip has already started or completed
-        const activeAssignment = booking.assignedDrivers.find(d => d.status !== 'Pending');
-        if (activeAssignment) {
-            return res.status(400).json({
-                success: false,
-                message: "Cannot change drivers because one or more trips have already started or completed."
-            });
-        }
-
-        // Clear existing assignments for this fleet to allow a clean update
-        booking.assignedDrivers = [];
+        // 🛡️ SECURITY CHECK: Don't allow changing drivers that have already started or completed
+        const existingAssignments = booking.assignedDrivers || [];
+        const nonPendingAssignments = existingAssignments.filter(d => d.status !== 'Pending');
 
         const results = [];
         const errors = [];
+        const newAssignmentsList = [...nonPendingAssignments]; // Keep ongoing/completed intact
 
         for (const item of assignments) {
             const { driverId, carId } = item;
+            if (!driverId) continue;
 
             // Verify Driver
             let driver = await Driver.findById(driverId);
-            if (!driver) {
+            if (!driver && !isAdmin) {
                 const fleetDriver = await FleetDriver.findById(driverId);
                 if (fleetDriver) driver = await Driver.findOne({ email: fleetDriver.email });
             }
 
-            if (!driver || (driver.createdBy?.toString() !== fleetId && driver.createdByModel !== "Fleet")) {
-                errors.push(`Driver ${driverId} not found or not in your fleet.`);
+            if (!driver) {
+                errors.push(`Driver ${driverId} not found.`);
+                continue;
+            }
+
+            if (!isAdmin && driver.createdBy?.toString() !== userId && driver.createdByModel !== "Fleet") {
+                errors.push(`Driver ${driver.name} is not in your fleet.`);
                 continue;
             }
 
             const actualDriverId = driver._id;
 
-            // Verify Car
-            const car = await FleetCar.findById(carId);
-            if (!car || car.fleetId?.toString() !== fleetId) {
-                errors.push(`Car ${carId} not found or not in your fleet.`);
-                continue;
+            // Verify Car (Optional for Admin if driver has own car)
+            let actualCarId = null;
+            if (carId) {
+                const car = await FleetCar.findById(carId);
+                if (car) {
+                    if (!isAdmin && car.fleetId?.toString() !== userId) {
+                        errors.push(`Car ${carId} not found or not in your fleet.`);
+                        continue;
+                    }
+                    actualCarId = car._id;
+                }
             }
 
-            // Clash Detector
+            // Clash Detector (4-hour buffer check)
             const bufferHours = 4;
             const tripStartTime = new Date(booking.pickupDateTime);
             const bufferStart = new Date(tripStartTime.getTime() - bufferHours * 60 * 60 * 1000);
@@ -960,44 +971,70 @@ exports.assignDriversToBulk = async (req, res) => {
                 continue;
             }
 
-            // Already assigned to this booking?
-            const isAlready = (booking.assignedDrivers || []).some(d => d.driver.toString() === actualDriverId.toString());
+            // Check if already in newAssignmentsList
+            const isAlready = newAssignmentsList.some(d => 
+                (d.driver?._id?.toString() || d.driver?.toString()) === actualDriverId.toString()
+            );
             if (isAlready) {
                 errors.push(`Driver ${driver.name} is already assigned to this booking.`);
                 continue;
             }
 
-            // Add to array
-            booking.assignedDrivers.push({ driver: actualDriverId, car: carId });
+            // Check if driver was already assigned previously
+            const previouslyAssigned = existingAssignments.some(d => 
+                (d.driver?._id?.toString() || d.driver?.toString()) === actualDriverId.toString()
+            );
+
+            // Determine category name if categoryId is provided
+            let assignedCatName = null;
+            if (item.categoryId) {
+                try {
+                    const catDoc = await CarCategory.findById(item.categoryId);
+                    if (catDoc) assignedCatName = catDoc.name;
+                } catch (e) { }
+            }
+
+            // Add assignment
+            newAssignmentsList.push({
+                driver: actualDriverId,
+                car: actualCarId,
+                category: item.categoryId || null,
+                categoryName: assignedCatName,
+                status: 'Pending',
+                assignedAt: new Date()
+            });
             results.push(driver.name);
 
-            // Notify Driver
-            try {
-                const { getIO } = require("../socket/socket");
-                const io = getIO();
-                io.to(actualDriverId.toString()).emit("new_bulk_assignment", {
-                    bookingId: booking._id,
-                    pickup: booking.pickup.address,
-                    dateTime: booking.pickupDateTime
-                });
-
-                if (driver.fcmToken) {
-                    await sendPushNotification(driver.fcmToken, {
-                        title: "📦 New Bulk Assignment",
-                        body: `You are assigned to a bulk trip at ${booking.pickup.address.split(',')[0]}.`,
-                        data: { bookingId: booking._id.toString(), type: "BULK_ASSIGNMENT" }
+            // Only notify if newly assigned
+            if (!previouslyAssigned) {
+                try {
+                    const { getIO } = require("../socket/socket");
+                    const io = getIO();
+                    io.to(actualDriverId.toString()).emit("new_bulk_assignment", {
+                        bookingId: booking._id,
+                        pickup: booking.pickup.address,
+                        dateTime: booking.pickupDateTime
                     });
-                }
-            } catch (err) { }
+
+                    if (driver.fcmToken) {
+                        await sendPushNotification(driver.fcmToken, {
+                            title: "📦 New Bulk Assignment",
+                            body: `You are assigned to a bulk trip at ${booking.pickup.address.split(',')[0]}.`,
+                            data: { bookingId: booking._id.toString(), type: "BULK_ASSIGNMENT" }
+                        });
+                    }
+                } catch (err) { }
+            }
         }
 
+        booking.assignedDrivers = newAssignmentsList;
         await booking.save();
 
         res.json({
             success: true,
             message: errors.length > 0
-                ? `Assigned: ${results.join(", ")}. Errors: ${errors.join(" | ")}`
-                : `Successfully assigned ${results.length} drivers!`,
+                ? `Assigned: ${results.join(", ")}. Warnings: ${errors.join(" | ")}`
+                : `Successfully updated driver assignments (${results.length} active)!`,
             assignedDrivers: booking.assignedDrivers
         });
 
@@ -1012,8 +1049,9 @@ exports.getMyBulkBookings = async (req, res) => {
         const bookings = await BulkBooking.find({ assignedFleet: fleetId })
             .populate("carsRequired.category", "name image bulkBookingBasePrice")
             .populate("createdBy", "name phone image")
-            .populate("assignedDrivers.driver", "name phone image")
+            .populate("assignedDrivers.driver", "name phone image carDetails")
             .populate("assignedDrivers.car", "carNumber carModel")
+            .populate("assignedDrivers.category", "name image bulkBookingBasePrice")
             .sort({ acceptedAt: -1 });
 
 
@@ -1153,6 +1191,225 @@ exports.startBulkBooking = async (req, res) => {
     }
 };
 
+/**
+ * Helper: Calculate fair Category-wise payout share and commission for a driver assignment in Bulk Deal
+ */
+async function calculateCategoryPayoutShare(booking, assignment) {
+    if (!booking || !assignment) return null;
+
+    // Ensure carsRequired.category is populated
+    if (booking.carsRequired && booking.carsRequired.length > 0 && !booking.carsRequired[0]?.category?.name) {
+        await booking.populate("carsRequired.category");
+    }
+
+    // Expand categories slot-by-slot to align with each vehicle slot
+    const slotCategories = [];
+    (booking.carsRequired || []).forEach(req => {
+        const cat = req.category;
+        const qty = req.quantity || 1;
+        for (let i = 0; i < qty; i++) {
+            slotCategories.push(cat);
+        }
+    });
+
+    const actualDriverId = assignment.driver?._id?.toString() || assignment.driver?.toString();
+    let targetCat = null;
+
+    // 1. Direct assignment.category match
+    if (assignment.category) {
+        const assignCatId = assignment.category?._id?.toString() || assignment.category?.toString();
+        targetCat = slotCategories.find(c => c?._id?.toString() === assignCatId);
+        if (!targetCat) {
+            try { targetCat = await CarCategory.findById(assignCatId); } catch (e) { }
+        }
+    }
+
+    // 2. By assignment index in slotCategories
+    if (!targetCat && booking.assignedDrivers) {
+        const assignIdx = booking.assignedDrivers.findIndex(d => 
+            (d.driver?._id?.toString() || d.driver?.toString()) === actualDriverId
+        );
+        if (assignIdx >= 0 && assignIdx < slotCategories.length) {
+            targetCat = slotCategories[assignIdx];
+        }
+    }
+
+    // 3. By driver's registered vehicle category
+    if (!targetCat && actualDriverId) {
+        try {
+            const driverDoc = await Driver.findById(actualDriverId).populate("carDetails.carType");
+            const driverCarType = driverDoc?.carDetails?.carType;
+            if (driverCarType) {
+                const driverCarTypeId = driverCarType?._id?.toString() || driverCarType.toString();
+                targetCat = slotCategories.find(c => c?._id?.toString() === driverCarTypeId);
+                if (!targetCat) {
+                    targetCat = driverCarType;
+                }
+            }
+        } catch (e) { }
+    }
+
+    // 4. Fallback: first category
+    if (!targetCat && slotCategories.length > 0) {
+        targetCat = slotCategories[0];
+    }
+
+    // Include targetCat in slotCategories if missing so weights are proportional
+    if (targetCat && !slotCategories.some(c => c?._id?.toString() === targetCat._id?.toString())) {
+        slotCategories.push(targetCat);
+    }
+
+    // Weight calculation function for category fairness
+    const getWeight = (cat) => {
+        if (!cat) return 1000;
+        const distanceMultiplier = booking.tripType === 'RoundTrip' ? 2 : 1;
+        const dist = booking.totalDistance || 50;
+        const actualKm = dist * distanceMultiplier;
+        const basePrice = cat.bulkBookingBasePrice || 0;
+        const kmRate = cat.privateRatePerKm || 12;
+
+        if (basePrice > 200) {
+            return basePrice;
+        } else if (basePrice > 0) {
+            return actualKm * basePrice;
+        } else {
+            return actualKm * kmRate;
+        }
+    };
+
+    const totalBaseWeight = slotCategories.reduce((sum, c) => sum + getWeight(c), 0);
+    const targetWeight = getWeight(targetCat);
+    const totalDealPrice = booking.offeredPrice || booking.systemEstimatedPrice || 0;
+
+    let grossShare = 0;
+    if (totalBaseWeight > 0 && totalDealPrice > 0) {
+        grossShare = Math.round((targetWeight / totalBaseWeight) * totalDealPrice);
+    } else if (slotCategories.length > 0 && totalDealPrice > 0) {
+        grossShare = Math.round(totalDealPrice / slotCategories.length);
+    }
+
+    // Commission calculation (default 10% or admin configured)
+    let adminPercentage = 10;
+    try {
+        const adminDoc = await Admin.findOne({ role: 'SuperAdmin' }) || await Admin.findOne();
+        if (adminDoc && adminDoc.defaultCommission !== undefined) {
+            adminPercentage = adminDoc.defaultCommission;
+        }
+        if (booking.assignedFleet) {
+            const fleet = await Fleet.findById(booking.assignedFleet);
+            if (fleet && fleet.commissionPercentage !== undefined) {
+                adminPercentage = fleet.commissionPercentage;
+            }
+        }
+    } catch (e) { }
+
+    const commissionAmount = Math.round(grossShare * (adminPercentage / 100));
+    const netPayout = Math.max(0, grossShare - commissionAmount);
+    const catName = targetCat?.name || assignment.categoryName || 'Vehicle';
+
+    return {
+        targetCat,
+        catName,
+        targetWeight,
+        totalBaseWeight,
+        grossShare,
+        commissionAmount,
+        adminPercentage,
+        netPayout
+    };
+}
+
+/**
+ * Helper: Category-wise Driver Wallet Settlement for Bulk Deal
+ */
+async function settleDriverBulkPayout(booking, assignment) {
+    try {
+        if (!assignment || assignment.payoutSettled) return null;
+        if (booking.assignedFleet) return null; // Fleets handle their own fleet drivers
+
+        const actualDriverId = assignment.driver?._id || assignment.driver;
+        if (!actualDriverId) return null;
+
+        const driver = await Driver.findById(actualDriverId);
+        if (!driver) return null;
+
+        const calc = await calculateCategoryPayoutShare(booking, assignment);
+        if (!calc || calc.netPayout <= 0) return null;
+
+        const { netPayout, grossShare, commissionAmount, adminPercentage, catName } = calc;
+
+        // Credit Driver Wallet
+        driver.walletBalance = (driver.walletBalance || 0) + netPayout;
+        driver.totalEarnings = (driver.totalEarnings || 0) + netPayout;
+        await driver.save();
+
+        // Record Driver Transaction
+        await Transaction.create({
+            user: driver._id,
+            userModel: 'Driver',
+            amount: netPayout,
+            type: 'Credit',
+            category: 'Bulk Earnings',
+            status: 'Completed',
+            relatedBooking: booking._id,
+            description: `Bulk Trip Earning for ${catName} (Deal #${booking._id.toString().slice(-6)}) - Gross: ₹${grossShare} (Commission: ${adminPercentage}% / ₹${commissionAmount})`
+        });
+
+        // Mark assignment as settled
+        assignment.payoutAmount = netPayout;
+        assignment.grossShare = grossShare;
+        assignment.commission = commissionAmount;
+        assignment.categoryName = catName;
+        assignment.payoutSettled = true;
+        assignment.payoutSettledAt = new Date();
+
+        // Debit Admin Wallet
+        const adminDoc = await Admin.findOne({ role: 'SuperAdmin' }) || await Admin.findOne();
+        if (adminDoc) {
+            adminDoc.walletBalance = (adminDoc.walletBalance || 0) - netPayout;
+            await adminDoc.save();
+            await Transaction.create({
+                user: adminDoc._id,
+                userModel: 'Admin',
+                amount: netPayout,
+                type: 'Debit',
+                category: 'Bulk Payout',
+                status: 'Completed',
+                relatedBooking: booking._id,
+                description: `Driver Bulk Payout to ${driver.name} for ${catName} (Deal #${booking._id.toString().slice(-6)})`
+            });
+        }
+
+        // Realtime Socket Notify
+        try {
+            const { getIO } = require("../socket/socket");
+            const io = getIO();
+            io.to(driver._id.toString()).emit("wallet_credit", {
+                amount: netPayout,
+                category: catName,
+                message: `₹${netPayout} credited to your wallet for ${catName} Bulk Trip.`
+            });
+        } catch (err) { }
+
+        // Push Notification
+        if (driver.fcmToken) {
+            try {
+                await sendPushNotification(driver.fcmToken, {
+                    title: "💰 Bulk Trip Earnings Credited",
+                    body: `₹${netPayout} credited to your wallet for completing ${catName} bulk trip.`,
+                    data: { bookingId: booking._id.toString(), type: "WALLET_CREDIT" }
+                });
+            } catch (err) { }
+        }
+
+        console.log(`[BULK SETTLEMENT] Settled ₹${netPayout} to Driver ${driver.name} (${catName}) for Deal #${booking._id}`);
+        return { driverName: driver.name, netPayout, grossShare, catName };
+    } catch (err) {
+        console.error("Error in settleDriverBulkPayout:", err.message);
+        return null;
+    }
+}
+
 // 9. End Bulk Trip
 exports.endBulkBooking = async (req, res) => {
     try {
@@ -1240,6 +1497,21 @@ exports.endBulkBooking = async (req, res) => {
             }
         }
 
+        // 💰 Category-Wise Driver Wallet Settlement for all assigned Drivers
+        if (!booking.assignedFleet && booking.assignedDrivers && booking.assignedDrivers.length > 0) {
+            try {
+                for (const d of booking.assignedDrivers) {
+                    if (d.status === 'Ongoing' || d.status === 'Pending') {
+                        d.status = 'Completed';
+                        d.endedAt = new Date();
+                    }
+                    if (!d.payoutSettled) {
+                        await settleDriverBulkPayout(booking, d);
+                    }
+                }
+            } catch (err) { console.error("Driver End Settlement Error:", err.message); }
+        }
+
         await booking.save();
 
         // Notify Creator
@@ -1267,19 +1539,54 @@ exports.getDriverBulkAssignments = async (req, res) => {
         const assignments = await BulkBooking.find({
             "assignedDrivers.driver": driverId
         })
+            .populate("carsRequired.category")
+            .populate("assignedDrivers.driver", "name phone image carDetails")
             .populate("assignedDrivers.car", "carNumber carModel")
+            .populate("assignedDrivers.category", "name image bulkBookingBasePrice privateRatePerKm")
             .populate("createdBy", "name phone image")
             .sort({ pickupDateTime: 1 });
 
         // Transform results to only show the relevant assignment for this driver
-        const myAssignments = assignments.map(ride => {
-            const myPair = ride.assignedDrivers.find(d => d.driver.toString() === driverId.toString());
+        const myAssignments = await Promise.all(assignments.map(async ride => {
+            const myPair = ride.assignedDrivers.find(d => 
+                (d.driver?._id?.toString() || d.driver?.toString()) === driverId.toString()
+            );
+            const driverDoc = myPair?.driver;
+            const fallbackCar = driverDoc?.carDetails ? {
+                carNumber: driverDoc.carDetails.carNumber,
+                carModel: driverDoc.carDetails.carModel || driverDoc.carDetails.vehicleType
+            } : null;
+
+            let payout = myPair?.payoutAmount || 0;
+            let catName = myPair?.categoryName || myPair?.category?.name;
+            let gross = myPair?.grossShare || 0;
+            let commission = myPair?.commission || 0;
+
+            // Compute estimate if not settled yet
+            if (!myPair?.payoutSettled) {
+                try {
+                    const calc = await calculateCategoryPayoutShare(ride, myPair);
+                    if (calc) {
+                        payout = calc.netPayout;
+                        gross = calc.grossShare;
+                        commission = calc.commissionAmount;
+                        if (!catName) catName = calc.catName;
+                    }
+                } catch (e) { }
+            }
+
             return {
                 ...ride.toObject(),
-                myCar: myPair?.car,
-                myStatus: myPair?.status || 'Pending'
+                myCar: myPair?.car || fallbackCar,
+                myStatus: myPair?.status || 'Pending',
+                myCategory: myPair?.category || catName,
+                myCategoryName: catName,
+                myPayoutAmount: payout,
+                myPayoutSettled: myPair?.payoutSettled || false,
+                myGrossShare: gross,
+                myCommission: commission
             };
-        });
+        }));
 
         res.json({ success: true, count: myAssignments.length, assignments: myAssignments });
     } catch (error) {
@@ -1334,7 +1641,7 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
         const { paymentMode } = req.body; // 'Cash' or 'Online' - only required for last driver
         const driverId = req.user.id;
 
-        const booking = await BulkBooking.findById(bookingId);
+        const booking = await BulkBooking.findById(bookingId).populate("carsRequired.category");
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
 
         const assignment = booking.assignedDrivers.find(d => d.driver.toString() === driverId.toString());
@@ -1398,6 +1705,9 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
         assignment.status = 'Completed';
         assignment.endedAt = new Date();
 
+        // 💰 Settle category-wise payout for this completed driver immediately
+        await settleDriverBulkPayout(booking, assignment);
+
         if (isLastDriver) {
             booking.status = 'Completed';
 
@@ -1412,6 +1722,46 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
                 isPaid: true,
                 at: new Date()
             };
+
+            // 💰 CASH COLLECTION RECONCILIATION: Driver holds cash in hand, Admin ledger balances
+            if (paymentMode === 'Cash' && remainingBalance > 0 && !booking.assignedFleet) {
+                try {
+                    const lastDriver = await Driver.findById(driverId);
+                    if (lastDriver) {
+                        lastDriver.walletBalance = (lastDriver.walletBalance || 0) - remainingBalance;
+                        await lastDriver.save();
+
+                        await Transaction.create({
+                            user: lastDriver._id,
+                            userModel: 'Driver',
+                            amount: remainingBalance,
+                            type: 'Debit',
+                            category: 'Cash Collection',
+                            status: 'Completed',
+                            relatedBooking: booking._id,
+                            description: `Cash collected from customer for Bulk Booking #${booking._id.toString().slice(-6)} (₹${remainingBalance})`
+                        });
+
+                        const adminDoc = await Admin.findOne({ role: 'SuperAdmin' }) || await Admin.findOne();
+                        if (adminDoc) {
+                            adminDoc.walletBalance = (adminDoc.walletBalance || 0) + remainingBalance;
+                            await adminDoc.save();
+                            await Transaction.create({
+                                user: adminDoc._id,
+                                userModel: 'Admin',
+                                amount: remainingBalance,
+                                type: 'Credit',
+                                category: 'Bulk Cash Settlement',
+                                status: 'Completed',
+                                relatedBooking: booking._id,
+                                description: `Cash collected by Driver ${lastDriver.name} for Bulk Booking #${booking._id.toString().slice(-6)}`
+                            });
+                        }
+                    }
+                } catch (err) {
+                    console.error("Cash Collection Ledger Error:", err.message);
+                }
+            }
 
             // 💰 AUTOMATIC SETTLEMENT LOGIC 💰
             // (Imports like Admin, Agent, Transaction are already at the top of the file)
@@ -1487,37 +1837,12 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
                 }
             } catch (err) { console.error("Fleet Settlement Error:", err.message); }
 
-            // 2.5 Settlement with Driver (Refund part of Advance)
+            // 2.5 Category-Wise Settlement for all assigned Drivers
             try {
-                if (!booking.assignedFleet && booking.assignedDrivers && booking.assignedDrivers.length === 1 && booking.advancePayment?.isPaid) {
-                    const driverAssigned = booking.assignedDrivers[0].driver;
-                    const driver = await Driver.findById(driverAssigned);
-                    if (driver) {
-                        const advanceAmount = booking.advancePayment.amount || 0;
-                        const agentComm = booking.agentCommissionAmount || 0;
-                        const refundToDriver = advanceAmount - agentComm;
-
-                        if (refundToDriver > 0) {
-                            driver.walletBalance += refundToDriver;
-                            await driver.save();
-
-                            await Transaction.create({
-                                user: driver._id, userModel: 'Driver', amount: refundToDriver,
-                                type: 'Credit', category: 'Refund', status: 'Completed',
-                                relatedBooking: booking._id, description: `Advance refund (Deal #${booking._id.toString().slice(-6)})`
-                            });
-
-                            // 🔴 Debit Admin (Payout to Driver)
-                            const admin = await Admin.findOne();
-                            if (admin) {
-                                admin.walletBalance -= refundToDriver;
-                                await admin.save();
-                                await Transaction.create({
-                                    user: admin._id, userModel: 'Admin', amount: refundToDriver,
-                                    type: 'Debit', category: 'Bulk Payout', status: 'Completed',
-                                    relatedBooking: booking._id, description: `Refunded advance to Driver (Deal #${booking._id.toString().slice(-6)})`
-                                });
-                            }
+                if (!booking.assignedFleet && booking.assignedDrivers && booking.assignedDrivers.length > 0) {
+                    for (const d of booking.assignedDrivers) {
+                        if (!d.payoutSettled) {
+                            await settleDriverBulkPayout(booking, d);
                         }
                     }
                 }
@@ -1589,7 +1914,7 @@ exports.verifyBulkPayment = async (req, res) => {
             return originalVerifyBulkPayment(req, res);
         }
 
-        const booking = await BulkBooking.findById(bookingId);
+        const booking = await BulkBooking.findById(bookingId).populate("carsRequired.category");
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
 
         const displayPrice = booking.totalPriceWithTax || booking.offeredPrice;
@@ -1705,33 +2030,12 @@ exports.verifyBulkPayment = async (req, res) => {
             } catch (err) { console.error("Fleet Verification Settlement Error:", err.message); }
         }
 
-        // 2.5 Driver
-        if (!booking.assignedFleet && booking.assignedDrivers && booking.assignedDrivers.length === 1) {
+        // 2.5 Category-Wise Settlement for all assigned Drivers
+        if (!booking.assignedFleet && booking.assignedDrivers && booking.assignedDrivers.length > 0) {
             try {
-                const driverAssigned = booking.assignedDrivers[0].driver;
-                const driver = await Driver.findById(driverAssigned);
-                if (driver) {
-                    const totalPayToDriver = (booking.offeredPrice || 0) - (booking.agentCommissionAmount || 0);
-                    if (totalPayToDriver > 0) {
-                        driver.walletBalance += totalPayToDriver;
-                        await driver.save();
-                        await Transaction.create({
-                            user: driver._id, userModel: 'Driver', amount: totalPayToDriver,
-                            type: 'Credit', category: 'Bulk Earnings', status: 'Completed',
-                            relatedBooking: booking._id, description: `Bulk deal earnings (Deal #${booking._id.toString().slice(-6)})`
-                        });
-
-                        // 🔴 Debit Admin (Payout to Driver)
-                        const admin = await Admin.findOne();
-                        if (admin) {
-                            admin.walletBalance -= totalPayToDriver;
-                            await admin.save();
-                            await Transaction.create({
-                                user: admin._id, userModel: 'Admin', amount: totalPayToDriver,
-                                type: 'Debit', category: 'Bulk Payout', status: 'Completed',
-                                relatedBooking: booking._id, description: `Final Payout to Driver (Deal #${booking._id.toString().slice(-6)})`
-                            });
-                        }
+                for (const d of booking.assignedDrivers) {
+                    if (!d.payoutSettled) {
+                        await settleDriverBulkPayout(booking, d);
                     }
                 }
             } catch (err) { console.error("Driver Verification Settlement Error:", err.message); }
@@ -1941,6 +2245,10 @@ exports.getAllBulkBookingsForAdmin = async (req, res) => {
             .populate("carsRequired.category", "name image bulkBookingBasePrice")
             .populate("createdBy", "name phone email image")
             .populate("assignedFleet", "companyName ownerName phone email")
+            .populate("assignedAdmin", "name email phone role")
+            .populate("assignedDrivers.driver", "name phone email carDetails image")
+            .populate("assignedDrivers.car", "carNumber carModel")
+            .populate("assignedDrivers.category", "name image bulkBookingBasePrice")
             .sort({ createdAt: -1 });
 
         res.json({

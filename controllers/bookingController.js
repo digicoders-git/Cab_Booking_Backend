@@ -193,9 +193,10 @@ exports.getAllFareEstimates = async (req, res) => {
         console.log("--------------------------------------------------");
         console.log(`🚀 [BOOKING API] Search request GPS: ${pickupLat}, ${pickupLng}`);
 
+        const isAdmin = (req.user && (req.user.role === "admin" || req.user.role === "superadmin" || req.user.role === "SubAdmin" || req.user.role === "FleetAdmin")) || req.body.isAdmin === true;
         const serviceZone = await serviceAreaController.checkServiceAvailability(pickupLat, pickupLng);
         
-        if (!serviceZone) {
+        if (!serviceZone && !isAdmin) {
             console.log("🚫 [BOOKING API] GPS outside service area.");
             return res.status(400).json({
                 success: false,
@@ -204,7 +205,7 @@ exports.getAllFareEstimates = async (req, res) => {
         }
         console.log("✅ [BOOKING API] Service Allowed. Proceeding to fare estimates...");
 
-        const disabledCats = serviceZone.disabledCategories || [];
+        const disabledCats = (serviceZone && serviceZone.disabledCategories) ? serviceZone.disabledCategories : [];
         const categories = await CarCategory.find({ 
             isActive: true,
             _id: { $nin: disabledCats }
@@ -425,9 +426,10 @@ exports.createBooking = async (req, res) => {
         console.log("-----------------------------------------");
         console.log(`📝 [BOOKING API] Booking GPS Check: ${pickupLat}, ${pickupLng}`);
 
+        const isAdmin = (req.user && (req.user.role === "admin" || req.user.role === "superadmin" || req.user.role === "SubAdmin" || req.user.role === "FleetAdmin")) || req.body.isAdmin === true || !!req.body.userId;
         const serviceZone = await serviceAreaController.checkServiceAvailability(pickupLat, pickupLng);
         
-        if (!serviceZone) {
+        if (!serviceZone && !isAdmin) {
             console.log("🚫 [BOOKING API] GPS Denied.");
             return res.status(400).json({
                 success: false,
@@ -443,7 +445,7 @@ exports.createBooking = async (req, res) => {
         }
         
         // Prevent booking if category is disabled in this zone
-        if (serviceZone.disabledCategories && serviceZone.disabledCategories.some(id => id.toString() === carCategoryId.toString())) {
+        if (serviceZone && serviceZone.disabledCategories && serviceZone.disabledCategories.some(id => id.toString() === carCategoryId.toString())) {
             return res.status(400).json({ success: false, message: "This car category is not available in your area." });
         }
 
@@ -524,11 +526,14 @@ exports.createBooking = async (req, res) => {
             fareEstimate = Math.max(0, fareEstimate - discountAmount); // Ensure it doesn't go below 0
         }
 
+        // Target User: If specified in body (by Admin) or logged in user
+        const targetUserId = req.body.userId || (req.user && req.user.role === "user" ? req.user.id : null);
+
         // --- NEW: First Ride Welcome Discount (Automatic for 1st Time Users) ---
         let firstRideDiscount = 0;
-        if (req.user && req.user.role === "user") {
+        if (targetUserId) {
             const firstRideHelper = require("../utils/firstRideHelper");
-            firstRideDiscount = await firstRideHelper.checkAndCalculateFirstRideDiscount(req.user.id, fareEstimate);
+            firstRideDiscount = await firstRideHelper.checkAndCalculateFirstRideDiscount(targetUserId, fareEstimate);
             if (firstRideDiscount > 0) {
                 fareEstimate = Math.max(0, fareEstimate - firstRideDiscount);
             }
@@ -556,16 +561,17 @@ exports.createBooking = async (req, res) => {
             appliedOffer: appliedOfferId,
             discountAmount: discountAmount,
             firstRideDiscount: firstRideDiscount,
+            paymentMethod: req.body.paymentMethod || "Cash",
             tripData: { startOtp }
         };
 
-        // If User is making the booking
-        if (req.user && req.user.role === "user") {
-            bookingData.user = req.user.id;
+        // If Target User exists, link to User
+        if (targetUserId) {
+            bookingData.user = targetUserId;
             
             // --- NEW: CARRY FORWARD PREVIOUS DUES ---
             try {
-                const userDoc = await User.findById(req.user.id);
+                const userDoc = await User.findById(targetUserId);
                 if (userDoc && userDoc.walletBalance < 0) {
                     const dues = Math.abs(userDoc.walletBalance);
                     bookingData.previousDues = dues;
@@ -603,8 +609,8 @@ exports.createBooking = async (req, res) => {
         const newBooking = await Booking.create(bookingData);
 
         // Mark first ride discount as used
-        if (firstRideDiscount > 0 && req.user && req.user.role === "user") {
-            await User.findByIdAndUpdate(req.user.id, { hasUsedFirstRideDiscount: true });
+        if (firstRideDiscount > 0 && targetUserId) {
+            await User.findByIdAndUpdate(targetUserId, { hasUsedFirstRideDiscount: true });
         }
 
         // --- SEQUENTIAL MATCHING LOGIC (The Waterfall) ---

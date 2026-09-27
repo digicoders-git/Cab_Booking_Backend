@@ -1158,6 +1158,16 @@ exports.exportTaxReport = async (req, res) => {
             totals.finalFare += parseFloat(row["Final Fare"]) || 0;
         });
 
+        // Return JSON format if requested for PDF generation
+        if (req.query.format === 'json') {
+            return res.status(200).json({
+                success: true,
+                data: exportData,
+                totals: totals,
+                timeframe: timeframe || 'all'
+            });
+        }
+
         const ExcelJS = require('exceljs');
         const workbook = new ExcelJS.Workbook();
         const sheet = workbook.addWorksheet('Tax Report');

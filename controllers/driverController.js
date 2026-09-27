@@ -604,8 +604,9 @@ exports.getAvailableDrivers = async (req, res) => {
 exports.getAllDrivers = async (req, res) => {
     try {
         // Bug Fix 1: createdByModel = "Self" ke liye populate crash karta tha
-        // Pehle saare drivers lo bina populate ke
-        const drivers = await Driver.find().lean();
+        const drivers = await Driver.find()
+            .populate({ path: "carDetails.carType", select: "name vehicleType" })
+            .lean();
 
         // Phir sirf Admin/Fleet/Vendor wale drivers ko populate karo
         const Admin = require("../models/Admin");
