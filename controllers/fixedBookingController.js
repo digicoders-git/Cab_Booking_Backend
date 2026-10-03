@@ -146,8 +146,13 @@ exports.bookFixedRoute = async (req, res) => {
 
         // 2. FCM Notification to Drivers and Admin
         try {
-            // Find drivers matching the car category
-            const drivers = await Driver.find({ 'carDetails.carType': route.carCategory, fcmToken: { $ne: null } });
+            // Find drivers matching the car category who are available and online
+            const drivers = await Driver.find({ 
+                'carDetails.carType': route.carCategory, 
+                fcmToken: { $ne: null },
+                isAvailable: true,
+                isOnline: true
+            });
             
             const payload = {
                 title: "New Package Ride Available! 🚖",

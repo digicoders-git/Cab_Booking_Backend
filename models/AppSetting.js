@@ -33,6 +33,18 @@ const appSettingSchema = new mongoose.Schema({
     firstRideMaxDiscount: {
         type: Number,
         default: 100
+    },
+    rentalRequestTimeoutMinutes: {
+        type: Number,
+        default: 5
+    },
+    driverRentalPopupTimerSeconds: {
+        type: Number,
+        default: 15
+    },
+    rentalCommissionPercentage: {
+        type: Number,
+        default: 10 // e.g., 10%
     }
 }, {
     timestamps: true
