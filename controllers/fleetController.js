@@ -751,3 +751,296 @@ exports.updateFcmToken = async (req, res) => {
         });
     }
 };
+
+// Export Fleet Tax Report (GST)
+exports.exportTaxReport = async (req, res) => {
+    try {
+        const Booking = require("../models/Booking");
+        const BulkBooking = require("../models/BulkBooking");
+        const FixedBooking = require("../models/FixedBooking");
+        const Driver = require("../models/Driver");
+        
+        const { timeframe } = req.query;
+        const fleetId = req.user.id;
+        
+        let dateFilter = {};
+        const now = new Date();
+        
+        if (timeframe === 'daily') {
+            const startOfDay = new Date(now);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(now);
+            endOfDay.setHours(23, 59, 59, 999);
+            dateFilter = { $gte: startOfDay, $lte: endOfDay };
+        } else if (timeframe === 'weekly') {
+            const lastWeek = new Date(now);
+            lastWeek.setDate(now.getDate() - 7);
+            dateFilter = { $gte: lastWeek, $lte: new Date() };
+        } else if (timeframe === 'monthly') {
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            dateFilter = { $gte: startOfMonth, $lte: new Date() };
+        } else if (timeframe === 'yearly') {
+            const startOfYear = new Date(now.getFullYear(), 0, 1);
+            dateFilter = { $gte: startOfYear, $lte: new Date() };
+        }
+
+        const filterNormal = { bookingStatus: 'Completed' };
+        const filterBulk = { status: 'Completed' };
+        const filterFixed = { status: 'Completed' };
+
+        if (Object.keys(dateFilter).length > 0) {
+            filterNormal.updatedAt = dateFilter;
+            filterBulk.updatedAt = dateFilter;
+            filterFixed.updatedAt = dateFilter;
+        }
+
+        // Find drivers belonging to fleet (using main Driver model where they log in)
+        const fleetDrivers = await Driver.find({ createdBy: fleetId, createdByModel: 'Fleet' }).select("_id");
+        const driverIds = fleetDrivers.map(fd => fd._id);
+
+        if (driverIds.length > 0) {
+            filterNormal.assignedDriver = { $in: driverIds };
+            filterFixed.assignedDriver = { $in: driverIds };
+        } else {
+            // We can't early return yet because there might be BulkBookings assigned directly to the Fleet.
+            // But we can set a dummy filter so they don't match anything
+            filterNormal._id = null;
+            filterFixed._id = null;
+        }
+
+        // Bulk bookings are assigned to the fleet, not an individual driver directly at the root
+        filterBulk.assignedFleet = fleetId;
+
+        const normalBookings = await Booking.find(filterNormal).populate('user', 'name').populate('assignedDriver', 'name');
+        const bulkBookings = await BulkBooking.find(filterBulk).populate('createdBy', 'name');
+        const fixedBookings = await FixedBooking.find(filterFixed).populate('user', 'name').populate('assignedDriver', 'name');
+
+        const exportData = [];
+
+        normalBookings.forEach(b => {
+            const finalFare = b.actualFare || b.fareEstimate || 0;
+            const baseFare = finalFare * (100 / 105); // reverse calc 5% gst
+            const totalTax = finalFare - baseFare;
+            const cgst = totalTax / 2;
+            const sgst = totalTax / 2;
+
+            exportData.push({
+                "Date": new Date(b.tripData?.endedAt || b.updatedAt).toLocaleString('en-IN'),
+                "Booking ID": b._id.toString(),
+                "Ride Type": "Normal",
+                "Customer Name": b.passengerDetails?.name || b.user?.name || "Unknown",
+                "Driver Name": b.assignedDriver?.name || "Unknown",
+                "Base Fare": baseFare.toFixed(2),
+                "CGST (2.5%)": cgst.toFixed(2),
+                "SGST (2.5%)": sgst.toFixed(2),
+                "Total Tax": totalTax.toFixed(2),
+                "Final Fare": finalFare.toFixed(2)
+            });
+        });
+
+        bulkBookings.forEach(b => {
+            const baseFare = b.offeredPrice || 0;
+            const cgst = b.cgst || 0;
+            const sgst = b.sgst || 0;
+            const totalTax = cgst + sgst;
+            const finalFare = b.totalPriceWithTax ? b.totalPriceWithTax : (baseFare + totalTax);
+
+            exportData.push({
+                "Date": new Date(b.updatedAt).toLocaleString('en-IN'),
+                "Booking ID": b._id.toString(),
+                "Ride Type": "Bulk Booking",
+                "Customer Name": b.customerName || b.createdBy?.name || "Unknown",
+                "Driver Name": "Multiple Drivers", // Bulk has multiple drivers usually
+                "Base Fare": baseFare.toFixed(2),
+                "CGST (2.5%)": cgst.toFixed(2),
+                "SGST (2.5%)": sgst.toFixed(2),
+                "Total Tax": totalTax.toFixed(2),
+                "Final Fare": finalFare.toFixed(2)
+            });
+        });
+
+        fixedBookings.forEach(b => {
+            const baseFare = b.price || 0;
+            const cgst = b.cgst || 0;
+            const sgst = b.sgst || 0;
+            const totalTax = cgst + sgst;
+            const finalFare = b.finalPrice ? b.finalPrice : (baseFare + totalTax);
+
+            exportData.push({
+                "Date": new Date(b.completedAt || b.updatedAt).toLocaleString('en-IN'),
+                "Booking ID": b._id.toString(),
+                "Ride Type": "Fixed Package",
+                "Customer Name": b.passengerDetails?.name || b.user?.name || "Unknown",
+                "Driver Name": b.assignedDriver?.name || "Unknown",
+                "Base Fare": baseFare.toFixed(2),
+                "CGST (2.5%)": cgst.toFixed(2),
+                "SGST (2.5%)": sgst.toFixed(2),
+                "Total Tax": totalTax.toFixed(2),
+                "Final Fare": finalFare.toFixed(2)
+            });
+        });
+
+        // Sort by Date (newest first)
+        exportData.sort((a, b) => new Date(b.Date) - new Date(a.Date));
+
+        // Calculate Totals
+        const totals = { baseFare: 0, cgst: 0, sgst: 0, totalTax: 0, finalFare: 0 };
+        exportData.forEach(row => {
+            totals.baseFare += parseFloat(row["Base Fare"]) || 0;
+            totals.cgst += parseFloat(row["CGST (2.5%)"]) || 0;
+            totals.sgst += parseFloat(row["SGST (2.5%)"]) || 0;
+            totals.totalTax += parseFloat(row["Total Tax"]) || 0;
+            totals.finalFare += parseFloat(row["Final Fare"]) || 0;
+        });
+
+        // Return JSON format if requested for PDF generation
+        if (req.query.format === 'json') {
+            return res.status(200).json({
+                success: true,
+                data: exportData,
+                totals: totals,
+                timeframe: timeframe || 'all'
+            });
+        }
+
+        const ExcelJS = require('exceljs');
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Tax Report');
+
+        // Add Header Row
+        const headerRow = sheet.addRow([
+            "Date", "Booking ID", "Ride Type", "Customer Name", "Driver Name",
+            "Base Fare", "CGST (2.5%)", "SGST (2.5%)", "Total Tax", "Final Fare"
+        ]);
+        headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
+        
+        // Add Data Rows
+        exportData.forEach(row => {
+            sheet.addRow([
+                row["Date"], row["Booking ID"], row["Ride Type"], row["Customer Name"], row["Driver Name"],
+                row["Base Fare"], row["CGST (2.5%)"], row["SGST (2.5%)"], row["Total Tax"], row["Final Fare"]
+            ]);
+        });
+
+        sheet.addRow([]);
+        
+        // Add Total Row
+        const totalRow = sheet.addRow([
+            "TOTAL", "", "", "", "",
+            totals.baseFare.toFixed(2), totals.cgst.toFixed(2), totals.sgst.toFixed(2),
+            totals.totalTax.toFixed(2), totals.finalFare.toFixed(2)
+        ]);
+        totalRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC0504D' } };
+
+        sheet.columns.forEach((column, index) => {
+            column.width = index === 1 ? 25 : 18; 
+        });
+
+        res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.attachment('fleet_tax_report.xlsx');
+        
+        await workbook.xlsx.write(res);
+        return res.end();
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Error exporting tax report", error: error.message });
+    }
+};
+
+// ============================================
+// FIXED BOOKINGS MARKETPLACE (FLEET PANEL)
+// ============================================
+
+// 1. Get Open Fixed Packages from Marketplace
+exports.getFixedMarketplace = async (req, res) => {
+    try {
+        const FixedBooking = require("../models/FixedBooking");
+        const FleetDriver = require("../models/FleetDriver");
+        const FleetAssignment = require("../models/FleetAssignment");
+
+        // 1. Get all approved drivers for this fleet
+        const approvedDrivers = await FleetDriver.find({ fleetId: req.user.id, isApproved: true }).select('_id');
+        const approvedDriverIds = approvedDrivers.map(d => d._id);
+
+        // 2. Get their active car assignments
+        const activeAssignments = await FleetAssignment.find({
+            fleetId: req.user.id,
+            driverId: { $in: approvedDriverIds },
+            isAssigned: true
+        }).populate('carId');
+
+        // 3. Extract unique car category IDs
+        const availableCarCategoryIds = activeAssignments
+            .filter(a => a.carId && a.carId.carType)
+            .map(a => a.carId.carType.toString());
+        const uniqueCarCategories = [...new Set(availableCarCategoryIds)];
+
+        // 4. Fetch only bookings that match the available car categories
+        const openBookings = await FixedBooking.find({ 
+            status: 'Marketplace',
+            carCategory: { $in: uniqueCarCategories }
+        })
+            .populate('fixedRoute', 'routeName startCity endCity type')
+            .populate('carCategory', 'name image capacity')
+            .sort({ createdAt: -1 });
+
+        res.json({ success: true, count: openBookings.length, data: openBookings });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Error fetching marketplace" });
+    }
+};
+
+// 2. Fleet Accepts Fixed Booking and Assigns to their Driver
+exports.acceptFixedBooking = async (req, res) => {
+    try {
+        const { driverId } = req.body;
+        if (!driverId) return res.status(400).json({ success: false, message: "Driver ID is required" });
+
+        const FixedBooking = require("../models/FixedBooking");
+        const Driver = require("../models/Driver");
+        
+        const booking = await FixedBooking.findById(req.params.id);
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+        if (booking.status !== 'Marketplace') return res.status(400).json({ success: false, message: "Booking already accepted" });
+
+        // Verify driver belongs to fleet via FleetDriver model
+        const FleetDriver = require("../models/FleetDriver");
+        const fleetDriver = await FleetDriver.findOne({ _id: driverId, fleetId: req.user.id });
+        if (!fleetDriver) return res.status(403).json({ success: false, message: "Driver does not belong to your fleet or is invalid" });
+
+        // Find the actual Driver model document (which is created when assigned a car)
+        const mainDriver = await Driver.findOne({ email: fleetDriver.email, createdBy: req.user.id });
+        if (!mainDriver) return res.status(403).json({ success: false, message: "Driver must be assigned a car first before accepting bookings" });
+
+        booking.status = 'Accepted';
+        booking.assignedDriver = mainDriver._id;
+        booking.assignedFleet = req.user.id;
+        booking.acceptedAt = new Date();
+
+        await booking.save();
+
+        res.json({ success: true, message: "Booking accepted & driver assigned successfully", data: booking });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Error accepting booking" });
+    }
+};
+
+// 3. Get Fleet's Managed Fixed Bookings
+exports.getMyFixedBookings = async (req, res) => {
+    try {
+        const FixedBooking = require("../models/FixedBooking");
+        const myBookings = await FixedBooking.find({ assignedFleet: req.user.id })
+            .populate('fixedRoute', 'routeName startCity endCity type')
+            .populate('carCategory', 'name image capacity')
+            .populate('assignedDriver', 'name phone')
+            .sort({ acceptedAt: -1 });
+
+        res.json({ success: true, count: myBookings.length, data: myBookings });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, message: "Error fetching your fixed bookings" });
+    }
+};

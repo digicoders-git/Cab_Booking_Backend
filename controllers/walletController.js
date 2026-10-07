@@ -375,7 +375,13 @@ exports.createAddMoneyOrder = async (req, res) => {
         const hostUrl = `${req.get('host').includes('localhost') || req.get('host').includes('127.0.0.1') ? req.protocol : 'https'}://${req.get('host')}`;
         
         const frontendOrigin = req.headers.origin || process.env.FRONTEND_DRIVER_URL || 'http://localhost:5174';
-        const returnUrl = `${hostUrl}/api/wallet/add-money/return?redirect=${encodeURIComponent(frontendOrigin + '/driver/wallet')}`;
+        
+        let redirectPath = '/driver/wallet';
+        if (role === 'fleet' || role === 'agent') {
+            redirectPath = '/wallet';
+        }
+        
+        const returnUrl = `${hostUrl}/api/wallet/add-money/return?redirect=${encodeURIComponent(frontendOrigin + redirectPath)}`;
 
         const sessionResponse = await razorpayHandler.orderSession({
             order_id: orderIdString,

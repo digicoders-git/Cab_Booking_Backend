@@ -90,6 +90,7 @@ const bookingSchema = new mongoose.Schema({
     default: () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   },
 
+
   originalFare: {
     type: Number,
     default: 0
@@ -123,6 +124,7 @@ const bookingSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+
   agentCommission: {
     type: Number,
     default: 0 // Calculated if agent made the booking

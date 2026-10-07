@@ -130,6 +130,11 @@ const fixedBookingSchema = new mongoose.Schema({
         ref: 'Admin',
         default: null
     },
+    assignedFleet: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Fleet',
+        default: null
+    },
     acceptedAt: {
         type: Date,
         default: null

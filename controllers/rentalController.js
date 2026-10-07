@@ -315,6 +315,35 @@ exports.acceptRentalBooking = async (req, res) => {
             .populate("carCategory", "name")
             .populate("rentalPackage");
 
+        // === ADDED: Notify User via Socket & FCM ===
+        if (populatedBooking.user) {
+            try {
+                // Socket Notification
+                const io = require("../socket/socket").getIO();
+                io.to(populatedBooking.user._id.toString()).emit("booking_update", {
+                    bookingId: populatedBooking._id,
+                    status: "Accepted"
+                });
+
+                // FCM Notification
+                const User = require("../models/User");
+                const rider = await User.findById(populatedBooking.user._id);
+                if (rider && rider.fcmToken) {
+                    const { sendPushNotification } = require("../utils/fcmNotification");
+                    await sendPushNotification(rider.fcmToken, {
+                        title: "🚖 Rental Ride Accepted!",
+                        body: `Driver is on the way to pick you up.`,
+                        data: {
+                            type: "ride_accepted",
+                            bookingId: populatedBooking._id.toString()
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error("Socket/FCM Error on rental accept:", err.message);
+            }
+        }
+
         res.json({ success: true, message: "Rental Trip Accepted", booking: populatedBooking });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -357,6 +386,33 @@ exports.startRentalRide = async (req, res) => {
             .populate("user", "name phone")
             .populate("carCategory", "name")
             .populate("rentalPackage");
+
+        // === ADDED: Notify User via Socket & FCM ===
+        if (populatedBooking.user) {
+            try {
+                const io = require("../socket/socket").getIO();
+                io.to(populatedBooking.user._id.toString()).emit("booking_update", {
+                    bookingId: populatedBooking._id,
+                    status: "Started"
+                });
+
+                const User = require("../models/User");
+                const rider = await User.findById(populatedBooking.user._id);
+                if (rider && rider.fcmToken) {
+                    const { sendPushNotification } = require("../utils/fcmNotification");
+                    await sendPushNotification(rider.fcmToken, {
+                        title: "🚕 Rental Trip Started!",
+                        body: `Your rental trip has begun.`,
+                        data: {
+                            type: "TRIP_ONGOING",
+                            bookingId: populatedBooking._id.toString()
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error("Socket/FCM Error on rental start:", err.message);
+            }
+        }
 
         res.json({ success: true, message: "Rental Ride Started", booking: populatedBooking });
     } catch (error) {
@@ -428,6 +484,24 @@ exports.endRentalTrip = async (req, res) => {
             booking.paymentMethod = 'Online';
             await booking.save();
 
+            // === ADDED: Notify User via Socket for Payment Request ===
+            if (booking.user) {
+                try {
+                    const io = require("../socket/socket").getIO();
+                    const userId = booking.user._id || booking.user;
+                    io.to(userId.toString()).emit("booking_update", {
+                        bookingId: booking._id,
+                        status: "Payment_Requested",
+                        paymentMethod: "Online",
+                        finalFare: totalFare,
+                        paymentLinks: { web: sessionResponse.payment_links.web }
+                    });
+                } catch (err) {
+                    console.error("Socket Error on rental payment request:", err.message);
+                }
+            }
+            // =========================================================
+
             return res.json({ 
                 success: true, 
                 message: "Please complete payment", 
@@ -476,6 +550,37 @@ exports.endRentalTrip = async (req, res) => {
                 await driver.save();
             }
         }
+
+        // === ADDED: Notify User via Socket & FCM for Completion ===
+        if (booking.user) {
+            try {
+                const io = require("../socket/socket").getIO();
+                const userId = booking.user._id || booking.user;
+                io.to(userId.toString()).emit("booking_update", {
+                    bookingId: booking._id,
+                    status: "Completed",
+                    finalFare: totalFare,
+                    paymentMethod: "Cash"
+                });
+
+                const User = require("../models/User");
+                const rider = await User.findById(userId);
+                if (rider && rider.fcmToken) {
+                    const { sendPushNotification } = require("../utils/fcmNotification");
+                    await sendPushNotification(rider.fcmToken, {
+                        title: "🏁 Rental Trip Completed!",
+                        body: `Hope you had a great ride! Total Fare: ₹${totalFare}.`,
+                        data: {
+                            type: "TRIP_COMPLETED",
+                            bookingId: booking._id.toString()
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error("Socket/FCM Error on rental end (Cash):", err.message);
+            }
+        }
+        // ==========================================================
 
         res.json({ success: true, message: "Rental Trip Completed", booking });
     } catch (error) {
@@ -550,6 +655,37 @@ exports.verifyRentalPayment = async (req, res) => {
             }
             await driver.save();
         }
+
+        // === ADDED: Notify User via Socket & FCM for Completion ===
+        if (booking.user) {
+            try {
+                const io = require("../socket/socket").getIO();
+                const userId = booking.user._id || booking.user;
+                io.to(userId.toString()).emit("booking_update", {
+                    bookingId: booking._id,
+                    status: "Completed",
+                    finalFare: booking.fareDetails.totalFare,
+                    paymentMethod: "Online"
+                });
+
+                const User = require("../models/User");
+                const rider = await User.findById(userId);
+                if (rider && rider.fcmToken) {
+                    const { sendPushNotification } = require("../utils/fcmNotification");
+                    await sendPushNotification(rider.fcmToken, {
+                        title: "🏁 Rental Trip Completed!",
+                        body: `Payment verified. Hope you had a great ride!`,
+                        data: {
+                            type: "TRIP_COMPLETED",
+                            bookingId: booking._id.toString()
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error("Socket/FCM Error on rental verify payment:", err.message);
+            }
+        }
+        // ==========================================================
 
         res.json({ success: true, message: "Payment verified and Trip Completed", booking });
     } catch (error) {

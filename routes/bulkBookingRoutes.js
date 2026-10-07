@@ -46,6 +46,10 @@ router.post("/driver/end/:bookingId", auth, bulkBookingController.endIndividualD
 // 13. Download Receipt
 router.get("/receipt/:bookingId", auth, bulkBookingController.downloadReceipt);
 
+// 13.5 Download Driver Payout Receipt
+router.get("/driver-receipt/:bookingId", auth, bulkBookingController.downloadDriverReceipt);
+
+
 // 14. Download Security Receipt (Fleet Admin)
 router.get("/security-receipt/:bookingId", auth, bulkBookingController.downloadSecurityReceipt);
 

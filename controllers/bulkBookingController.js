@@ -18,7 +18,7 @@ const Transaction = require("../models/Transaction");
 const Admin = require("../models/Admin");
 const Agent = require("../models/Agent");
 const User = require("../models/User");
-const { generateBulkBookingReceipt } = require("../utils/pdfGenerator");
+const { generateBulkBookingReceipt, generateDriverBulkPayoutReceipt } = require("../utils/pdfGenerator");
 
 const Driver = require("../models/Driver");
 const Vendor = require("../models/Vendor");
@@ -57,34 +57,35 @@ exports.createBulkBooking = async (req, res) => {
         let mcdStateTaxApplied = 0;
         let taxBreakdown = [];
         try {
-            if (isOutstation) {
-                const stateTaxController = require("./stateTaxController");
-                let totalTaxForBooking = 0;
+            const stateTaxController = require("./stateTaxController");
+            let totalTaxForBooking = 0;
 
-                // Bulk booking can have multiple car categories
-                for (const item of carsRequired) {
-                    const result = await stateTaxController.calculateTaxesInternal({
-                        pickupAddress: pickup.address,
-                        dropAddress: drop.address,
-                        carCategoryId: item.category,
-                        tripType: tripType
+            // Bulk booking can have multiple car categories
+            for (const item of carsRequired) {
+                const result = await stateTaxController.calculateTaxesInternal({
+                    pickupAddress: pickup.address,
+                    dropAddress: drop.address,
+                    carCategoryId: item.category,
+                    tripType: tripType,
+                    pickupDate: pickupDateTime,
+                    returnDate: returnDateTime
+                });
+                
+                // Multiply the tax by the quantity of cars for this category
+                totalTaxForBooking += (result.totalTax * (item.quantity || 1));
+                if (result.taxBreakdown && result.taxBreakdown.length > 0) {
+                    taxBreakdown.push({
+                        carCategory: item.category,
+                        quantity: item.quantity || 1,
+                        taxes: result.taxBreakdown
                     });
-                    
-                    // Multiply the tax by the quantity of cars for this category
-                    totalTaxForBooking += (result.totalTax * (item.quantity || 1));
-                    if (result.taxBreakdown && result.taxBreakdown.length > 0) {
-                        taxBreakdown.push({
-                            carCategory: item.category,
-                            quantity: item.quantity || 1,
-                            taxes: result.taxBreakdown
-                        });
-                    }
                 }
+            }
 
-                if (totalTaxForBooking > 0) {
-                    offeredPrice = Number(offeredPrice) + totalTaxForBooking;
-                    mcdStateTaxApplied = totalTaxForBooking;
-                }
+            if (totalTaxForBooking > 0) {
+                offeredPrice = Number(offeredPrice) + totalTaxForBooking;
+                mcdStateTaxApplied = totalTaxForBooking;
+                isOutstation = true; // Automatically mark as outstation if there's state tax
             }
         } catch (err) {
             console.error("State Tax Lookup Error for Bulk Booking:", err.message);
@@ -215,7 +216,7 @@ exports.createBulkBooking = async (req, res) => {
         }
 
         // --- BYPASS LOGIC: Wallet Deduction instead of Bank Gateway ---
-        if (!payViaBank) {
+        if (!payViaBank || advanceAmount <= 0) {
             // Check Wallet Balance & Limit
             let userRecord;
             if (creatorModel === 'User') userRecord = await require('../models/User').findById(req.user.id);
@@ -435,7 +436,9 @@ exports.getMarketplace = async (req, res) => {
                 }
                 if (canHandle) filteredBookings.push(booking);
             }
-            return res.json({ success: true, count: filteredBookings.length, bookings: filteredBookings });
+            const adminSettings = await Admin.findOne({ role: 'SuperAdmin' });
+            const securityPct = adminSettings?.fleetBulkSecurityPct ?? 20;
+            return res.json({ success: true, count: filteredBookings.length, bookings: filteredBookings, securityPct });
         }
 
         if (role === 'driver') {
@@ -446,8 +449,10 @@ exports.getMarketplace = async (req, res) => {
             });
         }
 
-        res.json({ success: true, count: allBookings.length, bookings: allBookings });
+        const adminSettings = await Admin.findOne({ role: 'SuperAdmin' });
+        const securityPct = adminSettings?.fleetBulkSecurityPct ?? 20;
 
+        res.json({ success: true, count: allBookings.length, bookings: allBookings, securityPct });
 
     } catch (error) {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
@@ -511,7 +516,7 @@ exports.acceptBulkBooking = async (req, res) => {
         const securityAmount = Math.round(booking.offeredPrice * (securityPct / 100));
 
         // --- BYPASS LOGIC: Wallet Deduction instead of Bank Gateway ---
-        if (!payViaBank) {
+        if (!payViaBank || securityAmount <= 0) {
             let userRecord;
             let userModelName;
             
@@ -2288,6 +2293,34 @@ exports.downloadReceipt = async (req, res) => {
         console.error("Error generating receipt:", error);
         if (!res.headersSent) {
             res.status(500).json({ success: false, message: "Error generating receipt" });
+        }
+    }
+};
+
+// ==========================================
+// Download Driver Payout Receipt
+// ==========================================
+exports.downloadDriverReceipt = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const driverId = req.user.id; // From auth middleware
+
+        const booking = await BulkBooking.findById(bookingId).populate('assignedDrivers.driver');
+        if (!booking) {
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        // Set Headers for PDF Download
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="driver-payout-${bookingId}.pdf"`);
+
+        // Generate and pipe PDF
+        await generateDriverBulkPayoutReceipt(booking, driverId, res);
+        
+    } catch (error) {
+        console.error("Error generating driver receipt:", error);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: "Error generating driver receipt" });
         }
     }
 };

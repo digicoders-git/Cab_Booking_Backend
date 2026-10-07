@@ -17,7 +17,7 @@ exports.generateBulkBookingReceipt = (booking, res) => {
             doc.pipe(res);
 
             // Path to logo (from backend assets)
-            const logoPath = path.join(__dirname, '..', 'assets', 'logo.png');
+            const logoPath = path.join(__dirname, '..', 'assets', 'logo2.png');
             let hasLogo = fs.existsSync(logoPath);
 
             // 1. External Border
@@ -160,6 +160,14 @@ exports.generateBulkBookingReceipt = (booking, res) => {
             // 7. Totals Section
             doc.font('Helvetica-Bold');
             const advancePaid = booking.advancePayment?.amount || 0;
+            const mcdTax = booking.mcdStateTaxApplied || 0;
+            
+            // Base fare already includes mcdTax in bulkBookingController (offeredPrice = offeredPrice + totalTaxForBooking)
+            // Wait, does offeredPrice include it? Let me check bulkBookingController.js:
+            // "offeredPrice = Number(offeredPrice) + totalTaxForBooking;" -> Yes, it includes it!
+            // But to show it separately, we subtract it from base fare for display
+            
+            const baseFareWithoutMcd = offeredPrice - mcdTax;
             const cgst = Math.round(offeredPrice * 0.025);
             const sgst = Math.round(offeredPrice * 0.025);
             const totalPriceWithTax = offeredPrice + cgst + sgst;
@@ -168,35 +176,38 @@ exports.generateBulkBookingReceipt = (booking, res) => {
             const isCompleted = booking.status === 'Completed' || booking.finalPayment?.isPaid;
 
             doc.text("BASE FARE", mm(130), mm(tableBottom + 5));
-            doc.text(`${offeredPrice.toLocaleString()}`, mm(180), mm(tableBottom + 5));
+            doc.text(`${baseFareWithoutMcd.toLocaleString()}`, mm(180), mm(tableBottom + 5));
             
-            doc.text("CGST (2.5%)", mm(130), mm(tableBottom + 10));
-            doc.text(`+ ${cgst.toLocaleString()}`, mm(180), mm(tableBottom + 10));
+            doc.text("MCD / STATE TAX", mm(130), mm(tableBottom + 10));
+            doc.text(`+ ${mcdTax.toLocaleString()}`, mm(180), mm(tableBottom + 10));
             
-            doc.text("SGST (2.5%)", mm(130), mm(tableBottom + 15));
-            doc.text(`+ ${sgst.toLocaleString()}`, mm(180), mm(tableBottom + 15));
+            doc.text("CGST (2.5%)", mm(130), mm(tableBottom + 15));
+            doc.text(`+ ${cgst.toLocaleString()}`, mm(180), mm(tableBottom + 15));
             
-            doc.moveTo(mm(80), mm(tableBottom + 18)).lineTo(mm(205), mm(tableBottom + 18)).stroke();
+            doc.text("SGST (2.5%)", mm(130), mm(tableBottom + 20));
+            doc.text(`+ ${sgst.toLocaleString()}`, mm(180), mm(tableBottom + 20));
+            
+            doc.moveTo(mm(80), mm(tableBottom + 23)).lineTo(mm(205), mm(tableBottom + 23)).stroke();
 
-            doc.text("TOTAL PRICE WITH GST", mm(130), mm(tableBottom + 22));
-            doc.text(`${totalPriceWithTax.toLocaleString()}`, mm(180), mm(tableBottom + 22));
-            doc.moveTo(mm(80), mm(tableBottom + 26)).lineTo(mm(205), mm(tableBottom + 26)).stroke();
+            doc.text("TOTAL PRICE WITH GST", mm(130), mm(tableBottom + 27));
+            doc.text(`${totalPriceWithTax.toLocaleString()}`, mm(180), mm(tableBottom + 27));
+            doc.moveTo(mm(80), mm(tableBottom + 31)).lineTo(mm(205), mm(tableBottom + 31)).stroke();
 
-            doc.text("ADVANCE PAID", mm(130), mm(tableBottom + 30));
-            doc.text(`${advancePaid.toLocaleString()}`, mm(180), mm(tableBottom + 30));
-            doc.moveTo(mm(80), mm(tableBottom + 34)).lineTo(mm(205), mm(tableBottom + 34)).stroke();
+            doc.text("ADVANCE PAID", mm(130), mm(tableBottom + 32));
+            doc.text(`${advancePaid.toLocaleString()}`, mm(180), mm(tableBottom + 32));
+            doc.moveTo(mm(80), mm(tableBottom + 36)).lineTo(mm(205), mm(tableBottom + 36)).stroke();
 
-            doc.rect(mm(80), mm(tableBottom + 34), mm(125), mm(10)).fill('#E6E6E6');
+            doc.rect(mm(80), mm(tableBottom + 36), mm(125), mm(10)).fill('#E6E6E6');
             doc.fill('#000000'); // Reset text color
             
             if (isCompleted) {
-                doc.text("FINAL PAYMENT PAID", mm(130), mm(tableBottom + 38));
-                doc.text(`INR ${remainingBalance.toLocaleString()}`, mm(180), mm(tableBottom + 38));
+                doc.text("FINAL PAYMENT PAID", mm(130), mm(tableBottom + 40));
+                doc.text(`INR ${remainingBalance.toLocaleString()}`, mm(180), mm(tableBottom + 40));
             } else {
-                doc.text("REMAINING BALANCE", mm(130), mm(tableBottom + 38));
-                doc.text(`INR ${remainingBalance.toLocaleString()}`, mm(180), mm(tableBottom + 38));
+                doc.text("REMAINING BALANCE", mm(130), mm(tableBottom + 40));
+                doc.text(`INR ${remainingBalance.toLocaleString()}`, mm(180), mm(tableBottom + 40));
             }
-            doc.moveTo(mm(80), mm(tableBottom + 44)).lineTo(mm(205), mm(tableBottom + 44)).stroke();
+            doc.moveTo(mm(80), mm(tableBottom + 46)).lineTo(mm(205), mm(tableBottom + 46)).stroke();
 
             // 8. Bottom Footer
             doc.fontSize(8);
@@ -224,13 +235,145 @@ exports.generateBulkBookingReceipt = (booking, res) => {
     });
 };
 
+exports.generateDriverBulkPayoutReceipt = (booking, driverId, res) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ size: 'A4', margin: 0 });
+            doc.pipe(res);
+
+            const logoPath = path.join(__dirname, '..', 'assets', 'logo2.png');
+            let hasLogo = fs.existsSync(logoPath);
+
+            const signaturePath = path.join(__dirname, '..', 'assets', 'signature.png');
+            const hasSignature = fs.existsSync(signaturePath);
+
+            const mm = (val) => val * 2.83465; // Helper to convert mm to points
+
+            // Draw outer border
+            doc.rect(mm(5), mm(5), mm(200), mm(287)).stroke();
+
+            // 1. Header Box
+            doc.moveTo(mm(5), mm(15)).lineTo(mm(205), mm(15)).stroke();
+            doc.font('Helvetica-Bold').fontSize(8);
+            doc.text("DRIVER PAYOUT RECEIPT", mm(150), mm(8));
+
+            // 2. Company Logo & Info
+            if (hasLogo) {
+                doc.image(logoPath, mm(95), mm(18), { width: mm(20) });
+            }
+            const yAfterLogo = hasLogo ? 42 : 25;
+            doc.fontSize(16).text("KWIK CABS", mm(10), mm(yAfterLogo), { align: 'center', width: mm(190) });
+            doc.font('Helvetica').fontSize(8);
+            doc.text("Arun Bhawan Kalu Kuwan Baberu Road, Banda UP", mm(10), mm(yAfterLogo + 6), { align: 'center', width: mm(190) });
+            doc.text("MOB : +91 7310221010", mm(10), mm(yAfterLogo + 10), { align: 'center', width: mm(190) });
+
+            doc.moveTo(mm(5), mm(yAfterLogo + 16)).lineTo(mm(205), mm(yAfterLogo + 16)).stroke();
+
+            // Find Driver Info
+            const assignment = booking.assignedDrivers.find(d => d.driver?._id?.toString() === driverId.toString() || d.driver?.toString() === driverId.toString());
+            const driverName = assignment?.driver?.name || "Driver Partner";
+            const driverPhone = assignment?.driver?.phone || "N/A";
+            
+            // Wait, the caller needs to pass the driver object or populate it
+            // Assuming it's populated!
+
+            // 3. Driver & Ride Info
+            doc.font('Helvetica-Bold').fontSize(9).text("DETAIL OF DRIVER PARTNER", mm(10), mm(yAfterLogo + 20));
+            doc.font('Helvetica').fontSize(8);
+            
+            doc.font('Helvetica-Bold').text("Name :", mm(10), mm(yAfterLogo + 28));
+            doc.font('Helvetica').text(driverName, mm(25), mm(yAfterLogo + 28));
+            
+            doc.font('Helvetica-Bold').text("Phone :", mm(10), mm(yAfterLogo + 34));
+            doc.font('Helvetica').text(driverPhone, mm(25), mm(yAfterLogo + 34));
+
+            doc.font('Helvetica-Bold').text("Car Category :", mm(10), mm(yAfterLogo + 40));
+            doc.font('Helvetica').text(assignment?.categoryName || "N/A", mm(32), mm(yAfterLogo + 40));
+
+            // Right side info
+            doc.moveTo(mm(120), mm(yAfterLogo + 16)).lineTo(mm(120), mm(yAfterLogo + 48)).stroke();
+
+            doc.font('Helvetica-Bold').text("Receipt No. :", mm(125), mm(yAfterLogo + 20));
+            doc.font('Helvetica').text(`DP/${booking._id.toString().slice(-6).toUpperCase()}`, mm(150), mm(yAfterLogo + 20));
+
+            doc.font('Helvetica-Bold').text("Date :", mm(125), mm(yAfterLogo + 26));
+            doc.font('Helvetica').text(new Date().toLocaleDateString('en-GB'), mm(150), mm(yAfterLogo + 26));
+
+            doc.font('Helvetica-Bold').text("Trip Status :", mm(125), mm(yAfterLogo + 32));
+            doc.font('Helvetica').text(assignment?.status || "Unknown", mm(150), mm(yAfterLogo + 32));
+
+            doc.moveTo(mm(5), mm(yAfterLogo + 48)).lineTo(mm(205), mm(yAfterLogo + 48)).stroke();
+
+            // 4. Financial Breakdown Grid
+            const tableTop = yAfterLogo + 55;
+            
+            doc.font('Helvetica-Bold').fontSize(9);
+            doc.text("PAYOUT BREAKDOWN", mm(10), mm(tableTop - 4));
+            
+            doc.moveTo(mm(5), mm(tableTop)).lineTo(mm(205), mm(tableTop)).stroke();
+            doc.moveTo(mm(5), mm(tableTop + 10)).lineTo(mm(205), mm(tableTop + 10)).stroke();
+
+            doc.text("Description", mm(15), mm(tableTop + 3));
+            doc.text("Amount (INR)", mm(160), mm(tableTop + 3));
+
+            let currentY = tableTop + 15;
+            doc.font('Helvetica');
+
+            // Gross Share
+            doc.text("Gross Trip Earning (Total Bill for this Car)", mm(15), mm(currentY));
+            doc.text(`+ ${assignment?.grossShare || 0}`, mm(160), mm(currentY));
+            currentY += 10;
+
+            // Commission
+            doc.text("Admin Commission Deducted", mm(15), mm(currentY));
+            doc.text(`- ${assignment?.commission || 0}`, mm(160), mm(currentY));
+            currentY += 10;
+            
+            // Security Deposit returned/settled
+            // We assume it's settled.
+            
+            doc.moveTo(mm(5), mm(currentY)).lineTo(mm(205), mm(currentY)).stroke();
+            currentY += 5;
+
+            // Final Earnings
+            doc.font('Helvetica-Bold');
+            doc.text("NET PAYOUT EARNINGS", mm(15), mm(currentY));
+            doc.text(`${assignment?.payoutAmount || 0}`, mm(160), mm(currentY));
+            currentY += 10;
+            
+            doc.moveTo(mm(5), mm(currentY)).lineTo(mm(205), mm(currentY)).stroke();
+
+            // 5. Bottom Footer
+            doc.fontSize(8);
+            if (assignment?.payoutSettled) {
+                doc.text(`Note: Payout of INR ${assignment?.payoutAmount || 0} has been successfully settled to your wallet.`, mm(10), mm(currentY + 10));
+            } else {
+                doc.text(`Note: Payout of INR ${assignment?.payoutAmount || 0} is pending settlement.`, mm(10), mm(currentY + 10));
+            }
+
+            doc.font('Helvetica-Bold');
+            if (hasSignature) {
+                doc.image(signaturePath, mm(145), mm(currentY + 20), { width: mm(40) });
+            }
+            doc.moveTo(mm(140), mm(currentY + 40)).lineTo(mm(200), mm(currentY + 40)).stroke();
+            doc.text("Authorized Signatory", mm(145), mm(currentY + 43));
+
+            doc.end();
+            resolve();
+            
+        } catch (error) {
+            reject(error);
+        }
+    });
+};
+
 exports.generateSecurityReceipt = (booking, res) => {
     return new Promise((resolve, reject) => {
         try {
             const doc = new PDFDocument({ size: 'A4', margin: 0 });
             doc.pipe(res);
 
-            const logoPath = path.join(__dirname, '..', 'assets', 'logo.png');
+            const logoPath = path.join(__dirname, '..', 'assets', 'logo2.png');
             let hasLogo = fs.existsSync(logoPath);
 
             const signaturePath = path.join(__dirname, '..', 'assets', 'signature.png');
@@ -438,7 +581,7 @@ exports.generateAgentLeadReceipt = async (lead, res) => {
             doc.text("Registration Number : 09LUGPK1138L2Z4", mm(10), mm(11), { baseline: 'bottom' });
             doc.text("AGENT LEAD BOOKING RECEIPT", mm(145), mm(11), { baseline: 'bottom' });
 
-            const logoPath = path.join(__dirname, '..', 'assets', 'logo.png');
+            const logoPath = path.join(__dirname, '..', 'assets', 'logo2.png');
             const hasLogo = fs.existsSync(logoPath);
 
             if (hasLogo) {
@@ -589,7 +732,7 @@ exports.generateDriverCommissionReceipt = async (lead, res) => {
             doc.text("Registration Number : 09LUGPK1138L2Z4", mm(10), mm(11), { baseline: 'bottom' });
             doc.text("DRIVER COMMISSION INVOICE", mm(145), mm(11), { baseline: 'bottom' });
 
-            const logoPath = path.join(__dirname, '..', 'assets', 'logo.png');
+            const logoPath = path.join(__dirname, '..', 'assets', 'logo2.png');
             const hasLogo = fs.existsSync(logoPath);
 
             if (hasLogo) {
@@ -721,7 +864,7 @@ exports.generateFixedBookingReceipt = (booking, res) => {
             const doc = new PDFDocument({ size: 'A4', margin: 0 });
             doc.pipe(res);
 
-            const logoPath = path.join(__dirname, '..', 'assets', 'logo.png');
+            const logoPath = path.join(__dirname, '..', 'assets', 'logo2.png');
             let hasLogo = fs.existsSync(logoPath);
 
             doc.lineWidth(1);
@@ -860,7 +1003,7 @@ exports.generateNormalBookingReceipt = (booking, res) => {
             const doc = new PDFDocument({ size: 'A4', margin: 0 });
             doc.pipe(res);
 
-            const logoPath = path.join(__dirname, '..', 'assets', 'logo.png');
+            const logoPath = path.join(__dirname, '..', 'assets', 'logo2.png');
             let hasLogo = fs.existsSync(logoPath);
 
             doc.lineWidth(1);

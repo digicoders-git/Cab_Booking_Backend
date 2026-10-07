@@ -15,7 +15,11 @@ const {
     getFleetPerformance,
     getFleetCompletedRides,
     adminUpdateFleet,
-    updateFcmToken
+    updateFcmToken,
+    exportTaxReport,
+    getFixedMarketplace,
+    acceptFixedBooking,
+    getMyFixedBookings
 } = require("../controllers/fleetController");
 
 const { auth, adminOnly, fleetOnly } = require("../middleware/auth");
@@ -50,8 +54,16 @@ router.get("/dashboard", auth, fleetOnly, getFleetDashboard);
 // Fleet Performance Report (Protected - Fleet Only)
 router.get("/performance", auth, fleetOnly, getFleetPerformance);
 
+// Fleet Tax Report (Protected - Fleet Only)
+router.get("/export-tax-report", auth, fleetOnly, exportTaxReport);
+
 // Fleet Completed Rides Report (Protected - Fleet Only)
 router.get("/completed-rides", auth, fleetOnly, getFleetCompletedRides);
+
+// ---- FIXED BOOKINGS MARKETPLACE (Fleet Only) ----
+router.get("/fixed-marketplace", auth, fleetOnly, getFixedMarketplace);
+router.post("/fixed-bookings/accept/:id", auth, fleetOnly, acceptFixedBooking);
+router.get("/my-fixed-bookings", auth, fleetOnly, getMyFixedBookings);
 
 // Get All Fleets (Admin Only)
 router.get("/all", auth, checkPermission("FLEET_READ"), getAllFleets);

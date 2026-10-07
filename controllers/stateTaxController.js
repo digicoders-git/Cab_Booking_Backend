@@ -76,7 +76,7 @@ exports.deleteStateTax = async (req, res) => {
 };
 
 // Internal helper for other controllers
-exports.calculateTaxesInternal = async ({ pickupAddress, dropAddress, carCategoryId, tripType }) => {
+exports.calculateTaxesInternal = async ({ pickupAddress, dropAddress, carCategoryId, tripType, pickupDate, returnDate }) => {
     const applicableTaxes = await StateTax.find({ carCategory: carCategoryId, isActive: true });
     if (applicableTaxes.length === 0) return { totalTax: 0, taxBreakdown: [] };
 
@@ -84,6 +84,35 @@ exports.calculateTaxesInternal = async ({ pickupAddress, dropAddress, carCategor
     let taxBreakdown = [];
     const dropStr = (dropAddress || "").toLowerCase();
     const pickupStr = (pickupAddress || "").toLowerCase();
+
+    // --- Calculate Multiplier based on Midnight-to-Midnight Rule ---
+    let multiplier = 1;
+    let note = 'One Way';
+
+    if (tripType === 'RoundTrip') {
+        if (pickupDate && returnDate) {
+            const pDate = new Date(pickupDate);
+            const rDate = new Date(returnDate);
+            
+            // Normalize to midnight to compare calendar days
+            const pDay = Date.UTC(pDate.getFullYear(), pDate.getMonth(), pDate.getDate());
+            const rDay = Date.UTC(rDate.getFullYear(), rDate.getMonth(), rDate.getDate());
+            
+            const diffDays = Math.floor((rDay - pDay) / (1000 * 60 * 60 * 24));
+            
+            if (diffDays > 0) {
+                multiplier = 2; // Maximum 2x tax for any multi-day trip
+                note = `Round Trip (2x - Multi Day Return)`;
+            } else {
+                multiplier = 1;
+                note = 'Round Trip (1x - Same Day Return)';
+            }
+        } else {
+            // Fallback if no dates provided
+            multiplier = 2;
+            note = 'Round Trip (2x - Default)';
+        }
+    }
 
     for (const tax of applicableTaxes) {
         const keyword = tax.stateName;
@@ -96,14 +125,12 @@ exports.calculateTaxesInternal = async ({ pickupAddress, dropAddress, carCategor
         }
 
         if (isCrossing) {
+            // If both pickup and drop have the state name, no border was crossed
             if (pickupStr.includes(keyword) && dropStr.includes(keyword)) {
                 continue; 
             }
 
-            let finalAmount = tax.amount;
-            if (tripType === 'RoundTrip') {
-                finalAmount = tax.amount * 2;
-            }
+            let finalAmount = tax.amount * multiplier;
 
             totalTaxAmount += finalAmount;
             taxBreakdown.push({
@@ -111,7 +138,7 @@ exports.calculateTaxesInternal = async ({ pickupAddress, dropAddress, carCategor
                 taxType: tax.taxType,
                 baseAmount: tax.amount,
                 appliedAmount: finalAmount,
-                note: tripType === 'RoundTrip' ? 'Round Trip (2x)' : 'One Way'
+                note: note
             });
         }
     }
@@ -121,13 +148,13 @@ exports.calculateTaxesInternal = async ({ pickupAddress, dropAddress, carCategor
 // 5. Public: Calculate Taxes for a Route (API)
 exports.calculateRouteTaxes = async (req, res) => {
     try {
-        const { pickupAddress, dropAddress, carCategoryId, tripType } = req.body;
+        const { pickupAddress, dropAddress, carCategoryId, tripType, pickupDate, returnDate } = req.body;
 
         if (!pickupAddress || !dropAddress || !carCategoryId) {
             return res.status(400).json({ success: false, message: "Missing required fields" });
         }
 
-        const result = await exports.calculateTaxesInternal({ pickupAddress, dropAddress, carCategoryId, tripType });
+        const result = await exports.calculateTaxesInternal({ pickupAddress, dropAddress, carCategoryId, tripType, pickupDate, returnDate });
         res.json({ success: true, ...result });
 
     } catch (error) {
