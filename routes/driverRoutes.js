@@ -83,6 +83,9 @@ router.get("/report", auth, driverOnly, getDriverReport);
 // Get Driver Full History (Profile, Lifetime Transactions, Lifetime Rides) - MUST BE BEFORE /:id
 router.get("/:id/full-history", auth, checkPermission("DRIVER_READ"), getDriverFullHistory);
 
+// Export Driver Report to PDF
+router.get("/export-driver-report/:id", auth, checkPermission("DRIVER_READ"), require("../controllers/driverController").exportDriverReportPdf);
+
 // Get Single Driver (Admin/Fleet) - MUST BE LAST
 router.get("/:id", auth, checkPermission("DRIVER_READ"), getSingleDriver);
 

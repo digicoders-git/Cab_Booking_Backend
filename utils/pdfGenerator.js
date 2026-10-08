@@ -1126,3 +1126,309 @@ exports.generateNormalBookingReceipt = (booking, res) => {
         }
     });
 };
+
+exports.generateDriverReportPdf = (driverData, res) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ size: 'A4', margin: mm(10) });
+            doc.pipe(res);
+
+            const logoPath = path.join(__dirname, '..', 'assets', 'logo2.png');
+            let hasLogo = fs.existsSync(logoPath);
+
+            // Border
+            doc.lineWidth(1);
+            doc.rect(mm(5), mm(5), mm(200), mm(287)).stroke();
+
+            // Watermark and Logo
+            if (hasLogo) {
+                doc.save();
+                doc.opacity(0.05);
+                doc.image(logoPath, mm(45), mm(110), { width: mm(120), height: mm(120) });
+                doc.restore();
+                doc.image(logoPath, mm(92.5), mm(10), { width: mm(25), height: mm(25) });
+            }
+            
+            // Header
+            doc.fontSize(22).font('Helvetica-Bold');
+            doc.text("KWIK CABS - DRIVER REPORT", 0, mm(40), { align: "center", width: mm(210) });
+
+            doc.moveTo(mm(5), mm(52)).lineTo(mm(205), mm(52)).stroke();
+
+            // 1. Driver Info
+            doc.fontSize(14).font('Helvetica-Bold').text("1. Driver Profile", mm(15), mm(60));
+            
+            doc.fontSize(10);
+            doc.font('Helvetica-Bold').text("Driver ID:", mm(20), mm(70));
+            doc.font('Helvetica').text(driverData._id?.toString().toUpperCase() || "N/A", mm(55), mm(70));
+            
+            doc.font('Helvetica-Bold').text("Name:", mm(20), mm(77));
+            doc.font('Helvetica').text(driverData.name || "N/A", mm(55), mm(77));
+            
+            doc.font('Helvetica-Bold').text("Phone:", mm(20), mm(84));
+            doc.font('Helvetica').text(driverData.phone || "N/A", mm(55), mm(84));
+            
+            doc.font('Helvetica-Bold').text("Email:", mm(20), mm(91));
+            doc.font('Helvetica').text(driverData.email || "N/A", mm(55), mm(91));
+            
+            doc.font('Helvetica-Bold').text("Joined On:", mm(20), mm(98));
+            doc.font('Helvetica').text(driverData.createdAt ? new Date(driverData.createdAt).toLocaleDateString('en-GB') : "N/A", mm(55), mm(98));
+
+            // 2. Wallet Info
+            doc.fontSize(14).font('Helvetica-Bold').text("2. Financial Overview (Wallet)", mm(15), mm(115));
+            doc.fontSize(10);
+            doc.font('Helvetica-Bold').text("Wallet Balance:", mm(20), mm(125));
+            const balance = driverData.walletBalance || 0;
+            doc.font('Helvetica').fillColor(balance < 0 ? 'red' : 'green')
+               .text(`Rs. ${balance.toLocaleString('en-IN')}`, mm(60), mm(125));
+            doc.fillColor('black');
+
+            doc.font('Helvetica-Bold').text("Total Earnings:", mm(20), mm(132));
+            doc.font('Helvetica').text(`Rs. ${(driverData.totalEarnings || 0).toLocaleString('en-IN')}`, mm(60), mm(132));
+
+            // 3. Rides Summary
+            const rides = driverData.rides || [];
+            doc.fontSize(14).font('Helvetica-Bold').text("3. Ride History Summary", mm(15), mm(150));
+            doc.fontSize(10).font('Helvetica-Bold').text(`Total Completed Rides: ${rides.length}`, mm(20), mm(160));
+
+            if (rides.length > 0) {
+                const tableTop = 175;
+                
+                doc.moveTo(mm(15), mm(tableTop)).lineTo(mm(195), mm(tableTop)).stroke();
+                doc.moveTo(mm(15), mm(tableTop + 8)).lineTo(mm(195), mm(tableTop + 8)).stroke();
+
+                doc.font('Helvetica-Bold').fontSize(9);
+                doc.text("Date", mm(18), mm(tableTop + 3));
+                doc.text("Type", mm(40), mm(tableTop + 3));
+                doc.text("Pickup City", mm(70), mm(tableTop + 3));
+                doc.text("Drop City", mm(120), mm(tableTop + 3));
+                doc.text("Fare", mm(170), mm(tableTop + 3));
+
+                let currentY = tableTop + 12;
+                doc.font('Helvetica').fontSize(8);
+                
+                rides.slice(0, 30).forEach((ride, index) => {
+                    if(currentY > 260) {
+                        doc.addPage();
+                        currentY = 20;
+                    }
+                    const date = ride.pickupDateTime ? new Date(ride.pickupDateTime).toLocaleDateString('en-GB') : "N/A";
+                    const type = ride.tripType || "OneWay";
+                    // Extract city from full address to keep it short
+                    const pickup = (ride.pickup?.address || "N/A").split(',')[0].substring(0, 25);
+                    const drop = (ride.drop?.address || "N/A").split(',')[0].substring(0, 25);
+                    const price = ride.offeredPrice || ride.price || 0;
+
+                    doc.text(date, mm(18), mm(currentY));
+                    doc.text(type, mm(40), mm(currentY));
+                    doc.text(pickup, mm(70), mm(currentY));
+                    doc.text(drop, mm(120), mm(currentY));
+                    doc.text(`Rs. ${price.toLocaleString('en-IN')}`, mm(170), mm(currentY));
+                    
+                    doc.moveTo(mm(15), mm(currentY + 6)).lineTo(mm(195), mm(currentY + 6)).strokeColor('#eeeeee').stroke();
+                    doc.strokeColor('black');
+
+                    currentY += 8;
+                });
+                
+                if(rides.length > 30) {
+                    doc.text(`... and ${rides.length - 30} more rides.`, mm(18), mm(currentY + 5));
+                }
+            } else {
+                doc.font('Helvetica').fontSize(10).text("No ride history available for this driver.", mm(20), mm(175));
+            }
+
+                        // 4. Wallet Transactions
+            const transactions = driverData.transactions || [];
+            let currentYForTxn = 20;
+            doc.addPage();
+            doc.fontSize(14).font('Helvetica-Bold').text("4. Wallet Transactions (Lifetime)", mm(15), mm(currentYForTxn));
+            doc.fontSize(10).font('Helvetica-Bold').text(`Total Credits: Rs. ${(driverData.totalCredits || 0).toLocaleString('en-IN')} | Total Debits: Rs. ${(driverData.totalDebits || 0).toLocaleString('en-IN')}`, mm(20), mm(currentYForTxn + 10));
+
+            if (transactions.length > 0) {
+                let txnY = currentYForTxn + 25;
+
+                doc.moveTo(mm(15), mm(txnY)).lineTo(mm(195), mm(txnY)).stroke();
+                doc.moveTo(mm(15), mm(txnY + 8)).lineTo(mm(195), mm(txnY + 8)).stroke();
+
+                doc.font('Helvetica-Bold').fontSize(9);
+                doc.text("Date", mm(18), mm(txnY + 3));
+                doc.text("Category", mm(50), mm(txnY + 3));
+                doc.text("Description", mm(90), mm(txnY + 3));
+                doc.text("Type", mm(150), mm(txnY + 3));
+                doc.text("Amount", mm(175), mm(txnY + 3));
+
+                txnY += 12;
+                doc.font('Helvetica').fontSize(8);
+                
+                transactions.slice(0, 35).forEach((txn) => {
+                    if(txnY > 260) {
+                        doc.addPage();
+                        txnY = 20;
+                    }
+                    const date = txn.createdAt ? new Date(txn.createdAt).toLocaleDateString('en-GB') : "N/A";
+                    const category = (txn.category || "General").substring(0, 20);
+                    const desc = (txn.description || "N/A").substring(0, 35);
+                    const type = txn.type;
+                    const amt = Number(txn.amount) || 0;
+
+                    doc.text(date, mm(18), mm(txnY));
+                    doc.text(category, mm(50), mm(txnY));
+                    doc.text(desc, mm(90), mm(txnY));
+                    doc.text(type, mm(150), mm(txnY));
+                    doc.text(`Rs. ${amt.toLocaleString('en-IN')}`, mm(175), mm(txnY));
+                    
+                    doc.moveTo(mm(15), mm(txnY + 6)).lineTo(mm(195), mm(txnY + 6)).strokeColor('#eeeeee').stroke();
+                    doc.strokeColor('black');
+
+                    txnY += 8;
+                });
+                
+                if(transactions.length > 35) {
+                    doc.text(`... and ${transactions.length - 35} more transactions.`, mm(18), mm(txnY + 5));
+                }
+            } else {
+                let txnY = currentYForTxn + 25;
+                doc.font('Helvetica').fontSize(10).text("No transactions found.", mm(20), mm(txnY));
+            }
+
+            // Footer / Signatory
+            doc.font('Helvetica-Bold').fontSize(10);
+            doc.text("For KWIK CABS", mm(145), mm(265));
+            doc.moveTo(mm(140), mm(278)).lineTo(mm(200), mm(278)).stroke();
+            doc.text("Authorized Signatory", mm(145), mm(282));
+
+            doc.end();
+            resolve(true);
+        } catch (error) {
+            console.error("PDF Gen Error:", error);
+            reject(error);
+        }
+    });
+};
+
+exports.generateUserReportPdf = (userData, res) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ size: 'A4', margin: mm(10) });
+            doc.pipe(res);
+
+            const logoPath = path.join(__dirname, '..', 'assets', 'logo2.png');
+            let hasLogo = fs.existsSync(logoPath);
+
+            // Border
+            doc.lineWidth(1);
+            doc.rect(mm(5), mm(5), mm(200), mm(287)).stroke();
+
+            // Watermark and Logo
+            if (hasLogo) {
+                doc.save();
+                doc.opacity(0.05);
+                doc.image(logoPath, mm(45), mm(110), { width: mm(120), height: mm(120) });
+                doc.restore();
+                doc.image(logoPath, mm(92.5), mm(10), { width: mm(25), height: mm(25) });
+            }
+            
+            // Header
+            doc.fontSize(22).font('Helvetica-Bold');
+            doc.text("KWIK CABS - USER REPORT", 0, mm(40), { align: "center", width: mm(210) });
+
+            doc.moveTo(mm(5), mm(52)).lineTo(mm(205), mm(52)).stroke();
+
+            // 1. User Info
+            doc.fontSize(14).font('Helvetica-Bold').text("1. User Profile", mm(15), mm(60));
+            
+            doc.fontSize(10);
+            doc.font('Helvetica-Bold').text("User ID:", mm(20), mm(70));
+            doc.font('Helvetica').text(userData._id?.toString().toUpperCase() || "N/A", mm(55), mm(70));
+            
+            doc.font('Helvetica-Bold').text("Name:", mm(20), mm(77));
+            doc.font('Helvetica').text(userData.name || "N/A", mm(55), mm(77));
+            
+            doc.font('Helvetica-Bold').text("Phone:", mm(20), mm(84));
+            doc.font('Helvetica').text(userData.phone || "N/A", mm(55), mm(84));
+            
+            doc.font('Helvetica-Bold').text("Email:", mm(20), mm(91));
+            doc.font('Helvetica').text(userData.email || "N/A", mm(55), mm(91));
+            
+            doc.font('Helvetica-Bold').text("Joined On:", mm(20), mm(98));
+            doc.font('Helvetica').text(userData.stats?.joinedDate ? new Date(userData.stats.joinedDate).toLocaleDateString('en-GB') : "N/A", mm(55), mm(98));
+
+            // 2. Activity Overview
+            doc.fontSize(14).font('Helvetica-Bold').text("2. Activity Overview", mm(15), mm(115));
+            doc.fontSize(10);
+            doc.font('Helvetica-Bold').text("Total Rides:", mm(20), mm(125));
+            doc.font('Helvetica').text(userData.stats?.totalRides || 0, mm(60), mm(125));
+
+            doc.font('Helvetica-Bold').text("Completed Rides:", mm(20), mm(132));
+            doc.font('Helvetica').text(userData.stats?.completedRides || 0, mm(60), mm(132));
+            
+            doc.font('Helvetica-Bold').text("Total Spent:", mm(20), mm(139));
+            doc.font('Helvetica').text(`Rs. ${(userData.stats?.totalSpent || 0).toLocaleString('en-IN')}`, mm(60), mm(139));
+
+            // 3. Rides Summary
+            const rides = userData.rides || [];
+            doc.fontSize(14).font('Helvetica-Bold').text("3. Ride History Summary", mm(15), mm(155));
+
+            if (rides.length > 0) {
+                const tableTop = 165;
+                
+                doc.moveTo(mm(15), mm(tableTop)).lineTo(mm(195), mm(tableTop)).stroke();
+                doc.moveTo(mm(15), mm(tableTop + 8)).lineTo(mm(195), mm(tableTop + 8)).stroke();
+
+                doc.font('Helvetica-Bold').fontSize(9);
+                doc.text("Date", mm(18), mm(tableTop + 3));
+                doc.text("Type", mm(40), mm(tableTop + 3));
+                doc.text("Pickup City", mm(70), mm(tableTop + 3));
+                doc.text("Drop City", mm(120), mm(tableTop + 3));
+                doc.text("Fare", mm(170), mm(tableTop + 3));
+
+                let currentY = tableTop + 12;
+                doc.font('Helvetica').fontSize(8);
+                
+                rides.slice(0, 40).forEach((ride, index) => {
+                    if(currentY > 260) {
+                        doc.addPage();
+                        currentY = 20;
+                    }
+                    const date = ride.date ? new Date(ride.date).toLocaleDateString('en-GB') : "N/A";
+                    const type = ride.type || "City Ride";
+                    // Extract city from full address to keep it short
+                    const pickup = (ride.pickup || "N/A").split(',')[0].substring(0, 25);
+                    const drop = (ride.drop || "N/A").split(',')[0].substring(0, 25);
+                    const price = ride.fare || 0;
+
+                    doc.text(date, mm(18), mm(currentY));
+                    doc.text(type, mm(40), mm(currentY));
+                    doc.text(pickup, mm(70), mm(currentY));
+                    doc.text(drop, mm(120), mm(currentY));
+                    doc.text(`Rs. ${price.toLocaleString('en-IN')}`, mm(170), mm(currentY));
+                    
+                    doc.moveTo(mm(15), mm(currentY + 6)).lineTo(mm(195), mm(currentY + 6)).strokeColor('#eeeeee').stroke();
+                    doc.strokeColor('black');
+
+                    currentY += 8;
+                });
+                
+                if(rides.length > 40) {
+                    doc.text(`... and ${rides.length - 40} more rides.`, mm(18), mm(currentY + 5));
+                }
+            } else {
+                doc.font('Helvetica').fontSize(10).text("No ride history available for this user.", mm(20), mm(170));
+            }
+
+            // Footer / Signatory
+            doc.addPage();
+            doc.font('Helvetica-Bold').fontSize(10);
+            doc.text("For KWIK CABS", mm(145), mm(265));
+            doc.moveTo(mm(140), mm(278)).lineTo(mm(200), mm(278)).stroke();
+            doc.text("Authorized Signatory", mm(145), mm(282));
+
+            doc.end();
+            resolve(true);
+        } catch (error) {
+            console.error("PDF Gen Error:", error);
+            reject(error);
+        }
+    });
+};

@@ -1365,3 +1365,101 @@ exports.deleteSingleBooking = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
+
+// NEW: City-Wise Report Feature
+exports.getCityWiseReport = async (req, res) => {
+    try {
+        const { city } = req.query;
+        if (!city) {
+            return res.status(400).json({ success: false, message: "City name is required" });
+        }
+
+        const cityRegex = new RegExp(city, "i");
+
+        const Booking = require("../models/Booking");
+        const BulkBooking = require("../models/BulkBooking");
+        const FixedBooking = require("../models/FixedBooking");
+        const AgentLead = require("../models/AgentLead");
+        
+        const [normalBookings, bulkBookings, fixedBookings, agentLeads] = await Promise.all([
+            Booking.find({ "pickup.address": { $regex: cityRegex } }).populate("user", "name phone").lean(),
+            BulkBooking.find({ "pickup.address": { $regex: cityRegex } }).lean(),
+            FixedBooking.find({ "pickupLocation": { $regex: cityRegex } }).populate("user", "name phone").lean(),
+            AgentLead.find({ "pickup.address": { $regex: cityRegex } }).lean()
+        ]);
+
+        let combined = [];
+
+        normalBookings.forEach(b => combined.push({
+            id: b._id,
+            createdAt: b.createdAt,
+            customerName: b.user?.name || b.passengerDetails?.name || "N/A",
+            rideType: `Normal (${b.rideType || 'Private'})`,
+            pickupAddress: b.pickup?.address,
+            status: b.bookingStatus,
+            fare: b.actualFare || b.fareEstimate || 0
+        }));
+
+        bulkBookings.forEach(b => combined.push({
+            id: b._id,
+            createdAt: b.createdAt,
+            customerName: b.customerName || "Bulk User",
+            rideType: "Bulk Booking",
+            pickupAddress: b.pickup?.address,
+            status: b.status,
+            fare: b.totalPriceWithTax || b.offeredPrice || 0
+        }));
+
+        fixedBookings.forEach(b => combined.push({
+            id: b._id,
+            createdAt: b.createdAt,
+            customerName: b.user?.name || b.customerName || "N/A",
+            rideType: "Fixed Route",
+            pickupAddress: b.pickupLocation,
+            status: b.status,
+            fare: b.finalPrice || b.price || 0
+        }));
+
+        agentLeads.forEach(b => combined.push({
+            id: b._id,
+            createdAt: b.createdAt,
+            customerName: b.customerName || "N/A",
+            rideType: "Agent Lead",
+            pickupAddress: b.pickup?.address,
+            status: b.status,
+            fare: b.totalPrice || 0
+        }));
+
+        // Sort descending
+        combined.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        // Calculate summary metrics
+        let totalRevenue = 0;
+        let completedRides = 0;
+        let cancelledRides = 0;
+        
+        combined.forEach(b => {
+            if (['Completed'].includes(b.status)) {
+                completedRides++;
+                totalRevenue += b.fare;
+            } else if (['Cancelled', 'Expired'].includes(b.status)) {
+                cancelledRides++;
+            }
+        });
+
+        res.json({
+            success: true,
+            city,
+            summary: {
+                totalBookings: combined.length,
+                completedRides,
+                cancelledRides,
+                totalRevenue
+            },
+            bookings: combined
+        });
+    } catch (error) {
+        console.error("Error generating city report:", error);
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};

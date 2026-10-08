@@ -11,7 +11,8 @@ const {
     deleteUser,
     toggleUserStatus,
     updateFcmToken,
-    saveFirstLocation
+    saveFirstLocation,
+    exportUserReportPdf
 } = require("../controllers/userController")
 
 const upload = require("../middleware/uploadAdminImage")
@@ -35,5 +36,6 @@ router.get("/:id/rides", auth, checkPermission("USER_READ"), getUserRides)
 router.put("/update-profile/:id", auth, upload.single("image"), updateUserProfile)
 router.delete("/delete/:id", auth, checkPermission("USER_DELETE"), deleteUser)
 router.put("/toggle-status/:id", auth, checkPermission("USER_STATUS"), toggleUserStatus)
+router.get("/export-user-report/:id", auth, checkPermission("USER_READ"), exportUserReportPdf)
 
 module.exports = router

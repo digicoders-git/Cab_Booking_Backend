@@ -1748,4 +1748,46 @@ exports.getDriverFullHistory = async (req, res) => {
     }
 };
 
+exports.exportDriverReportPdf = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const driver = await require("../models/Driver").findById(id);
+        if (!driver) return res.status(404).json({ success: false, message: "Driver not found" });
+
+        // Fetch regular rides
+        const regularRides = await require("../models/Booking").find({ assignedDriver: id, status: "Completed" }).sort({ createdAt: -1 });
+        
+        // Fetch fixed/package rides
+        const fixedRides = await require("../models/FixedBooking").find({ assignedDriver: id, status: "Completed" }).sort({ createdAt: -1 });
+        
+        // Unify rides
+        const allRides = [...regularRides, ...fixedRides].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        // Fetch transactions
+        const transactions = await require("../models/Transaction").find({ user: id, userModel: "Driver" }).sort({ createdAt: -1 });
+
+        const totalCredits = transactions.filter(t => t.type === "Credit").reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+        const totalDebits = transactions.filter(t => t.type === "Debit").reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+        const driverData = {
+            ...driver.toObject(),
+            rides: allRides,
+            transactions: transactions,
+            totalCredits,
+            totalDebits
+        };
+
+        const pdfGenerator = require("../utils/pdfGenerator");
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="Driver_Report_${driver.name.replace(/\s+/g, "_")}.pdf"`);
+
+        await pdfGenerator.generateDriverReportPdf(driverData, res);
+
+    } catch (error) {
+        console.error("Export Driver Report Error:", error);
+        if(!res.headersSent) {
+            res.status(500).json({ success: false, message: "Server Error", error: error.message });
+        }
+    }
+};
 
