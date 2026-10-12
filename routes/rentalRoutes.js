@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { auth, adminOnly, userOnly, driverOnly } = require("../middleware/auth");
+const { checkPermission } = require("../middleware/rbac");
 const {
     createRentalPackage,
     updateRentalPackage,
@@ -21,13 +22,13 @@ const {
 } = require("../controllers/rentalController");
 
 // Admin Routes
-router.post("/package", auth, adminOnly, createRentalPackage);
-router.put("/package/:id", auth, adminOnly, updateRentalPackage);
-router.get("/packages/all", auth, adminOnly, getRentalPackagesAdmin);
-router.get("/bookings/all", auth, adminOnly, getAllRentalBookingsAdmin);
-router.delete("/bookings/:id", auth, adminOnly, deleteRentalBookingAdmin);
-router.put("/package/:id/toggle", auth, adminOnly, toggleRentalPackageStatus);
-router.delete("/package/:id", auth, adminOnly, deleteRentalPackage);
+router.post("/package", auth, checkPermission("RENTAL_PACKAGE_CREATE"), createRentalPackage);
+router.put("/package/:id", auth, checkPermission("RENTAL_PACKAGE_EDIT"), updateRentalPackage);
+router.get("/packages/all", auth, checkPermission("RENTAL_PACKAGE_READ"), getRentalPackagesAdmin);
+router.get("/bookings/all", auth, checkPermission("RENTAL_BOOKING_READ"), getAllRentalBookingsAdmin);
+router.delete("/bookings/:id", auth, checkPermission("RENTAL_BOOKING_DELETE"), deleteRentalBookingAdmin);
+router.put("/package/:id/toggle", auth, checkPermission("RENTAL_PACKAGE_EDIT"), toggleRentalPackageStatus);
+router.delete("/package/:id", auth, checkPermission("RENTAL_PACKAGE_DELETE"), deleteRentalPackage);
 
 // User Routes
 router.get("/packages", getActiveRentalPackages);

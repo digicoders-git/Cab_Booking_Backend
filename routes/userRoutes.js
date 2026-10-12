@@ -19,6 +19,8 @@ const upload = require("../middleware/uploadAdminImage")
 const { auth, adminOnly } = require("../middleware/auth")
 const { checkPermission } = require("../middleware/rbac")
 
+const userSubscriptionController = require("../controllers/userSubscriptionController")
+
 // User Login / Register Route (OTP Base)
 router.post("/send-otp", sendOtp)
 router.post("/login", loginUser)
@@ -28,6 +30,12 @@ router.put("/update-fcm-token", auth, updateFcmToken)
 
 // Save First Location (Self)
 router.put("/first-location", auth, saveFirstLocation)
+
+// User Subscription Routes
+router.get("/subscription-plans", userSubscriptionController.getActivePlans)
+router.post("/buy-subscription", auth, userSubscriptionController.buySubscription)
+router.get("/my-subscriptions", auth, userSubscriptionController.getMySubscriptions)
+router.get("/subscription-payment-return", userSubscriptionController.subscriptionPaymentReturn)
 
 // Secure routes (Admin / Sub-Admin)
 router.get("/all", auth, checkPermission("USER_READ"), getAllUsers)

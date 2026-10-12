@@ -10,9 +10,9 @@ router.post("/calculate", stateTaxController.calculateRouteTaxes);
 
 // --- Admin APIs ---
 // Require Admin authentication and specific permissions
-router.post("/", auth, checkPermission('PRICING_MANAGE'), stateTaxController.createStateTax);
-router.get("/all", auth, checkPermission('PRICING_READ'), stateTaxController.getAllStateTaxes);
-router.put("/:id", auth, checkPermission('PRICING_MANAGE'), stateTaxController.updateStateTax);
-router.delete("/:id", auth, checkPermission('PRICING_MANAGE'), stateTaxController.deleteStateTax);
+router.get("/all", auth, checkPermission('STATE_TAX_READ'), stateTaxController.getAllStateTaxes);
+router.post("/", auth, checkPermission('STATE_TAX_CREATE'), stateTaxController.createStateTax);
+router.put("/:id", auth, checkPermission('STATE_TAX_EDIT'), stateTaxController.updateStateTax);
+router.delete("/:id", auth, checkPermission('STATE_TAX_DELETE'), stateTaxController.deleteStateTax);
 
 module.exports = router;

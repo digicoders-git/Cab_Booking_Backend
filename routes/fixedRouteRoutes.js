@@ -7,13 +7,14 @@ const fixedBookingController = require('../controllers/fixedBookingController');
 // Assume these middleware exist. I will use standard names from other routes if possible.
 // For now I'll just use standard middleware names that might exist or just protect it in server.js
 const { auth, driverOnly, adminOnly, fleetOnly } = require('../middleware/auth');
+const { checkPermission } = require('../middleware/rbac');
 
 // === Fixed Routes (Admin) ===
-router.post('/routes', auth, adminOnly, fixedRouteController.createRoute);
-router.get('/routes', auth, adminOnly, fixedRouteController.getAllRoutes);
-router.put('/routes/:id', auth, adminOnly, fixedRouteController.updateRoute);
-router.put('/routes/:id/toggle', auth, adminOnly, fixedRouteController.toggleRouteStatus);
-router.delete('/routes/:id', auth, adminOnly, fixedRouteController.deleteRoute);
+router.post('/routes', auth, checkPermission('FIXED_ROUTE_CREATE'), fixedRouteController.createRoute);
+router.get('/routes', auth, checkPermission('FIXED_ROUTE_READ'), fixedRouteController.getAllRoutes);
+router.put('/routes/:id', auth, checkPermission('FIXED_ROUTE_EDIT'), fixedRouteController.updateRoute);
+router.put('/routes/:id/toggle', auth, checkPermission('FIXED_ROUTE_EDIT'), fixedRouteController.toggleRouteStatus);
+router.delete('/routes/:id', auth, checkPermission('FIXED_ROUTE_DELETE'), fixedRouteController.deleteRoute);
 
 // === Fixed Routes (User) ===
 router.get('/routes/active', fixedRouteController.getActiveRoutes); // User can fetch active routes
@@ -27,10 +28,10 @@ router.get('/bookings/:id/verify-payment', fixedBookingController.verifyOnlinePa
 router.get('/bookings/:id/receipt', auth, fixedBookingController.downloadReceipt); // Download Fixed Booking Receipt
 
 // === Marketplace & All Bookings (Admin) ===
-router.get('/bookings/admin/all', auth, adminOnly, fixedBookingController.getAllAdminFixedBookings);
-router.get('/bookings/marketplace/admin', auth, adminOnly, fixedBookingController.getAdminMarketplaceBookings);
-router.post('/bookings/:id/accept-admin', auth, adminOnly, fixedBookingController.acceptBookingAdmin);
-router.delete('/bookings/:id/admin', auth, adminOnly, fixedBookingController.deleteBookingAdmin);
+router.get('/bookings/admin/all', auth, checkPermission(['FIXED_BOOKINGS_READ', 'FIXED_ROUTE_READ']), fixedBookingController.getAllAdminFixedBookings);
+router.get('/bookings/marketplace/admin', auth, checkPermission(['FIXED_MARKETPLACE_READ', 'FIXED_ROUTE_READ']), fixedBookingController.getAdminMarketplaceBookings);
+router.post('/bookings/:id/accept-admin', auth, checkPermission('FIXED_ROUTE_EDIT'), fixedBookingController.acceptBookingAdmin);
+router.delete('/bookings/:id/admin', auth, checkPermission('FIXED_ROUTE_DELETE'), fixedBookingController.deleteBookingAdmin);
 
 router.get('/bookings/marketplace/driver', auth, driverOnly, fixedBookingController.getDriverMarketplaceBookings);
 router.post('/bookings/:id/accept-driver', auth, driverOnly, fixedBookingController.acceptBookingDriver);

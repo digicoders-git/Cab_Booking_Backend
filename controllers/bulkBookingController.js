@@ -1713,6 +1713,14 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
         // 💰 Settle category-wise payout for this completed driver immediately
         await settleDriverBulkPayout(booking, assignment);
 
+        // 🏆 INCENTIVE PROCESSING for Bulk Booking
+        try {
+            const incentiveController = require('./incentiveController');
+            await incentiveController.processIncentiveForDriver(driverId, 'Bulk');
+        } catch (incErr) {
+            console.error("Error evaluating incentive for Bulk:", incErr);
+        }
+
         if (isLastDriver) {
             booking.status = 'Completed';
 

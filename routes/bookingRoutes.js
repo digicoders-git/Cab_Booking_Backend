@@ -10,6 +10,7 @@ const {
     cancelBooking,
     getSingleBooking,
     deleteBooking,
+    adminForceComplete,
     rateDriver,
     rateUser,
     getUserReviews,
@@ -48,6 +49,9 @@ router.get("/:bookingId", auth, getSingleBooking);
 
 // 6. Delete Booking (Admin Only)
 router.delete("/delete/:bookingId", auth, checkPermission("BOOKING_DELETE"), deleteBooking);
+
+// 6b. Admin Force Complete Booking (Admin Only)
+router.put("/force-complete/:bookingId", auth, checkPermission("BOOKING_UPDATE"), adminForceComplete);
 
 // 7. Rate Driver (by User/Agent)
 router.post("/:bookingId/rate-driver", auth, rateDriver);

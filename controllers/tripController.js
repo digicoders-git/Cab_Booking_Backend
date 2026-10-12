@@ -914,6 +914,21 @@ exports.endTrip = async (req, res) => {
         // 🟢 MONEY SPLIT & SETTLEMENTS
         await exports.processTripSettlement(booking, driver);
 
+        // 🏆 INCENTIVE PROCESSING
+        try {
+            const incentiveController = require('./incentiveController');
+            // Depending on your schema, booking.rideType is "Private" or "Shared" or "Rental"
+            // For general 'Normal' vs 'Fixed' let's pass a broader type. If booking has a flag 'isFixedRoute', we use that.
+            let bType = booking.rideType; 
+            if (booking.fixedRouteId) bType = 'Fixed';
+            if (booking.rentalPackage) bType = 'Rental';
+            if (!bType) bType = 'Normal'; // Fallback
+            
+            await incentiveController.processIncentiveForDriver(driver._id, bType);
+        } catch (incErr) {
+            console.error("Error evaluating incentive:", incErr);
+        }
+
         // Final Safety Check & Save Driver
         if (driver.walletBalance < (driver.debtLimit || -500)) {
             driver.isActive = false;
@@ -990,6 +1005,49 @@ exports.getDriverLocation = async (req, res) => {
         res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
+
+// 6b. Public Tracking (No Auth)
+exports.getPublicTrackingDetails = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const booking = await Booking.findById(bookingId).populate("assignedDriver");
+
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        // Only allow tracking if it's Accepted or Ongoing
+        if (!['Accepted', 'Ongoing'].includes(booking.bookingStatus)) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Tracking is not available for this ride status.",
+                status: booking.bookingStatus 
+            });
+        }
+
+        if (!booking.assignedDriver) return res.status(400).json({ success: false, message: "No driver assigned yet" });
+
+        res.json({
+            success: true,
+            bookingDetails: {
+                status: booking.bookingStatus,
+                pickup: booking.pickup?.address,
+                drop: booking.drop?.address,
+                passengerName: booking.passengerDetails?.name || 'Passenger',
+                driverDetails: {
+                    name: booking.assignedDriver.name,
+                    phone: booking.assignedDriver.phone,
+                    carNumber: booking.assignedDriver.carDetails?.carNumber || '',
+                    carModel: booking.assignedDriver.carDetails?.carModel || ''
+                },
+                location: booking.assignedDriver.currentLocation,
+                heading: booking.assignedDriver.currentHeading
+            }
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
 // 7. Get Driver's Assigned Bookings (My Trips)
 exports.getDriverTrips = async (req, res) => {
     try {

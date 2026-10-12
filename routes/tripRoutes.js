@@ -17,7 +17,8 @@ const {
     verifyTripPayment,
     initiateTripCompletion,
     selectPaymentMethod,
-    confirmCashCollection
+    confirmCashCollection,
+    getPublicTrackingDetails
 } = require("../controllers/tripController");
 
 const { auth, driverOnly, userOnly } = require("../middleware/auth"); 
@@ -49,6 +50,9 @@ router.put("/execute/:bookingId/cancel", auth, driverOnly, cancelTripByDriver);
 
 // 6. Track Driver Location (User Only)
 router.get("/track/:bookingId", auth, getDriverLocation);
+
+// 6b. Public Track Driver Location (No Auth needed)
+router.get("/public/track/:bookingId", getPublicTrackingDetails);
 
 // 7. Driver's Own Bookings
 router.get("/driver/my-trips", auth, driverOnly, getDriverTrips);

@@ -770,12 +770,24 @@ exports.getMyBookings = async (req, res) => {
 // 3b. Admin: Get All Bookings in System
 exports.getAllBookings = async (req, res) => {
     try {
-        const bookings = await Booking.find()
+        let bookings = await Booking.find()
             .populate("carCategory", "name image")
             .populate("assignedDriver", "_id name phone image carDetails")
             .populate("user", "name phone image")
             .populate("agent", "name phone image")
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Fetch all ride requests and map them to their bookings
+        const bookingIds = bookings.map(b => b._id);
+        const rideRequests = await RideRequest.find({ booking: { $in: bookingIds } })
+            .populate("driver", "name phone carDetails image rating")
+            .lean();
+
+        bookings = bookings.map(b => {
+            b.rideRequests = rideRequests.filter(r => r.booking.toString() === b._id.toString());
+            return b;
+        });
 
         res.json({
             success: true,
@@ -994,9 +1006,15 @@ exports.getSingleBooking = async (req, res) => {
             return res.status(404).json({ success: false, message: "Booking not found" });
         }
 
+        // Fetch driver request history for this booking
+        const rideRequests = await RideRequest.find({ booking: bookingId })
+            .populate("driver", "name phone carDetails image rating")
+            .sort({ createdAt: -1 });
+
         res.json({
             success: true,
-            booking
+            booking,
+            rideRequests
         });
 
     } catch (error) {
@@ -1027,6 +1045,111 @@ exports.deleteBooking = async (req, res) => {
         res.json({
             success: true,
             message: "Booking record deleted successfully"
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// 6b. Admin Force Complete Booking (Bypass Payment & No Dues)
+exports.adminForceComplete = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const booking = await Booking.findById(bookingId);
+
+        if (!booking) {
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        if (booking.bookingStatus === "Completed" || booking.bookingStatus === "Expired" || booking.bookingStatus === "Cancelled") {
+            return res.status(400).json({ success: false, message: "Booking is already " + booking.bookingStatus });
+        }
+
+        // 1. Mark booking as completed and payment as bypassed
+        booking.bookingStatus = "Completed";
+        booking.paymentStatus = "Completed"; // Mark as paid so no dues apply
+        booking.paymentMethod = booking.paymentMethod || "Admin Bypassed";
+        await booking.save();
+
+        // 2. Free up the driver properly
+        if (booking.assignedDriver) {
+            const Driver = require('../models/Driver');
+            const driver = await Driver.findById(booking.assignedDriver).populate("carDetails.carType");
+            
+            if (driver) {
+                // Same logic as endTrip to release the driver completely
+                if (booking.rideType === "Private") {
+                    driver.isAvailable = true;
+                    driver.currentRideType = null;
+                    driver.availableSeats = 0;
+                    driver.currentHeading = null;
+                } else if (booking.rideType === "Shared") {
+                    if (booking.selectedSeats && booking.selectedSeats.length > 0) {
+                        for (let seatName of booking.selectedSeats) {
+                            const seatEntry = (driver.seatMap || []).find(s => s.seatName === seatName);
+                            if (seatEntry && seatEntry.bookingId && seatEntry.bookingId.toString() === booking._id.toString()) {
+                                seatEntry.isBooked = false;
+                                seatEntry.bookingId = null;
+                            }
+                        }
+                    }
+                    driver.availableSeats += booking.seatsBooked || 1;
+                    const capacity = driver.carDetails?.carType?.seatCapacity || 4;
+                    if (driver.availableSeats >= capacity) {
+                        driver.isAvailable = true;
+                        driver.currentRideType = null;
+                        driver.availableSeats = 0;
+                        driver.currentHeading = null;
+                        if (driver.seatMap) driver.seatMap.forEach(s => { s.isBooked = false; s.bookingId = null; });
+                    } else {
+                        driver.isAvailable = true;
+                    }
+                } else {
+                    // For Fixed, Bulk, Rental or fallback
+                    driver.isAvailable = true;
+                    driver.currentRideType = null;
+                    driver.availableSeats = 0;
+                    driver.currentHeading = null;
+                }
+                
+                await driver.save();
+            }
+            
+            // Also mark the request as completed
+            const RideRequest = require('../models/RideRequest');
+            await RideRequest.findOneAndUpdate(
+                { booking: booking._id, driver: booking.assignedDriver, status: "Accepted" },
+                { status: "Completed" }
+            );
+
+            // Notify driver via Socket & FCM
+            try {
+                const io = getIO();
+                const driverDoc = await Driver.findById(booking.assignedDriver);
+                if (driverDoc) {
+                    io.to(driverDoc._id.toString()).emit("booking_update", {
+                        bookingId: booking._id,
+                        status: "Completed",
+                        message: "Admin has manually marked this ride as Completed."
+                    });
+
+                    if (driverDoc.fcmToken) {
+                        await sendPushNotification(driverDoc.fcmToken, {
+                            title: "✅ Ride Force Completed",
+                            body: "Admin has successfully marked your current trip as completed. You are free to take new rides.",
+                            data: { type: "RIDE_COMPLETED", bookingId: booking._id.toString() }
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error("FCM/Socket error on admin force complete:", err.message);
+            }
+        }
+
+        res.json({
+            success: true,
+            message: "Booking successfully force-completed by Admin. No dues added to user."
         });
 
     } catch (error) {

@@ -83,6 +83,11 @@ router.get("/report", auth, driverOnly, getDriverReport);
 // Get Driver Full History (Profile, Lifetime Transactions, Lifetime Rides) - MUST BE BEFORE /:id
 router.get("/:id/full-history", auth, checkPermission("DRIVER_READ"), getDriverFullHistory);
 
+// --- NEW: Subscriptions ---
+const subscriptionController = require("../controllers/subscriptionController");
+router.get("/assigned-subscriptions", auth, driverOnly, subscriptionController.getDriverAssignedSubscriptions);
+router.post("/mark-subscription-attendance", auth, driverOnly, subscriptionController.markSubscriptionAttendance);
+
 // Export Driver Report to PDF
 router.get("/export-driver-report/:id", auth, checkPermission("DRIVER_READ"), require("../controllers/driverController").exportDriverReportPdf);
 

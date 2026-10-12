@@ -20,7 +20,7 @@ router.post("/create", auth, checkPermission("CAT_MANAGE"), upload.single("image
 router.get("/active", getAllActiveCategories); // No auth needed, anyone can see car categories & prices
 
 // 3. Get All Categories for Dashboard (Admin, Vendor, Fleet)
-router.get("/all", auth, checkPermission("CAT_VIEW"), getAllCategoriesAdmin);
+router.get("/all", auth, checkPermission(["CAT_VIEW", "FIXED_ROUTE_READ", "FIXED_ROUTE_CREATE", "FIXED_ROUTE_EDIT", "RENTAL_PACKAGE_READ", "RENTAL_PACKAGE_CREATE", "BOOKING_READ", "BULK_BOOKING_MANAGE"]), getAllCategoriesAdmin);
 
 // 4. Update an existing Category (Admin Only)
 router.put("/update/:id", auth, checkPermission("CAT_MANAGE"), upload.single("image"), updateCarCategory);

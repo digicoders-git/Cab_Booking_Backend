@@ -38,7 +38,10 @@ exports.checkPermission = (requiredPermission) => {
             }
 
             // 4. Check if requiredPermission exists in sub-admin's permissions array
-            if (admin.permissions && admin.permissions.includes(requiredPermission)) {
+            const permsToCheck = Array.isArray(requiredPermission) ? requiredPermission : [requiredPermission];
+            const hasPermission = permsToCheck.some(p => admin.permissions && admin.permissions.includes(p));
+
+            if (hasPermission) {
                 return next();
             }
 

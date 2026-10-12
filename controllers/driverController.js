@@ -604,9 +604,34 @@ exports.getAvailableDrivers = async (req, res) => {
 exports.getAllDrivers = async (req, res) => {
     try {
         // Bug Fix 1: createdByModel = "Self" ke liye populate crash karta tha
-        const drivers = await Driver.find()
+        let drivers = await Driver.find()
             .populate({ path: "carDetails.carType", select: "name vehicleType" })
             .lean();
+
+        // Fetch RideRequest counts for all drivers
+        const RideRequest = require("../models/RideRequest");
+        const rideStats = await RideRequest.aggregate([
+            {
+                $group: {
+                    _id: { driver: "$driver", status: "$status" },
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const statsMap = {};
+        rideStats.forEach(stat => {
+            if (stat._id.driver) {
+                const driverId = stat._id.driver.toString();
+                if (!statsMap[driverId]) {
+                    statsMap[driverId] = { accepted: 0, rejected: 0, timeout: 0 };
+                }
+                const s = stat._id.status.toLowerCase();
+                if (s === 'accepted') statsMap[driverId].accepted = stat.count;
+                else if (s === 'rejected') statsMap[driverId].rejected = stat.count;
+                else if (s === 'timeout' || s === 'ignored') statsMap[driverId].timeout = stat.count;
+            }
+        });
 
         // Phir sirf Admin/Fleet/Vendor wale drivers ko populate karo
         const Admin = require("../models/Admin");
@@ -615,6 +640,9 @@ exports.getAllDrivers = async (req, res) => {
 
         const populatedDrivers = await Promise.all(
             drivers.map(async (driver) => {
+                const dId = driver._id.toString();
+                driver.requestStats = statsMap[dId] || { accepted: 0, rejected: 0, timeout: 0 };
+
                 if (driver.createdByModel === "Admin" && driver.createdBy) {
                     const creator = await Admin.findById(driver.createdBy).select("name email").lean();
                     return { ...driver, createdBy: creator };

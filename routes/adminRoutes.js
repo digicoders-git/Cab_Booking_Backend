@@ -31,6 +31,7 @@ const { registerAgent } = require("../controllers/agentController")
 const { createFleet } = require("../controllers/fleetController")
 const { auth, adminOnly } = require("../middleware/auth")
 const { checkPermission } = require("../middleware/rbac")
+const subscriptionController = require("../controllers/subscriptionController")
 
 const upload = require("../middleware/uploadAdminImage")
 
@@ -66,11 +67,19 @@ router.get("/subadmin/:id", auth, checkPermission("STAFF_VIEW"), getSingleAdmin)
 router.put("/subadmin/permissions/:id", auth, checkPermission("STAFF_MANAGE"), updateAdminPermissions)
 router.delete("/subadmin/:id", auth, checkPermission("STAFF_MANAGE"), deleteAdmin)
 
-// Global Bulk Settingsvhcvdc
-router.get("/bulk-settings", auth, adminOnly, getBulkSettings)
-router.put("/bulk-settings", auth, adminOnly, updateBulkSettings)
+// Global Bulk Settings
+router.get("/bulk-settings", auth, checkPermission("SETTINGS_MANAGE"), getBulkSettings)
+router.put("/bulk-settings", auth, checkPermission("SETTINGS_MANAGE"), updateBulkSettings)
 
 // Force Driver Online/Offline
-router.put("/driver/toggle-online", auth, adminOnly, toggleDriverOnlineByAdmin)
+router.put("/driver/toggle-online", auth, checkPermission("DRIVER_STATUS"), toggleDriverOnlineByAdmin)
+
+// Subscriptions
+router.get("/subscription-plans", auth, checkPermission("SUBSCRIPTION_READ"), subscriptionController.getAllPlans)
+router.get("/purchased-subscriptions", auth, checkPermission("SUBSCRIPTION_READ"), subscriptionController.getAllPurchasedSubscriptions)
+router.post("/subscription-plans", auth, checkPermission("SUBSCRIPTION_CREATE"), subscriptionController.createPlan)
+router.put("/subscription-plans/:id", auth, checkPermission("SUBSCRIPTION_EDIT"), subscriptionController.updatePlan)
+router.delete("/subscription-plans/:id", auth, checkPermission("SUBSCRIPTION_DELETE"), subscriptionController.deletePlan)
+router.post("/assign-subscription-driver", auth, checkPermission("SUBSCRIPTION_EDIT"), subscriptionController.assignDriver)
 
 module.exports = router
