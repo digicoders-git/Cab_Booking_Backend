@@ -18,6 +18,7 @@ const {
     acceptRentalBooking,
     startRentalRide,
     getDriverRentalBookings,
+    rejectRentalBooking,
     verifyRentalPayment
 } = require("../controllers/rentalController");
 
@@ -39,6 +40,7 @@ router.put("/bookings/:id/cancel", auth, userOnly, cancelRentalBooking);
 // Driver Routes (Simplified)
 router.get("/driver/my-bookings", auth, driverOnly, getDriverRentalBookings);
 router.put("/bookings/:id/accept", auth, driverOnly, acceptRentalBooking);
+router.put("/bookings/:id/reject", auth, driverOnly, rejectRentalBooking);
 router.post("/start-trip", auth, driverOnly, startRentalRide);
 router.post("/end-trip", auth, driverOnly, endRentalTrip);
 router.post("/verify-payment", verifyRentalPayment); // Or auth, driverOnly depending on who triggers it, but Razorpay webhook/redirect might not have auth headers easily if done via frontend redirect. Better to leave it open for Razorpay callback, but usually frontend sends it with token.

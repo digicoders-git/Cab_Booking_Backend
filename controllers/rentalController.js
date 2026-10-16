@@ -104,6 +104,197 @@ exports.getActiveRentalPackages = async (req, res) => {
     }
 };
 
+// Calculate Distance in KM (Haversine Formula)
+const getDistanceFromLatLonInKm = (lat1, lon1, lat2, lon2) => {
+    if (lat1 === undefined || lon1 === undefined || lat2 === undefined || lon2 === undefined || lat1 === null || lon1 === null || lat2 === null || lon2 === null) return 9999;
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+};
+
+// Start Rental Waterfall Dispatch (One-by-one to nearest drivers)
+const startRentalWaterfallMatching = async (bookingId) => {
+    try {
+        const booking = await RentalBooking.findById(bookingId).populate("rentalPackage");
+        if (!booking || booking.status !== "Pending") return;
+
+        const AppSetting = require("../models/AppSetting");
+        const Driver = require("../models/Driver");
+        const { getIO } = require("../socket/socket");
+        const { sendPushNotification } = require("../utils/fcmNotification");
+
+        const appSettings = await AppSetting.findOne() || {};
+        const popupSeconds = appSettings.driverRentalPopupTimerSeconds || 15;
+        const timeoutMinutes = appSettings.rentalRequestTimeoutMinutes || 5;
+        const maxDurationMs = timeoutMinutes * 60 * 1000;
+        const startTime = Date.now();
+
+        // 1. Find all online drivers with matching carCategory
+        let eligibleDrivers = await Driver.find({
+            "carDetails.carType": booking.carCategory,
+            isOnline: true,
+            isAvailable: true
+        });
+
+        // Fallback: If no isAvailable=true driver found, check any online driver with matching car
+        if (!eligibleDrivers || eligibleDrivers.length === 0) {
+            eligibleDrivers = await Driver.find({
+                "carDetails.carType": booking.carCategory,
+                isOnline: true
+            });
+        }
+
+        if (!eligibleDrivers || eligibleDrivers.length === 0) {
+            console.log(`⚠️ [Rental Waterfall] No online drivers available for car category: ${booking.carCategory}`);
+            setTimeout(async () => {
+                const b = await RentalBooking.findById(bookingId);
+                if (b && b.status === "Pending") {
+                    b.status = "Cancelled";
+                    await b.save();
+                    try {
+                        const io = getIO();
+                        io.emit("rental_request_cancelled", { bookingId: b._id });
+                        if (b.user) {
+                            io.to(b.user.toString()).emit("booking_update", {
+                                bookingId: b._id,
+                                status: "Cancelled",
+                                message: "No drivers available near your location."
+                            });
+                        }
+                    } catch (_) {}
+                }
+            }, timeoutMinutes * 60 * 1000);
+            return;
+        }
+
+        // 2. Sort drivers by distance from pickup location (Nearest first)
+        const pLat = booking.pickupLocation?.lat;
+        const pLng = booking.pickupLocation?.lng;
+
+        const sortedCandidates = eligibleDrivers.map(d => {
+            const dLat = d.currentLocation?.latitude;
+            const dLng = d.currentLocation?.longitude;
+            const dist = getDistanceFromLatLonInKm(pLat, pLng, dLat, dLng);
+            return { driver: d, dist };
+        }).sort((a, b) => a.dist - b.dist);
+
+        console.log(`🎯 [Rental Waterfall] Booking ${booking.bookingId}: Found ${sortedCandidates.length} drivers. Nearest: ${sortedCandidates[0].dist < 9999 ? sortedCandidates[0].dist.toFixed(2) + ' km' : 'No GPS'}`);
+
+        let currentIndex = 0;
+        let lastDriverId = null;
+
+        const attemptNextDriver = async () => {
+            try {
+                // Check fresh booking status
+                const currentBooking = await RentalBooking.findById(bookingId);
+                if (!currentBooking) return;
+
+                if (currentBooking.status !== "Pending") {
+                    console.log(`🛑 [Rental Waterfall] Booking ${bookingId} is now ${currentBooking.status}. Stopping waterfall.`);
+                    return;
+                }
+
+                // Check if total booking timeout reached
+                if (Date.now() - startTime >= maxDurationMs) {
+                    console.log(`⏰ [Rental Waterfall] Booking ${bookingId} expired after ${timeoutMinutes} minutes.`);
+                    currentBooking.status = "Cancelled";
+                    await currentBooking.save();
+
+                    const io = getIO();
+                    io.emit("rental_request_cancelled", { bookingId: currentBooking._id });
+                    if (currentBooking.user) {
+                        io.to(currentBooking.user.toString()).emit("booking_update", {
+                            bookingId: currentBooking._id,
+                            status: "Cancelled",
+                            message: "No drivers accepted your rental request. Please try again."
+                        });
+                    }
+                    return;
+                }
+
+                const io = getIO();
+
+                // If previous driver didn't accept in time, close their popup
+                if (lastDriverId) {
+                    io.to(lastDriverId.toString()).emit("rental_request_timeout", {
+                        bookingId: currentBooking._id
+                    });
+                }
+
+                // Cycle back if all candidates tried and time still remains
+                if (currentIndex >= sortedCandidates.length) {
+                    currentIndex = 0;
+                }
+
+                const candidate = sortedCandidates[currentIndex].driver;
+                const candidateDist = sortedCandidates[currentIndex].dist;
+                currentIndex++;
+                lastDriverId = candidate._id;
+
+                console.log(`📢 [Rental Waterfall] Dispatching to Driver #${currentIndex}: ${candidate.name} (${candidateDist < 9999 ? candidateDist.toFixed(1) + 'km' : 'No GPS'}) [Timer: ${popupSeconds}s]`);
+
+                const pkg = booking.rentalPackage || {};
+                const socketData = {
+                    bookingId: currentBooking._id,
+                    displayId: currentBooking.bookingId,
+                    pickupLocation: currentBooking.pickupLocation,
+                    package: pkg.name || "Hourly Rental",
+                    hours: pkg.hours || 2,
+                    distance: pkg.baseDistance || 20,
+                    fare: pkg.basePrice || 0,
+                    extraKmRate: pkg.extraKmPrice || 12,
+                    extraHourRate: pkg.extraMinutePrice || 2,
+                    popupTimerSeconds: popupSeconds
+                };
+
+                // 1. Socket emission to this specific driver only
+                io.to(candidate._id.toString()).emit("new_rental_request", socketData);
+
+                // 2. FCM Push Notification (if token exists)
+                if (candidate.fcmToken) {
+                    sendPushNotification(candidate.fcmToken, {
+                        title: "🚖 New Rental Ride Request!",
+                        body: `${pkg.name || 'Rental'} - ₹${pkg.basePrice || ''}. Tap to accept (${popupSeconds}s).`,
+                        data: {
+                            type: "NEW_RENTAL_REQUEST",
+                            bookingId: currentBooking._id.toString()
+                        }
+                    }).catch(err => console.error(`FCM error for driver ${candidate._id}:`, err.message));
+                }
+
+                // Schedule next driver attempt after popupSeconds
+                setTimeout(attemptNextDriver, popupSeconds * 1000);
+
+            } catch (innerErr) {
+                console.error("[Rental Waterfall] Error in attemptNextDriver:", innerErr.message);
+            }
+        };
+
+        // Trigger first driver attempt
+        attemptNextDriver();
+
+    } catch (err) {
+        console.error("[Rental Waterfall] Error in startRentalWaterfallMatching:", err.message);
+    }
+};
+
+exports.rejectRentalBooking = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const io = require("../socket/socket").getIO();
+        io.to(req.user.id.toString()).emit("rental_request_timeout", { bookingId: id });
+        res.json({ success: true, message: "Rental request declined" });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
 exports.bookRental = async (req, res) => {
     try {
         const { packageId, pickupLocation, paymentMethod } = req.body;
@@ -130,61 +321,8 @@ exports.bookRental = async (req, res) => {
 
         res.status(201).json({ success: true, message: "Rental Booking created", booking });
 
-        // Emit socket event to only online drivers with matching carCategory
-        try {
-            const io = require("../socket/socket").getIO();
-            const Driver = require("../models/Driver");
-
-            const eligibleDrivers = await Driver.find({
-                "carDetails.carType": package.carCategory,
-                isOnline: true
-            });
-
-            const socketData = {
-                bookingId: booking._id,
-                displayId: booking.bookingId,
-                pickupLocation,
-                package: package.name,
-                hours: package.hours,
-                distance: package.baseDistance,
-                fare: package.basePrice,
-                extraKmRate: package.extraKmRate,
-                extraHourRate: package.extraHourRate,
-                popupTimerSeconds: appSettings.driverRentalPopupTimerSeconds || 15
-            };
-
-            // Auto-cancel logic
-            const timeoutMinutes = appSettings.rentalRequestTimeoutMinutes || 5;
-            setTimeout(async () => {
-                const checkBooking = await RentalBooking.findById(booking._id);
-                if (checkBooking && checkBooking.status === "Pending") {
-                    checkBooking.status = "Cancelled";
-                    await checkBooking.save();
-                    console.log(`Rental booking ${booking._id} auto-cancelled after ${timeoutMinutes} minutes.`);
-                    io.emit("rental_request_cancelled", { bookingId: booking._id });
-                }
-            }, timeoutMinutes * 60 * 1000);
-
-            eligibleDrivers.forEach(driver => {
-                // 1. Socket notification
-                io.to(driver._id.toString()).emit("new_rental_request", socketData);
-                
-                // 2. FCM Push Notification (if token exists)
-                if (driver.fcmToken) {
-                    sendPushNotification(driver.fcmToken, {
-                        title: "New Rental Ride Request!",
-                        body: `${package.name} - ₹${package.basePrice}. Tap to accept.`,
-                        data: {
-                            type: "NEW_RENTAL_REQUEST",
-                            bookingId: booking._id.toString()
-                        }
-                    }).catch(err => console.error(`FCM error for driver ${driver._id}:`, err));
-                }
-            });
-            console.log(`Sent rental request (Socket + FCM) to ${eligibleDrivers.length} eligible drivers`);
-        } catch (socketErr) {
-            console.error("Socket/FCM error on new rental:", socketErr);
-        }
+        // Start Waterfall One-By-One Dispatch to Nearest Drivers
+        startRentalWaterfallMatching(booking._id);
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
