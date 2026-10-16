@@ -481,6 +481,102 @@ exports.getDriverRentalBookings = async (req, res) => {
     }
 };
 
+exports.driverCancelRentalBooking = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { reason } = req.body;
+        const driverId = req.user.id;
+
+        const booking = await RentalBooking.findById(id).populate("user").populate("rentalPackage");
+        if (!booking) {
+            return res.status(404).json({ success: false, message: "Rental booking not found" });
+        }
+
+        // Check if assigned to this driver
+        if (!booking.driver || booking.driver.toString() !== driverId.toString()) {
+            return res.status(403).json({ success: false, message: "Unauthorized: This rental booking is not assigned to you" });
+        }
+
+        // Cannot cancel if already started or completed or cancelled
+        if (booking.status !== "Accepted" && booking.status !== "Arrived") {
+            return res.status(400).json({
+                success: false,
+                message: `You cannot cancel this rental booking because it is already ${booking.status}`
+            });
+        }
+
+        // 1. Update Booking
+        booking.status = "Cancelled";
+        booking.cancelReason = reason || "Driver cancelled the rental ride";
+        booking.cancelledBy = "Driver";
+        await booking.save();
+
+        // 2. Free the Driver
+        const Driver = require("../models/Driver");
+        const driver = await Driver.findByIdAndUpdate(driverId, {
+            isAvailable: true,
+            currentRideType: null
+        }, { new: true });
+
+        // 3. Notify User via Socket & FCM
+        if (booking.user) {
+            const userId = booking.user._id ? booking.user._id.toString() : booking.user.toString();
+            try {
+                const io = require("../socket/socket").getIO();
+                io.to(userId).emit("booking_update", {
+                    bookingId: booking._id,
+                    status: "Cancelled",
+                    message: "Driver has cancelled your rental ride."
+                });
+                io.to(userId).emit("rental_cancelled_by_driver", {
+                    bookingId: booking._id,
+                    reason: booking.cancelReason
+                });
+            } catch (socketErr) {
+                console.error("Socket error on driver cancel rental:", socketErr.message);
+            }
+
+            if (booking.user.fcmToken) {
+                try {
+                    const { sendPushNotification } = require("../utils/fcmNotification");
+                    await sendPushNotification(booking.user.fcmToken, {
+                        title: "🚨 Rental Ride Cancelled by Driver",
+                        body: `Driver ${driver?.name || ''} had to cancel your rental trip: ${booking.cancelReason}`,
+                        data: {
+                            type: "RENTAL_CANCELLED_BY_DRIVER",
+                            bookingId: booking._id.toString()
+                        }
+                    });
+                } catch (fcmErr) {
+                    console.error("FCM error on driver cancel rental:", fcmErr.message);
+                }
+            }
+        }
+
+        // 4. Real-time Status Update to Admin Panel
+        try {
+            const io = require("../socket/socket").getIO();
+            const activityStatus = driver?.isOnline ? "Idle" : "Offline";
+            io.to('admin_room').emit("driver_location_update", {
+                driverId: driverId.toString(),
+                status: activityStatus,
+                latitude: driver?.currentLocation?.latitude,
+                longitude: driver?.currentLocation?.longitude,
+                heading: driver?.currentHeading || 0
+            });
+        } catch (err) {}
+
+        res.json({
+            success: true,
+            message: "Rental booking cancelled successfully by driver",
+            booking
+        });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 // Very simplified flow: driver accepts -> starts -> ends
 
 exports.acceptRentalBooking = async (req, res) => {
@@ -507,7 +603,7 @@ exports.acceptRentalBooking = async (req, res) => {
         // Notify other drivers to remove it from their screen
         try {
             const io = require("../socket/socket").getIO();
-            io.emit("rental_request_accepted", { bookingId: booking._id });
+            io.emit("rental_request_accepted", { bookingId: booking._id, driverId: req.user.id.toString() });
         } catch (socketErr) {
             console.error("Socket error on rental accept:", socketErr);
         }

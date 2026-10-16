@@ -40,6 +40,15 @@ const rentalBookingSchema = new mongoose.Schema({
         enum: ["Pending", "Accepted", "Arrived", "Started", "Completed", "Cancelled"],
         default: "Pending"
     },
+    cancelReason: {
+        type: String,
+        default: null
+    },
+    cancelledBy: {
+        type: String,
+        enum: ["User", "Driver", "Admin", null],
+        default: null
+    },
     startTime: {
         type: Date,
         default: null
