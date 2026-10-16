@@ -139,6 +139,7 @@ exports.bookFixedRoute = async (req, res) => {
                     .populate('agent', 'name phone')
                     .populate('carCategory', 'name icon');
                 io.emit('newFixedBookingMarketplace', { booking: populatedBooking });
+                io.emit('new_fixed_package', { booking: populatedBooking });
             }
         } catch (sockErr) {
             console.error("Socket error on new booking:", sockErr);
@@ -334,6 +335,7 @@ exports.acceptBookingDriver = async (req, res) => {
             const io = getIO();
             if (io) {
                 io.emit('removeFixedBookingMarketplace', { bookingId: booking._id });
+                io.emit('fixed_package_accepted', { bookingId: booking._id, driverId: driverId.toString() });
             }
             await notifyClient(booking, 'fixedBookingAccepted', { bookingId: booking._id }, {
                 title: "Ride Accepted! 🚖",
