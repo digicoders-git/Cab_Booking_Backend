@@ -35,6 +35,7 @@ exports.toggleShareRide = async (req, res) => {
             firstRideMaxDiscount,
             rentalRequestTimeoutMinutes,
             driverRentalPopupTimerSeconds,
+            driverRentalMaxSearchRadiusKm,
             rentalCommissionPercentage
         } = req.body;
         
@@ -59,6 +60,7 @@ exports.toggleShareRide = async (req, res) => {
         // Rental Settings
         if (rentalRequestTimeoutMinutes !== undefined) settings.rentalRequestTimeoutMinutes = Number(rentalRequestTimeoutMinutes);
         if (driverRentalPopupTimerSeconds !== undefined) settings.driverRentalPopupTimerSeconds = Number(driverRentalPopupTimerSeconds);
+        if (driverRentalMaxSearchRadiusKm !== undefined) settings.driverRentalMaxSearchRadiusKm = Number(driverRentalMaxSearchRadiusKm);
         if (rentalCommissionPercentage !== undefined) settings.rentalCommissionPercentage = Number(rentalCommissionPercentage);
         
         await settings.save();

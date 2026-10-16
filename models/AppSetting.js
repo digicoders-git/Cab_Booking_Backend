@@ -42,6 +42,10 @@ const appSettingSchema = new mongoose.Schema({
         type: Number,
         default: 15
     },
+    driverRentalMaxSearchRadiusKm: {
+        type: Number,
+        default: 25 // Maximum search radius for rental drivers in KM
+    },
     rentalCommissionPercentage: {
         type: Number,
         default: 10 // e.g., 10%
