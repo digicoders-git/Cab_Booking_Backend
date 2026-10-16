@@ -181,11 +181,26 @@ exports.getMySubscriptions = async (req, res) => {
             paymentStatus: 'Completed'
         })
             .populate({
+                path: 'assignedDriver',
+                select: 'name phone image carDetails',
+                populate: { path: 'carDetails.carType', select: 'name image' }
+            })
+            .populate({
                 path: 'plan',
                 populate: { path: 'carCategory' }
             })
-            .sort({ createdAt: -1 });
-        res.json({ success: true, subscriptions });
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Ensure vehicleNumber and carDetails are formatted for mobile app
+        const formatted = subscriptions.map(sub => {
+            if (sub.assignedDriver && typeof sub.assignedDriver === 'object') {
+                sub.assignedDriver.vehicleNumber = sub.assignedDriver.carDetails?.carNumber || sub.assignedDriver.carDetails?.vehicleNumber || "";
+            }
+            return sub;
+        });
+
+        res.json({ success: true, subscriptions: formatted });
     } catch (error) {
         console.error("Error fetching user subscriptions:", error);
         res.status(500).json({ success: false, message: "Server Error", error: error.message });

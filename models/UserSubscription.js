@@ -53,11 +53,13 @@ const userSubscriptionSchema = new mongoose.Schema({
     dailyLogs: [{
         date: { type: String }, // e.g., "YYYY-MM-DD"
         goTrip: {
-            status: { type: String, enum: ['Pending', 'Completed', 'Missed'], default: 'Pending' },
+            status: { type: String, enum: ['Pending', 'Started', 'Completed', 'Missed'], default: 'Pending' },
+            startedAt: { type: Date, default: null },
             completedAt: { type: Date, default: null }
         },
         returnTrip: {
-            status: { type: String, enum: ['Pending', 'Completed', 'Missed'], default: 'Pending' },
+            status: { type: String, enum: ['Pending', 'Started', 'Completed', 'Missed'], default: 'Pending' },
+            startedAt: { type: Date, default: null },
             completedAt: { type: Date, default: null }
         }
     }]
