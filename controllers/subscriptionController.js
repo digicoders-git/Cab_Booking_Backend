@@ -58,7 +58,13 @@ const UserSubscription = require('../models/UserSubscription');
 // Admin gets all purchased subscriptions
 exports.getAllPurchasedSubscriptions = async (req, res) => {
     try {
-        const subscriptions = await UserSubscription.find()
+        // Only return subscriptions where payment was successfully completed
+        const filter = { paymentStatus: 'Completed' };
+        if (req.query.status) {
+            filter.status = req.query.status;
+        }
+
+        const subscriptions = await UserSubscription.find(filter)
             .populate('user', 'name phone email')
             .populate('assignedDriver', 'name phone vehicleDetails')
             .populate({

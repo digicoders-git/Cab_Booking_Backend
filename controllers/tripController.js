@@ -1028,18 +1028,37 @@ exports.getPublicTrackingDetails = async (req, res) => {
         res.json({
             success: true,
             bookingDetails: {
+                _id: booking._id,
                 status: booking.bookingStatus,
-                pickup: booking.pickup?.address,
-                drop: booking.drop?.address,
+                rideType: booking.rideType,
+                pickup: {
+                    address: booking.pickup?.address,
+                    latitude: booking.pickup?.latitude,
+                    longitude: booking.pickup?.longitude
+                },
+                drop: {
+                    address: booking.drop?.address,
+                    latitude: booking.drop?.latitude,
+                    longitude: booking.drop?.longitude
+                },
+                stops: booking.stops || [],
                 passengerName: booking.passengerDetails?.name || 'Passenger',
                 driverDetails: {
+                    _id: booking.assignedDriver._id,
                     name: booking.assignedDriver.name,
                     phone: booking.assignedDriver.phone,
                     carNumber: booking.assignedDriver.carDetails?.carNumber || '',
-                    carModel: booking.assignedDriver.carDetails?.carModel || ''
+                    carModel: booking.assignedDriver.carDetails?.carModel || '',
+                    profileImage: booking.assignedDriver.profileImage || ''
                 },
-                location: booking.assignedDriver.currentLocation,
-                heading: booking.assignedDriver.currentHeading
+                driverLocation: booking.assignedDriver.currentLocation ? {
+                    latitude: booking.assignedDriver.currentLocation.latitude,
+                    longitude: booking.assignedDriver.currentLocation.longitude,
+                    heading: booking.assignedDriver.currentHeading || 0
+                } : null,
+                fareEstimate: booking.fareEstimate || 0,
+                actualFare: booking.actualFare || null,
+                paymentMethod: booking.paymentMethod || null
             }
         });
 

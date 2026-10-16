@@ -35,7 +35,7 @@ router.put("/first-location", auth, saveFirstLocation)
 router.get("/subscription-plans", userSubscriptionController.getActivePlans)
 router.post("/buy-subscription", auth, userSubscriptionController.buySubscription)
 router.get("/my-subscriptions", auth, userSubscriptionController.getMySubscriptions)
-router.get("/subscription-payment-return", userSubscriptionController.subscriptionPaymentReturn)
+router.all("/subscription-payment-return", userSubscriptionController.subscriptionPaymentReturn)
 
 // Secure routes (Admin / Sub-Admin)
 router.get("/all", auth, checkPermission("USER_READ"), getAllUsers)

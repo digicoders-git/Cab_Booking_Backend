@@ -39,7 +39,7 @@ const userSubscriptionSchema = new mongoose.Schema({
     
     paymentStatus: {
         type: String,
-        enum: ['Pending', 'Completed'],
+        enum: ['Pending', 'Completed', 'Failed'],
         default: 'Pending'
     },
     transactionId: { type: String, default: null },

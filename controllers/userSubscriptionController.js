@@ -82,6 +82,7 @@ exports.buySubscription = async (req, res) => {
 
 exports.subscriptionPaymentReturn = async (req, res) => {
     try {
+        const payload = req.method === 'POST' ? req.body : req.query;
         const {
             razorpay_payment_id,
             razorpay_payment_link_id,
@@ -89,10 +90,18 @@ exports.subscriptionPaymentReturn = async (req, res) => {
             razorpay_payment_link_status,
             razorpay_signature,
             redirect
-        } = req.query;
+        } = payload;
+
+        const targetRedirect = redirect || `${req.protocol}://${req.get('host')}/my-subscriptions`;
 
         if (razorpay_payment_link_status !== 'paid') {
-            return res.redirect(`${redirect}?payment_status=failed`);
+            if (razorpay_payment_link_reference_id) {
+                await UserSubscription.findOneAndUpdate(
+                    { transactionId: razorpay_payment_link_reference_id },
+                    { paymentStatus: 'Failed', status: 'Inactive' }
+                );
+            }
+            return res.redirect(`${targetRedirect}?payment_status=failed`);
         }
 
         const isValid = razorpayHandler.validateSignature(
@@ -104,7 +113,13 @@ exports.subscriptionPaymentReturn = async (req, res) => {
         );
 
         if (!isValid) {
-            return res.redirect(`${redirect}?payment_status=failed`);
+            if (razorpay_payment_link_reference_id) {
+                await UserSubscription.findOneAndUpdate(
+                    { transactionId: razorpay_payment_link_reference_id },
+                    { paymentStatus: 'Failed', status: 'Inactive' }
+                );
+            }
+            return res.redirect(`${targetRedirect}?payment_status=failed`);
         }
 
         const subscription = await UserSubscription.findOne({ transactionId: razorpay_payment_link_reference_id });
@@ -116,14 +131,26 @@ exports.subscriptionPaymentReturn = async (req, res) => {
             
             const plan = await SubscriptionPlan.findById(subscription.plan);
             if (plan) {
-                const admin = await Admin.findOne({ role: 'SuperAdmin' });
+                const Transaction = require('../models/Transaction');
+
+                // 1. Create Debit Transaction for User
+                await Transaction.create({
+                    user: subscription.user,
+                    userModel: 'User',
+                    amount: plan.price,
+                    type: 'Debit',
+                    category: 'Subscription',
+                    status: 'Completed',
+                    description: `Payment for Subscription Pass: ${plan.name} (${plan.validityDays} Days)`
+                });
+
+                // 2. Credit Admin Wallet & Create Admin Credit Transaction
+                const admin = await Admin.findOne({ role: 'SuperAdmin' }) || await Admin.findOne();
                 if (admin) {
                     admin.walletBalance = (admin.walletBalance || 0) + plan.price;
                     admin.totalEarnings = (admin.totalEarnings || 0) + plan.price;
                     await admin.save();
 
-                    // Create Transaction for Admin
-                    const Transaction = require('../models/Transaction');
                     await Transaction.create({
                         user: admin._id,
                         userModel: 'Admin',
@@ -131,24 +158,28 @@ exports.subscriptionPaymentReturn = async (req, res) => {
                         type: 'Credit',
                         category: 'Subscription',
                         status: 'Completed',
-                        relatedBooking: subscription._id, // we can use this for reference
                         description: `Payment received for Subscription Pass (${plan.name}) from User #${subscription.user.toString().slice(-6)}`
                     });
                 }
             }
         }
 
-        return res.redirect(`${redirect}?payment_status=success`);
+        return res.redirect(`${targetRedirect}?payment_status=success`);
     } catch (error) {
         console.error("Subscription Payment Return Error:", error);
-        return res.redirect(`${req.query.redirect}?payment_status=error`);
+        const fallback = req.query.redirect || req.body?.redirect || '/my-subscriptions';
+        return res.redirect(`${fallback}?payment_status=error`);
     }
 };
 
-// Get User's active subscriptions
+// Get User's active completed subscriptions
 exports.getMySubscriptions = async (req, res) => {
     try {
-        const subscriptions = await UserSubscription.find({ user: req.user.id })
+        // Only return subscriptions where payment is completed
+        const subscriptions = await UserSubscription.find({ 
+            user: req.user.id,
+            paymentStatus: 'Completed'
+        })
             .populate({
                 path: 'plan',
                 populate: { path: 'carCategory' }

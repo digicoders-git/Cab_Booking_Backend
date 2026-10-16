@@ -21,16 +21,22 @@ const initSocket = (server) => {
     io.on("connection", (socket) => {
         console.log(`User Connected: ${socket.id}`);
 
-        // 1. Join Room (For Driver/Admin/User/Agent)
+        // 1. Join Room (For Driver/Admin/User/Agent/Public Trackers)
         socket.on("join_room", async (data) => {
-            const { userId, role } = data; // role: 'driver', 'admin', 'user', 'agent', 'fleet'
+            const { userId, role, bookingRoom } = data || {}; // role: 'driver', 'admin', 'user', 'agent', 'fleet', 'tracker'
             socket.userId = userId; // Store userId for cleanup on disconnect
             socket.role = role;     // Store role for cleanup on disconnect
-            socket.join(userId);
+            if (userId) socket.join(userId);
 
             if (role === 'admin') socket.join('admin_room');
-            if (role === 'agent') socket.join(`agent_${userId}`);
-            if (role === 'vendor') socket.join(`vendor_${userId}`); // NEW: Vendor specific room
+            if (role === 'agent' && userId) socket.join(`agent_${userId}`);
+            if (role === 'vendor' && userId) socket.join(`vendor_${userId}`); // NEW: Vendor specific room
+
+            // --- Tracking Room for Live Ride Sharing (Web Visitors / Family) ---
+            if (bookingRoom) {
+                socket.join(bookingRoom);
+                console.log(`🌐 Public Tracker joined room: ${bookingRoom}`);
+            }
 
             // --- NEW: Fleet Owner joining their specific fleet room ---
             if (role === 'fleet') socket.join(`fleet_${userId}`);
@@ -154,11 +160,19 @@ const initSocket = (server) => {
                     activeBookings.forEach(booking => {
                         const payloadWithBookingId = { ...updatePayload, bookingId: booking._id.toString() };
 
+                        // 1. Emit to Public Tracking Web Page room
+                        const trackingRoom = `tracking_${booking._id.toString()}`;
+                        io.to(trackingRoom).emit("driver_location_update", payloadWithBookingId);
+                        console.log(`📢 Live Update -> Tracking Room: ${trackingRoom}`);
+
+                        // 2. Emit to Agent Room
                         if (booking.agent) {
                             const agentRoom = `agent_${booking.agent.toString()}`;
                             io.to(agentRoom).emit("driver_location_update", payloadWithBookingId);
                             console.log(`📢 Live Update -> Agent Room: ${agentRoom}`);
                         }
+
+                        // 3. Emit to User Personal App Room
                         if (booking.user) {
                             const userRoom = booking.user.toString();
                             io.to(userRoom).emit("driver_location_update", payloadWithBookingId);
