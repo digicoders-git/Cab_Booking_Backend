@@ -86,6 +86,11 @@ const carCategorySchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  // Display Sequence / Order Index (1 = First, 2 = Second, etc.)
+  sortOrder: {
+    type: Number,
+    default: 0
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Admin"

@@ -1747,29 +1747,41 @@ exports.processTripSettlement = async (booking, driver) => {
                 });
             }
 
-            // Always credit subsidy directly to Driver Wallet (so driver sees in Driver Panel)
-            driver.walletBalance = (driver.walletBalance || 0) + totalDiscount;
-            driver.totalEarnings = (driver.totalEarnings || 0) + totalDiscount;
-            await driver.save();
-            await Transaction.create({
-                user: driver._id, userModel: 'Driver', amount: totalDiscount, type: 'Credit',
-                category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
-                description: `Company Offer Subsidy for Trip #${booking._id.toString().slice(-6).toUpperCase()}`
-            });
+            const isFleetDriverSubsidy = driver.createdByModel === "Fleet" && driver.createdBy;
+            let fleetSubsidy = null;
+            if (isFleetDriverSubsidy) {
+                fleetSubsidy = await Fleet.findById(driver.createdBy);
+            }
 
-            // If driver belongs to a Fleet, also credit Fleet Wallet
-            if (driver.createdByModel === "Fleet" && driver.createdBy) {
-                const fleet = await Fleet.findById(driver.createdBy);
-                if (fleet) {
-                    fleet.walletBalance = (fleet.walletBalance || 0) + totalDiscount;
-                    fleet.totalEarnings = (fleet.totalEarnings || 0) + totalDiscount;
-                    await fleet.save();
-                    await Transaction.create({
-                        user: fleet._id, userModel: 'Fleet', amount: totalDiscount, type: 'Credit',
-                        category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
-                        description: `Company Offer Subsidy for Trip #${booking._id.toString().slice(-6).toUpperCase()}`
-                    });
-                }
+            if (isFleetDriverSubsidy && fleetSubsidy) {
+                // Subsidy wallet balance goes to Fleet Owner (Zero Duplication)
+                fleetSubsidy.walletBalance = (fleetSubsidy.walletBalance || 0) + totalDiscount;
+                fleetSubsidy.totalEarnings = (fleetSubsidy.totalEarnings || 0) + totalDiscount;
+                await fleetSubsidy.save();
+                await Transaction.create({
+                    user: fleetSubsidy._id, userModel: 'Fleet', amount: totalDiscount, type: 'Credit',
+                    category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
+                    description: `Company Offer Subsidy for Trip #${booking._id.toString().slice(-6).toUpperCase()}`
+                });
+
+                // Driver gets statement/history record ONLY
+                driver.totalEarnings = (driver.totalEarnings || 0) + totalDiscount;
+                await driver.save();
+                await Transaction.create({
+                    user: driver._id, userModel: 'Driver', amount: totalDiscount, type: 'Credit',
+                    category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
+                    description: `Company Offer Subsidy (Fleet Managed) for Trip #${booking._id.toString().slice(-6).toUpperCase()}`
+                });
+            } else {
+                // Independent driver gets subsidy in wallet
+                driver.walletBalance = (driver.walletBalance || 0) + totalDiscount;
+                driver.totalEarnings = (driver.totalEarnings || 0) + totalDiscount;
+                await driver.save();
+                await Transaction.create({
+                    user: driver._id, userModel: 'Driver', amount: totalDiscount, type: 'Credit',
+                    category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
+                    description: `Company Offer Subsidy for Trip #${booking._id.toString().slice(-6).toUpperCase()}`
+                });
             }
         }
 
@@ -1804,49 +1816,69 @@ exports.processTripSettlement = async (booking, driver) => {
             } catch(e) { console.error("Error recovering dues:", e.message); }
         }
 
-        // Driver ALWAYS gets their wallet & transaction updated for this trip:
-        if (isCash) {
-            driver.walletBalance = (driver.walletBalance || 0) - driverDebtForCash;
-            driver.totalEarnings = (driver.totalEarnings || 0) + driverProfit; // Record earnings even if collected as cash
-            await Transaction.create({
-                user: driver._id, userModel: 'Driver', amount: driverDebtForCash, type: 'Debit',
-                category: 'Commission', status: 'Completed', relatedBooking: booking._id,
-                description: `Commission & Dues debt (Cash Trip #${booking._id.toString().slice(-6).toUpperCase()})`
-            });
-        } else {
-            driver.walletBalance = (driver.walletBalance || 0) + driverProfit;
-            driver.totalEarnings = (driver.totalEarnings || 0) + driverProfit;
-            await Transaction.create({
-                user: driver._id, userModel: 'Driver', amount: driverProfit, type: 'Credit',
-                category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
-                description: `Ride Earnings for Trip #${booking._id.toString().slice(-6).toUpperCase()}`
-            });
+        const isFleetDriver = driver.createdByModel === "Fleet" && driver.createdBy;
+        let fleet = null;
+        if (isFleetDriver) {
+            fleet = await Fleet.findById(driver.createdBy);
         }
-        await driver.save();
 
-        // If driver belongs to a Fleet, Fleet also gets its accounting updated:
-        if (driver.createdByModel === "Fleet" && driver.createdBy) {
-            const fleet = await Fleet.findById(driver.createdBy);
-            if (fleet) {
-                if (isCash) {
-                    fleet.walletBalance -= driverDebtForCash;
-                    fleet.totalEarnings += driverProfit; // Record earnings even if collected as cash
-                    await Transaction.create({
-                        user: fleet._id, userModel: 'Fleet', amount: driverDebtForCash, type: 'Debit',
-                        category: 'Commission', status: 'Completed', relatedBooking: booking._id,
-                        description: `Commission & Dues debt for Fleet Driver ${driver.name} (Trip #${booking._id.toString().slice(-6).toUpperCase()})`
-                    });
-                } else {
-                    fleet.walletBalance += driverProfit;
-                    fleet.totalEarnings += driverProfit;
-                    await Transaction.create({
-                        user: fleet._id, userModel: 'Fleet', amount: driverProfit, type: 'Credit',
-                        category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
-                        description: `Ride Earnings from Fleet Driver ${driver.name} (Trip #${booking._id.toString().slice(-6).toUpperCase()})`
-                    });
-                }
-                await fleet.save();
+        if (isFleetDriver && fleet) {
+            // === FLEET DRIVER CASE: Actual Wallet Balance goes to FLEET OWNER ONLY ===
+            if (isCash) {
+                fleet.walletBalance = (fleet.walletBalance || 0) - driverDebtForCash;
+                fleet.totalEarnings = (fleet.totalEarnings || 0) + driverProfit;
+                await Transaction.create({
+                    user: fleet._id, userModel: 'Fleet', amount: driverDebtForCash, type: 'Debit',
+                    category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                    description: `Commission & Dues debt for Fleet Driver ${driver.name} (Trip #${booking._id.toString().slice(-6).toUpperCase()})`
+                });
+
+                // Driver gets record only, walletBalance NOT charged
+                driver.totalEarnings = (driver.totalEarnings || 0) + driverProfit;
+                await Transaction.create({
+                    user: driver._id, userModel: 'Driver', amount: driverDebtForCash, type: 'Debit',
+                    category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                    description: `Commission & Dues debt (Managed by Fleet Owner ${fleet.name}) (Trip #${booking._id.toString().slice(-6).toUpperCase()})`
+                });
+            } else {
+                fleet.walletBalance = (fleet.walletBalance || 0) + driverProfit;
+                fleet.totalEarnings = (fleet.totalEarnings || 0) + driverProfit;
+                await Transaction.create({
+                    user: fleet._id, userModel: 'Fleet', amount: driverProfit, type: 'Credit',
+                    category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
+                    description: `Ride Earnings from Fleet Driver ${driver.name} (Trip #${booking._id.toString().slice(-6).toUpperCase()})`
+                });
+
+                // Driver gets record only, walletBalance NOT increased (Zero Duplication)
+                driver.totalEarnings = (driver.totalEarnings || 0) + driverProfit;
+                await Transaction.create({
+                    user: driver._id, userModel: 'Driver', amount: driverProfit, type: 'Credit',
+                    category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
+                    description: `Ride Earnings (Credited to Fleet Owner ${fleet.name}) (Trip #${booking._id.toString().slice(-6).toUpperCase()})`
+                });
             }
+            await fleet.save();
+            await driver.save();
+        } else {
+            // === INDEPENDENT DRIVER CASE: Actual Wallet Balance goes to Driver ===
+            if (isCash) {
+                driver.walletBalance = (driver.walletBalance || 0) - driverDebtForCash;
+                driver.totalEarnings = (driver.totalEarnings || 0) + driverProfit;
+                await Transaction.create({
+                    user: driver._id, userModel: 'Driver', amount: driverDebtForCash, type: 'Debit',
+                    category: 'Commission', status: 'Completed', relatedBooking: booking._id,
+                    description: `Commission & Dues debt (Cash Trip #${booking._id.toString().slice(-6).toUpperCase()})`
+                });
+            } else {
+                driver.walletBalance = (driver.walletBalance || 0) + driverProfit;
+                driver.totalEarnings = (driver.totalEarnings || 0) + driverProfit;
+                await Transaction.create({
+                    user: driver._id, userModel: 'Driver', amount: driverProfit, type: 'Credit',
+                    category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
+                    description: `Ride Earnings for Trip #${booking._id.toString().slice(-6).toUpperCase()}`
+                });
+            }
+            await driver.save();
         }
 
         // 5. Passenger (User) Transaction entry

@@ -9,7 +9,7 @@ exports.createCarCategory = async (req, res) => {
             freeWaitingMin, waitingChargePerMin,
             ratePerMinute, trafficBufferMin,
             minKmPerDay, driverAllowancePerDay,
-            enableWaterfallUpgrade
+            enableWaterfallUpgrade, sortOrder
         } = req.body;
 
         const image = req.file ? req.file.filename : null;
@@ -55,6 +55,7 @@ exports.createCarCategory = async (req, res) => {
             minKmPerDay: minKmPerDay || 250,
             driverAllowancePerDay: driverAllowancePerDay || 300,
             enableWaterfallUpgrade: enableWaterfallUpgrade !== undefined ? String(enableWaterfallUpgrade) === 'true' : true,
+            sortOrder: sortOrder !== undefined ? Number(sortOrder) || 0 : 0,
             createdBy: req.user.id
         });
 
@@ -77,7 +78,7 @@ exports.createCarCategory = async (req, res) => {
 // 2. Get All Active Categories (Public / App Users / Drivers / Fleets)
 exports.getAllActiveCategories = async (req, res) => {
     try {
-        const categories = await CarCategory.find({ isActive: true }).select("-createdBy");
+        const categories = await CarCategory.find({ isActive: true }).select("-createdBy").sort({ sortOrder: 1, createdAt: 1 });
 
         res.json({
             success: true,
@@ -96,7 +97,7 @@ exports.getAllActiveCategories = async (req, res) => {
 // 3. Get All Categories (Admin Dashboard)
 exports.getAllCategoriesAdmin = async (req, res) => {
     try {
-        const categories = await CarCategory.find().populate("createdBy", "name email");
+        const categories = await CarCategory.find().populate("createdBy", "name email").sort({ sortOrder: 1, createdAt: 1 });
 
         res.json({
             success: true,
@@ -122,7 +123,7 @@ exports.updateCarCategory = async (req, res) => {
             freeWaitingMin, waitingChargePerMin,
             ratePerMinute, trafficBufferMin,
             minKmPerDay, driverAllowancePerDay,
-            enableWaterfallUpgrade
+            enableWaterfallUpgrade, sortOrder
         } = req.body;
 
         const category = await CarCategory.findById(id);
@@ -149,6 +150,7 @@ exports.updateCarCategory = async (req, res) => {
         if (minKmPerDay !== undefined) category.minKmPerDay = minKmPerDay;
         if (driverAllowancePerDay !== undefined) category.driverAllowancePerDay = driverAllowancePerDay;
         if (enableWaterfallUpgrade !== undefined) category.enableWaterfallUpgrade = String(enableWaterfallUpgrade) === 'true';
+        if (sortOrder !== undefined) category.sortOrder = Number(sortOrder) || 0;
 
         if (seatLayout) {
             if (typeof seatLayout === "string") {

@@ -1369,7 +1369,7 @@ exports.deleteSingleBooking = async (req, res) => {
 // NEW: City-Wise Report Feature
 exports.getCityWiseReport = async (req, res) => {
     try {
-        const { city } = req.query;
+        const { city, startDate, endDate, startTime, endTime } = req.query;
         if (!city) {
             return res.status(400).json({ success: false, message: "City name is required" });
         }
@@ -1380,12 +1380,35 @@ exports.getCityWiseReport = async (req, res) => {
         const BulkBooking = require("../models/BulkBooking");
         const FixedBooking = require("../models/FixedBooking");
         const AgentLead = require("../models/AgentLead");
+
+        // Construct date/time filter if provided
+        const dateQuery = {};
+        if (startDate || endDate) {
+            dateQuery.createdAt = {};
+            if (startDate) {
+                const sTime = startTime ? startTime : "00:00:00";
+                const start = new Date(`${startDate}T${sTime.length === 5 ? sTime + ':00' : sTime}`);
+                if (!isNaN(start.getTime())) {
+                    dateQuery.createdAt.$gte = start;
+                }
+            }
+            if (endDate) {
+                const eTime = endTime ? endTime : "23:59:59";
+                const end = new Date(`${endDate}T${eTime.length === 5 ? eTime + ':59.999' : eTime}`);
+                if (!isNaN(end.getTime())) {
+                    dateQuery.createdAt.$lte = end;
+                }
+            }
+            if (Object.keys(dateQuery.createdAt).length === 0) {
+                delete dateQuery.createdAt;
+            }
+        }
         
         const [normalBookings, bulkBookings, fixedBookings, agentLeads] = await Promise.all([
-            Booking.find({ "pickup.address": { $regex: cityRegex } }).populate("user", "name phone").lean(),
-            BulkBooking.find({ "pickup.address": { $regex: cityRegex } }).lean(),
-            FixedBooking.find({ "pickupLocation": { $regex: cityRegex } }).populate("user", "name phone").lean(),
-            AgentLead.find({ "pickup.address": { $regex: cityRegex } }).lean()
+            Booking.find({ "pickup.address": { $regex: cityRegex }, ...dateQuery }).populate("user", "name phone").lean(),
+            BulkBooking.find({ "pickup.address": { $regex: cityRegex }, ...dateQuery }).lean(),
+            FixedBooking.find({ "pickupLocation": { $regex: cityRegex }, ...dateQuery }).populate("user", "name phone").lean(),
+            AgentLead.find({ "pickup.address": { $regex: cityRegex }, ...dateQuery }).lean()
         ]);
 
         let combined = [];

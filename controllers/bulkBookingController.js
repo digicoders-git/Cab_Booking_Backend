@@ -94,7 +94,7 @@ exports.createBulkBooking = async (req, res) => {
 
         // --- NEW: Area Pricing for Bulk Bookings ---
         const areaRates = await getAreaSpecificRates(pickup.latitude, pickup.longitude, 1, 1, 1);
-        const bulkMultiplier = areaRates.bulkRateMultiplier || 1;
+        const bulkMultiplier = Number((areaRates.bulkRateMultiplier || 1).toFixed(2));
         let appliedAreaPricing = null;
         if (areaRates.isSpecial) {
             appliedAreaPricing = {
@@ -129,16 +129,16 @@ exports.createBulkBooking = async (req, res) => {
                     const chargeableKm = Math.max(actualKm, minimumKmRequired);
                     const totalDriverAllowance = driverAllowancePerDay * days;
                     
-                    systemEstimatedPrice += ((chargeableKm * rate) + totalDriverAllowance) * quantity * bulkMultiplier;
+                    systemEstimatedPrice += Math.round(((chargeableKm * rate) + totalDriverAllowance) * quantity * bulkMultiplier);
                 } else {
                     // One-Way Logic
-                    systemEstimatedPrice += rate * quantity * actualKm * bulkMultiplier;
+                    systemEstimatedPrice += Math.round(rate * quantity * actualKm * bulkMultiplier);
                 }
             }
         }
 
         const priceModifiedPercentage = systemEstimatedPrice > 0
-            ? ((offeredPrice - systemEstimatedPrice) / systemEstimatedPrice) * 100
+            ? Number((((offeredPrice - systemEstimatedPrice) / systemEstimatedPrice) * 100).toFixed(2))
             : 0;
 
         // --- NEW: Fetch dynamic percentages from Admin & Handle Wallet Bypass ---
@@ -172,12 +172,12 @@ exports.createBulkBooking = async (req, res) => {
 
         // --- NEW: First Ride Welcome Discount (Automatic for 1st Time Users) ---
         let firstRideDiscount = 0;
-        let finalOfferedPrice = offeredPrice;
+        let finalOfferedPrice = Math.round(Number(offeredPrice) || 0);
         if (creatorModel === 'User') {
             const firstRideHelper = require('../utils/firstRideHelper');
             firstRideDiscount = await firstRideHelper.checkAndCalculateFirstRideDiscount(req.user.id, finalOfferedPrice);
             if (firstRideDiscount > 0) {
-                finalOfferedPrice = Math.max(0, finalOfferedPrice - firstRideDiscount);
+                finalOfferedPrice = Math.max(0, Math.round(finalOfferedPrice - firstRideDiscount));
             }
         }
 
@@ -186,7 +186,7 @@ exports.createBulkBooking = async (req, res) => {
         // Calculate GST
         const cgst = Math.round(finalOfferedPrice * 0.025);
         const sgst = Math.round(finalOfferedPrice * 0.025);
-        const totalPriceWithTax = finalOfferedPrice + cgst + sgst;
+        const totalPriceWithTax = Math.round(finalOfferedPrice + cgst + sgst);
 
         // Create Booking DB Record (Initially PendingPayment)
         const newBooking = await BulkBooking.create({
@@ -310,6 +310,30 @@ exports.createBulkBooking = async (req, res) => {
                                     title: `📦 New Bulk Deal: ₹${newBooking.offeredPrice}`,
                                     body: `New bulk request at ${newBooking.pickup.address.split(',')[0]}. Check marketplace!`,
                                     data: { bookingId: newBooking._id.toString(), type: "NEW_BULK_DEAL" }
+                                });
+                            }
+                        }
+                    }
+
+                    // --- NEW: If 1-Car Bulk Booking, also notify eligible approved individual Drivers ---
+                    if (newBooking.carsRequired && newBooking.carsRequired.length === 1 && (newBooking.carsRequired[0].quantity || 1) === 1) {
+                        const targetCategory = newBooking.carsRequired[0].category?._id || newBooking.carsRequired[0].category;
+                        const matchingDrivers = await Driver.find({
+                            fcmToken: { $ne: null },
+                            "carDetails.carType": targetCategory,
+                            isApproved: true,
+                            isActive: true
+                        });
+
+                        for (const driver of matchingDrivers) {
+                            if (driver.fcmToken) {
+                                await sendPushNotification(driver.fcmToken, {
+                                    title: `📦 New Bulk Deal: ₹${newBooking.offeredPrice}`,
+                                    body: `New 1-car booking at ${newBooking.pickup.address.split(',')[0]}. Check marketplace!`,
+                                    data: {
+                                        bookingId: newBooking._id.toString(),
+                                        type: "NEW_BULK_DEAL"
+                                    }
                                 });
                             }
                         }
@@ -764,6 +788,30 @@ exports.verifyBulkPayment = async (req, res) => {
                             await sendPushNotification(fleet.fcmToken, {
                                 title: `📦 New Bulk Deal: ₹${booking.offeredPrice}`,
                                 body: `New bulk request at ${booking.pickup.address.split(',')[0]}. Check marketplace!`,
+                                data: {
+                                    bookingId: booking._id.toString(),
+                                    type: "NEW_BULK_DEAL"
+                                }
+                            });
+                        }
+                    }
+                }
+
+                // --- NEW: If 1-Car Bulk Booking, also notify eligible approved individual Drivers ---
+                if (booking.carsRequired && booking.carsRequired.length === 1 && (booking.carsRequired[0].quantity || 1) === 1) {
+                    const targetCategory = booking.carsRequired[0].category?._id || booking.carsRequired[0].category;
+                    const matchingDrivers = await Driver.find({
+                        fcmToken: { $ne: null },
+                        "carDetails.carType": targetCategory,
+                        isApproved: true,
+                        isActive: true
+                    });
+
+                    for (const driver of matchingDrivers) {
+                        if (driver.fcmToken) {
+                            await sendPushNotification(driver.fcmToken, {
+                                title: `📦 New Bulk Deal: ₹${booking.offeredPrice}`,
+                                body: `New 1-car booking at ${booking.pickup.address.split(',')[0]}. Check marketplace!`,
                                 data: {
                                     bookingId: booking._id.toString(),
                                     type: "NEW_BULK_DEAL"
@@ -1662,7 +1710,7 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
         const isLastDriver = (completedCount === totalDrivers - 1);
 
         const displayPrice = booking.totalPriceWithTax || booking.offeredPrice;
-        const remainingBalance = displayPrice - (booking.advancePayment?.amount || 0);
+        const remainingBalance = Math.round(displayPrice - (booking.advancePayment?.amount || 0));
 
         if (isLastDriver && !paymentMode && remainingBalance > 0) {
             return res.status(400).json({
@@ -1822,7 +1870,7 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
                     if (fleet) {
                         const advanceAmount = booking.advancePayment.amount || 0;
                         const agentComm = booking.agentCommissionAmount || 0;
-                        const refundToFleet = advanceAmount - agentComm;
+                        const refundToFleet = Math.round(advanceAmount - agentComm);
 
                         if (refundToFleet > 0) {
                             fleet.walletBalance += refundToFleet;
@@ -1931,7 +1979,7 @@ exports.verifyBulkPayment = async (req, res) => {
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
 
         const displayPrice = booking.totalPriceWithTax || booking.offeredPrice;
-        const remainingBalance = displayPrice - (booking.advancePayment?.amount || 0);
+        const remainingBalance = Math.round(displayPrice - (booking.advancePayment?.amount || 0));
 
         booking.status = 'Completed';
         if (booking.createdByModel === 'User' && booking.createdBy) {
@@ -2017,7 +2065,7 @@ exports.verifyBulkPayment = async (req, res) => {
             try {
                 const fleet = await Fleet.findById(booking.assignedFleet);
                 if (fleet) {
-                    const totalPayToFleet = (booking.offeredPrice || 0) - (booking.agentCommissionAmount || 0);
+                    const totalPayToFleet = Math.round((booking.offeredPrice || 0) - (booking.agentCommissionAmount || 0));
                     if (totalPayToFleet > 0) {
                         fleet.walletBalance += totalPayToFleet;
                         await fleet.save();
@@ -2365,7 +2413,7 @@ exports.checkAreaSurcharge = async (req, res) => {
         if (!latitude || !longitude) return res.json({ multiplier: 1 });
         const { getAreaSpecificRates } = require("./bookingController");
         const areaRates = await getAreaSpecificRates(latitude, longitude, 1, 1, 1);
-        res.json({ multiplier: areaRates.bulkRateMultiplier || 1 });
+        res.json({ multiplier: Number((areaRates.bulkRateMultiplier || 1).toFixed(2)) });
     } catch (error) {
         console.error("Error checking area surcharge:", error.message);
         res.json({ multiplier: 1 });

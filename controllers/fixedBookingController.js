@@ -5,6 +5,7 @@ const Transaction = require("../models/Transaction");
 const Admin = require("../models/Admin");
 const User = require("../models/User");
 const Agent = require("../models/Agent");
+const Fleet = require("../models/Fleet");
 const { RazorpayHandler } = require("../utils/RazorpayHandler");
 const razorpayHandler = RazorpayHandler.getInstance();
 const { getIO } = require("../socket/socket");
@@ -70,6 +71,91 @@ const payoutAgentCommission = async (booking) => {
         } catch (commErr) {
             console.error("Error paying agent commission:", commErr.message);
         }
+    }
+};
+
+// Helper to deduct admin commission for Cash rides upon completion
+const deductCashCommissionOnCompletion = async (booking) => {
+    try {
+        if (booking.paymentMethod !== 'Cash' || booking.commissionDeducted || !booking.assignedDriver) {
+            return;
+        }
+        const commission = booking.adminCommission || 0;
+        if (commission <= 0) {
+            booking.commissionDeducted = true;
+            return;
+        }
+
+        const driver = await Driver.findById(booking.assignedDriver);
+        if (!driver) return;
+
+        let payerModel = 'Driver';
+        let payerId = driver._id;
+        const isFleet = driver.createdByModel === 'Fleet' && driver.createdBy;
+        let fleet = null;
+
+        if (isFleet) {
+            fleet = await Fleet.findById(driver.createdBy);
+        }
+
+        if (fleet) {
+            fleet.walletBalance = (fleet.walletBalance || 0) - commission;
+            await fleet.save();
+            payerModel = 'Fleet';
+            payerId = fleet._id;
+        } else {
+            driver.walletBalance = (driver.walletBalance || 0) - commission;
+            await driver.save();
+        }
+
+        // Payer Debit Transaction
+        await Transaction.create({
+            user: payerId,
+            userModel: payerModel,
+            amount: commission,
+            type: 'Debit',
+            category: 'Commission',
+            status: 'Completed',
+            relatedBooking: booking._id,
+            description: `Admin commission for Fixed Route Booking #${booking._id.toString().slice(-6).toUpperCase()} (Cash Ride Completed)`
+        });
+
+        // If Fleet, also log debit transaction for driver record
+        if (fleet) {
+            await Transaction.create({
+                user: driver._id,
+                userModel: 'Driver',
+                amount: commission,
+                type: 'Debit',
+                category: 'Commission',
+                status: 'Completed',
+                relatedBooking: booking._id,
+                description: `Admin commission for Fixed Route Booking #${booking._id.toString().slice(-6).toUpperCase()} (Deducted from Fleet Owner)`
+            });
+        }
+
+        // Admin Credit
+        const admin = await Admin.findOne();
+        if (admin) {
+            admin.walletBalance = (admin.walletBalance || 0) + commission;
+            admin.totalEarnings = (admin.totalEarnings || 0) + commission;
+            await admin.save();
+
+            await Transaction.create({
+                user: admin._id,
+                userModel: 'Admin',
+                amount: commission,
+                type: 'Credit',
+                category: 'Commission',
+                status: 'Completed',
+                relatedBooking: booking._id,
+                description: `Admin commission for Fixed Route Booking #${booking._id.toString().slice(-6).toUpperCase()} (Cash Ride Completed)`
+            });
+        }
+
+        booking.commissionDeducted = true;
+    } catch (err) {
+        console.error("Error deducting cash commission on completion:", err.message);
     }
 };
 
@@ -291,42 +377,32 @@ exports.acceptBookingDriver = async (req, res) => {
             return res.status(403).json({ success: false, message: "Car category mismatch" });
         }
 
-        // Deduct commission upfront ONLY if cash payment
+        // Check wallet balance for cash payment - DO NOT DEDUCT UPFRONT (Deducted upon ride completion)
         if (booking.paymentMethod === 'Cash') {
-            if (driver.walletBalance - booking.adminCommission < driver.debtLimit) {
-                return res.status(400).json({ success: false, message: "Insufficient wallet balance to accept this cash ride" });
+            let payerEntity = driver;
+            if (driver.createdByModel === 'Fleet' && driver.createdBy) {
+                const fleet = await Fleet.findById(driver.createdBy);
+                if (fleet) payerEntity = fleet;
             }
-
-            driver.walletBalance -= booking.adminCommission;
-            await driver.save();
-
-            const tx = new Transaction({
-                user: driverId,
-                userModel: 'Driver',
-                amount: booking.adminCommission,
-                type: 'Debit',
-                category: 'Commission',
-                status: 'Completed',
-                description: `Admin commission for Fixed Route Booking ${booking._id}`
-            });
-            await tx.save();
-
-            const admin = await Admin.findOne();
-            if (admin) {
-                admin.walletBalance = (admin.walletBalance || 0) + booking.adminCommission;
-                admin.totalEarnings = (admin.totalEarnings || 0) + booking.adminCommission;
-                await admin.save();
-                await Transaction.create({
-                    user: admin._id, userModel: 'Admin', amount: booking.adminCommission, type: 'Credit',
-                    category: 'Commission', status: 'Completed', description: `Admin commission for Fixed Route Booking ${booking._id}`
+            const debtLimit = (payerEntity.debtLimit !== undefined && payerEntity.debtLimit !== null) ? payerEntity.debtLimit : 0;
+            const commission = booking.adminCommission || 0;
+            if ((payerEntity.walletBalance - commission) < debtLimit) {
+                const isFleet = driver.createdByModel === 'Fleet' && driver.createdBy;
+                return res.status(400).json({ 
+                    success: false, 
+                    message: isFleet 
+                        ? "Fleet Owner has insufficient wallet balance. Please recharge fleet wallet." 
+                        : "Insufficient wallet balance to accept this cash ride. Please recharge your wallet." 
                 });
             }
-
-            booking.commissionDeducted = true;
+            booking.commissionDeducted = false;
         }
 
         booking.status = 'Accepted';
         booking.assignedDriver = driverId;
+        if (driver.createdByModel === 'Fleet' && driver.createdBy) {
+            booking.assignedFleet = driver.createdBy;
+        }
         booking.acceptedAt = new Date();
         await booking.save();
 
@@ -562,20 +638,54 @@ exports.verifyOnlinePayment = async (req, res) => {
         if (booking.assignedDriver) {
             const driver = await Driver.findById(booking.assignedDriver);
             if (driver) {
-                driver.walletBalance = (driver.walletBalance || 0) + driverEarning;
-                driver.totalEarnings = (driver.totalEarnings || 0) + driverEarning;
-                await driver.save();
+                if (driver.createdByModel === 'Fleet' && driver.createdBy) {
+                    const fleet = await Fleet.findById(driver.createdBy);
+                    if (fleet) {
+                        fleet.walletBalance = (fleet.walletBalance || 0) + driverEarning;
+                        fleet.totalEarnings = (fleet.totalEarnings || 0) + driverEarning;
+                        await fleet.save();
 
-                await Transaction.create({
-                    user: driver._id,
-                    userModel: 'Driver',
-                    amount: driverEarning,
-                    type: 'Credit',
-                    category: 'Ride Earning',
-                    status: 'Completed',
-                    relatedBooking: booking._id,
-                    description: `Earning for Fixed Route Booking ${booking._id} (Online Payment)`
-                });
+                        await Transaction.create({
+                            user: fleet._id,
+                            userModel: 'Fleet',
+                            amount: driverEarning,
+                            type: 'Credit',
+                            category: 'Ride Earning',
+                            status: 'Completed',
+                            relatedBooking: booking._id,
+                            description: `Earning for Fixed Route Booking ${booking._id} (Online Payment - Fleet)`
+                        });
+                    }
+
+                    driver.totalEarnings = (driver.totalEarnings || 0) + driverEarning;
+                    await driver.save();
+
+                    await Transaction.create({
+                        user: driver._id,
+                        userModel: 'Driver',
+                        amount: driverEarning,
+                        type: 'Credit',
+                        category: 'Ride Earning',
+                        status: 'Completed',
+                        relatedBooking: booking._id,
+                        description: `Earning for Fixed Route Booking ${booking._id} (Online Payment - Credited to Fleet)`
+                    });
+                } else {
+                    driver.walletBalance = (driver.walletBalance || 0) + driverEarning;
+                    driver.totalEarnings = (driver.totalEarnings || 0) + driverEarning;
+                    await driver.save();
+
+                    await Transaction.create({
+                        user: driver._id,
+                        userModel: 'Driver',
+                        amount: driverEarning,
+                        type: 'Credit',
+                        category: 'Ride Earning',
+                        status: 'Completed',
+                        relatedBooking: booking._id,
+                        description: `Earning for Fixed Route Booking ${booking._id} (Online Payment)`
+                    });
+                }
             }
         }
 
@@ -703,7 +813,9 @@ exports.completeBookingDriver = async (req, res) => {
             }
         }
 
+        booking.extraTimeCharges = extraCharges;
         booking.extraDistanceCharges = extraDistanceCharges;
+        booking.totalDistanceDriven = actualDistance;
         
         const totalExtra = extraCharges + extraDistanceCharges;
         if (totalExtra > 0) {
@@ -720,6 +832,7 @@ exports.completeBookingDriver = async (req, res) => {
 
         if (booking.paymentMethod === 'Cash') {
             booking.paymentStatus = 'Completed';
+            await deductCashCommissionOnCompletion(booking);
         }
         if (booking.paymentMethod === 'Cash' || booking.paymentStatus === 'Completed') {
             await payoutAgentCommission(booking);
@@ -760,6 +873,7 @@ exports.confirmCashDriver = async (req, res) => {
         }
         
         booking.paymentStatus = 'Completed';
+        await deductCashCommissionOnCompletion(booking);
 
         // Payout Agent Commission on cash completion
         await payoutAgentCommission(booking);
@@ -790,37 +904,28 @@ exports.acceptBookingAdmin = async (req, res) => {
             if (!driver) return res.status(404).json({ success: false, message: "Driver not found" });
 
             if (booking.paymentMethod === 'Cash') {
-                if (driver.walletBalance - booking.adminCommission < driver.debtLimit) {
-                    return res.status(400).json({ success: false, message: "Insufficient wallet balance for this driver" });
+                let payerEntity = driver;
+                if (driver.createdByModel === 'Fleet' && driver.createdBy) {
+                    const fleet = await Fleet.findById(driver.createdBy);
+                    if (fleet) payerEntity = fleet;
                 }
-                driver.walletBalance -= booking.adminCommission;
-                await driver.save();
-
-                const tx = new Transaction({
-                    user: driverId,
-                    userModel: 'Driver',
-                    amount: booking.adminCommission,
-                    type: 'Debit',
-                    category: 'Commission',
-                    status: 'Completed',
-                    description: `Admin commission for Fixed Route Booking ${booking._id} (Assigned by Admin)`
-                });
-                await tx.save();
-
-                const admin = await Admin.findById(adminId) || await Admin.findOne();
-                if (admin) {
-                    admin.walletBalance = (admin.walletBalance || 0) + booking.adminCommission;
-                    admin.totalEarnings = (admin.totalEarnings || 0) + booking.adminCommission;
-                    await admin.save();
-                    await Transaction.create({
-                        user: admin._id, userModel: 'Admin', amount: booking.adminCommission, type: 'Credit',
-                        category: 'Commission', status: 'Completed', description: `Admin commission for Fixed Route Booking ${booking._id} (Assigned by Admin)`
+                const debtLimit = (payerEntity.debtLimit !== undefined && payerEntity.debtLimit !== null) ? payerEntity.debtLimit : 0;
+                const commission = booking.adminCommission || 0;
+                if ((payerEntity.walletBalance - commission) < debtLimit) {
+                    const isFleet = driver.createdByModel === 'Fleet' && driver.createdBy;
+                    return res.status(400).json({ 
+                        success: false, 
+                        message: isFleet 
+                            ? "Fleet Owner has insufficient wallet balance. Please recharge fleet wallet." 
+                            : "Insufficient wallet balance for this driver" 
                     });
                 }
-
-                booking.commissionDeducted = true;
+                booking.commissionDeducted = false;
             }
             booking.assignedDriver = driverId;
+            if (driver.createdByModel === 'Fleet' && driver.createdBy) {
+                booking.assignedFleet = driver.createdBy;
+            }
         }
 
         booking.status = 'Accepted';

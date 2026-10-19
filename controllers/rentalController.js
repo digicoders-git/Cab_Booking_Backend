@@ -820,29 +820,78 @@ exports.endRentalTrip = async (req, res) => {
 
         await booking.save();
 
-        // Update Driver's & Admin's Wallet and create Transactions
+        // Update Driver's, Fleet's & Admin's Wallet and create Transactions
         if (booking.driver) {
             const driver = await Driver.findById(booking.driver);
             const admin = await Admin.findOne();
             if (driver) {
-                // Driver collected cash, deduct commission from their wallet
-                driver.walletBalance -= adminCommission;
                 driver.isAvailable = true;
                 driver.currentRideType = null;
-                await Transaction.create({
-                    user: driver._id, userModel: 'Driver', amount: adminCommission, type: 'Debit',
-                    category: 'Commission', status: 'Completed', relatedBooking: booking._id,
-                    description: `Commission deducted for Rental Trip ${booking._id} (Cash collected)`
-                });
+                driver.totalEarnings = (driver.totalEarnings || 0) + (totalFare - adminCommission);
+
+                const isFleetDriver = driver.createdByModel === "Fleet" && driver.createdBy;
+                let fleet = null;
+                if (isFleetDriver) {
+                    const Fleet = require("../models/Fleet");
+                    fleet = await Fleet.findById(driver.createdBy);
+                }
+
+                if (isFleetDriver && fleet) {
+                    // Fleet Owner's wallet is debited for company commission debt (since driver collected cash)
+                    fleet.walletBalance = (fleet.walletBalance || 0) - adminCommission;
+                    fleet.totalEarnings = (fleet.totalEarnings || 0) + (totalFare - adminCommission);
+                    await fleet.save();
+
+                    await Transaction.create({
+                        user: fleet._id,
+                        userModel: 'Fleet',
+                        amount: adminCommission,
+                        type: 'Debit',
+                        category: 'Commission',
+                        status: 'Completed',
+                        relatedBooking: booking._id,
+                        description: `Commission debt for Fleet Driver ${driver.name} (Rental Trip #${booking.bookingId || booking._id})`
+                    });
+
+                    // Driver gets transaction record for history, but walletBalance is NOT charged to avoid double-charging
+                    await Transaction.create({
+                        user: driver._id,
+                        userModel: 'Driver',
+                        amount: adminCommission,
+                        type: 'Debit',
+                        category: 'Commission',
+                        status: 'Completed',
+                        relatedBooking: booking._id,
+                        description: `Commission debt (Managed by Fleet Owner ${fleet.name}) for Rental Trip #${booking.bookingId || booking._id}`
+                    });
+                } else {
+                    // Independent Driver pays commission from their own wallet
+                    driver.walletBalance = (driver.walletBalance || 0) - adminCommission;
+                    await Transaction.create({
+                        user: driver._id,
+                        userModel: 'Driver',
+                        amount: adminCommission,
+                        type: 'Debit',
+                        category: 'Commission',
+                        status: 'Completed',
+                        relatedBooking: booking._id,
+                        description: `Commission deducted for Rental Trip #${booking.bookingId || booking._id} (Cash collected)`
+                    });
+                }
 
                 if (admin) {
                     admin.walletBalance = (admin.walletBalance || 0) + adminCommission;
                     admin.totalEarnings = (admin.totalEarnings || 0) + adminCommission;
                     await admin.save();
                     await Transaction.create({
-                        user: admin._id, userModel: 'Admin', amount: adminCommission, type: 'Credit',
-                        category: 'Commission', status: 'Completed', relatedBooking: booking._id,
-                        description: `Admin commission from Rental Trip ${booking._id}`
+                        user: admin._id,
+                        userModel: 'Admin',
+                        amount: adminCommission,
+                        type: 'Credit',
+                        category: 'Commission',
+                        status: 'Completed',
+                        relatedBooking: booking._id,
+                        description: `Admin commission from Rental Trip #${booking.bookingId || booking._id}`
                     });
                 }
                 await driver.save();
@@ -932,23 +981,73 @@ exports.verifyRentalPayment = async (req, res) => {
         
         if (driver) {
             const driverCut = totalFare - adminCommission;
-            driver.walletBalance += driverCut;
             driver.isAvailable = true;
             driver.currentRideType = null;
-            await Transaction.create({
-                user: driver._id, userModel: 'Driver', amount: driverCut, type: 'Credit',
-                category: 'Ride Earning', status: 'Completed', relatedBooking: booking._id,
-                description: `Earnings for Rental Trip ${booking._id} (Paid Online)`
-            });
+            driver.totalEarnings = (driver.totalEarnings || 0) + driverCut;
+
+            const isFleetDriver = driver.createdByModel === "Fleet" && driver.createdBy;
+            let fleet = null;
+            if (isFleetDriver) {
+                const Fleet = require("../models/Fleet");
+                fleet = await Fleet.findById(driver.createdBy);
+            }
+
+            if (isFleetDriver && fleet) {
+                // Actual Wallet Balance goes ONLY to Fleet Owner! (Zero Duplication)
+                fleet.walletBalance = (fleet.walletBalance || 0) + driverCut;
+                fleet.totalEarnings = (fleet.totalEarnings || 0) + driverCut;
+                await fleet.save();
+
+                await Transaction.create({
+                    user: fleet._id,
+                    userModel: 'Fleet',
+                    amount: driverCut,
+                    type: 'Credit',
+                    category: 'Ride Earning',
+                    status: 'Completed',
+                    relatedBooking: booking._id,
+                    description: `Earnings from Fleet Driver ${driver.name} (Rental Trip #${booking.bookingId || booking._id})`
+                });
+
+                // Driver gets statement/history record ONLY (wallet balance not increased to prevent duplicate payouts)
+                await Transaction.create({
+                    user: driver._id,
+                    userModel: 'Driver',
+                    amount: driverCut,
+                    type: 'Credit',
+                    category: 'Ride Earning',
+                    status: 'Completed',
+                    relatedBooking: booking._id,
+                    description: `Ride Earnings (Credited to Fleet Owner ${fleet.name}) for Rental Trip #${booking.bookingId || booking._id}`
+                });
+            } else {
+                // Independent driver gets actual money into their wallet
+                driver.walletBalance = (driver.walletBalance || 0) + driverCut;
+                await Transaction.create({
+                    user: driver._id,
+                    userModel: 'Driver',
+                    amount: driverCut,
+                    type: 'Credit',
+                    category: 'Ride Earning',
+                    status: 'Completed',
+                    relatedBooking: booking._id,
+                    description: `Earnings for Rental Trip #${booking.bookingId || booking._id} (Paid Online)`
+                });
+            }
 
             if (admin) {
                 admin.walletBalance = (admin.walletBalance || 0) + adminCommission;
                 admin.totalEarnings = (admin.totalEarnings || 0) + adminCommission;
                 await admin.save();
                 await Transaction.create({
-                    user: admin._id, userModel: 'Admin', amount: adminCommission, type: 'Credit',
-                    category: 'Commission', status: 'Completed', relatedBooking: booking._id,
-                    description: `Admin commission from Rental Trip ${booking._id} (Online)`
+                    user: admin._id,
+                    userModel: 'Admin',
+                    amount: adminCommission,
+                    type: 'Credit',
+                    category: 'Commission',
+                    status: 'Completed',
+                    relatedBooking: booking._id,
+                    description: `Admin commission from Rental Trip #${booking.bookingId || booking._id} (Online)`
                 });
             }
             await driver.save();

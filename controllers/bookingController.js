@@ -70,10 +70,10 @@ const getAreaSpecificRates = async (pickupLat, pickupLng, defaultBase, defaultPr
                 console.log(`✨ [GEO-PRICING] Match Found! Zone: ${area.areaName} (${distanceToCenter.toFixed(2)} KM away)`);
                 
                 return { 
-                    baseFare: defaultBase * (area.baseFareMultiplier || 1), 
-                    privateRate: defaultPrivateRate * (area.privateRateMultiplier || 1), 
-                    sharedRate: defaultSharedRate * (area.sharedRateMultiplier || 1),
-                    bulkRateMultiplier: (area.bulkRateMultiplier || 1),
+                    baseFare: Math.round(defaultBase * (area.baseFareMultiplier || 1)), 
+                    privateRate: Number((defaultPrivateRate * (area.privateRateMultiplier || 1)).toFixed(2)), 
+                    sharedRate: Number((defaultSharedRate * (area.sharedRateMultiplier || 1)).toFixed(2)),
+                    bulkRateMultiplier: Number((area.bulkRateMultiplier || 1).toFixed(2)),
                     isSpecial: true, 
                     areaName: area.areaName 
                 };
@@ -209,7 +209,7 @@ exports.getAllFareEstimates = async (req, res) => {
         const categories = await CarCategory.find({ 
             isActive: true,
             _id: { $nin: disabledCats }
-        });
+        }).sort({ sortOrder: 1, createdAt: 1 });
         const seats = seatsBooked || 1;
 
         // Fetch all currently active, online drivers to calculate real ETA
