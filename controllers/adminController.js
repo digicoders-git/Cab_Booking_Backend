@@ -1375,11 +1375,12 @@ exports.getCityWiseReport = async (req, res) => {
         }
 
         const cityRegex = new RegExp(city, "i");
-
         const Booking = require("../models/Booking");
         const BulkBooking = require("../models/BulkBooking");
         const FixedBooking = require("../models/FixedBooking");
         const AgentLead = require("../models/AgentLead");
+        const RentalBooking = require("../models/RentalBooking");
+        const UserSubscription = require("../models/UserSubscription");
 
         // Construct date/time filter if provided
         const dateQuery = {};
@@ -1404,11 +1405,44 @@ exports.getCityWiseReport = async (req, res) => {
             }
         }
         
-        const [normalBookings, bulkBookings, fixedBookings, agentLeads] = await Promise.all([
-            Booking.find({ "pickup.address": { $regex: cityRegex }, ...dateQuery }).populate("user", "name phone").lean(),
-            BulkBooking.find({ "pickup.address": { $regex: cityRegex }, ...dateQuery }).lean(),
-            FixedBooking.find({ "pickupLocation": { $regex: cityRegex }, ...dateQuery }).populate("user", "name phone").lean(),
-            AgentLead.find({ "pickup.address": { $regex: cityRegex }, ...dateQuery }).lean()
+        const limit = parseInt(req.query.limit) || 100;
+        
+        const [normalBookings, bulkBookings, fixedBookings, agentLeads, rentalBookings, userSubscriptions] = await Promise.all([
+            Booking.find({ "pickup.address": { $regex: cityRegex }, ...dateQuery })
+                .select("pickup.address bookingStatus actualFare fareEstimate createdAt user passengerDetails rideType")
+                .populate("user", "name phone")
+                .sort({ createdAt: -1 })
+                .limit(limit)
+                .lean(),
+            BulkBooking.find({ "pickup.address": { $regex: cityRegex }, ...dateQuery })
+                .select("pickup.address status totalPriceWithTax offeredPrice createdAt customerName")
+                .sort({ createdAt: -1 })
+                .limit(limit)
+                .lean(),
+            FixedBooking.find({ "pickupLocation": { $regex: cityRegex }, ...dateQuery })
+                .select("pickupLocation status finalPrice price createdAt user customerName")
+                .populate("user", "name phone")
+                .sort({ createdAt: -1 })
+                .limit(limit)
+                .lean(),
+            AgentLead.find({ "pickup.address": { $regex: cityRegex }, ...dateQuery })
+                .select("pickup.address status totalPrice createdAt customerName")
+                .sort({ createdAt: -1 })
+                .limit(limit)
+                .lean(),
+            RentalBooking.find({ "pickupLocation.address": { $regex: cityRegex }, ...dateQuery })
+                .select("bookingId pickupLocation.address status fareDetails createdAt user")
+                .populate("user", "name phone")
+                .sort({ createdAt: -1 })
+                .limit(limit)
+                .lean(),
+            UserSubscription.find({ "pickup.address": { $regex: cityRegex }, ...dateQuery })
+                .select("pickup.address status plan createdAt user")
+                .populate("user", "name phone")
+                .populate("plan", "name price")
+                .sort({ createdAt: -1 })
+                .limit(limit)
+                .lean()
         ]);
 
         let combined = [];
@@ -1417,7 +1451,7 @@ exports.getCityWiseReport = async (req, res) => {
             id: b._id,
             createdAt: b.createdAt,
             customerName: b.user?.name || b.passengerDetails?.name || "N/A",
-            rideType: `Normal (${b.rideType || 'Private'})`,
+            rideType: b.rideType === 'Shared' ? 'Shared Ride' : (b.rideType === 'Private' ? 'Private Ride' : (b.rideType || 'Private Ride')),
             pickupAddress: b.pickup?.address,
             status: b.bookingStatus,
             fare: b.actualFare || b.fareEstimate || 0
@@ -1453,8 +1487,31 @@ exports.getCityWiseReport = async (req, res) => {
             fare: b.totalPrice || 0
         }));
 
-        // Sort descending
+        rentalBookings.forEach(b => combined.push({
+            id: b.bookingId || b._id,
+            createdAt: b.createdAt,
+            customerName: b.user?.name || "Rental User",
+            rideType: "Rental",
+            pickupAddress: b.pickupLocation?.address,
+            status: b.status,
+            fare: b.fareDetails?.totalFare || b.fareDetails?.baseFare || 0
+        }));
+
+        userSubscriptions.forEach(b => combined.push({
+            id: b._id,
+            createdAt: b.createdAt,
+            customerName: b.user?.name || "Subscriber",
+            rideType: "Monthly Subscription",
+            pickupAddress: b.pickup?.address,
+            status: b.status,
+            fare: b.plan?.price || 0
+        }));
+
+        // Sort descending and cap at limit
         combined.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        if (combined.length > limit) {
+            combined = combined.slice(0, limit);
+        }
 
         // Calculate summary metrics
         let totalRevenue = 0;
@@ -1462,10 +1519,10 @@ exports.getCityWiseReport = async (req, res) => {
         let cancelledRides = 0;
         
         combined.forEach(b => {
-            if (['Completed'].includes(b.status)) {
+            if (['Completed', 'Active'].includes(b.status)) {
                 completedRides++;
                 totalRevenue += b.fare;
-            } else if (['Cancelled', 'Expired'].includes(b.status)) {
+            } else if (['Cancelled', 'Expired', 'Inactive'].includes(b.status)) {
                 cancelledRides++;
             }
         });

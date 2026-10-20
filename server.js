@@ -82,6 +82,7 @@ app.use("/api/settings", require("./routes/appSettingRoutes")); // NEW: Global A
 app.use("/api/fixed-routes", fixedRouteRoutes); // NEW: Fixed Routes Marketplace
 app.use("/api/rentals", rentalRoutes); // NEW: Rental Bookings
 app.use("/api/incentives", incentiveRoutes); // NEW: Driver Incentives
+app.use("/api/contact", require("./routes/contactRoutes")); // Public Contact / Inquiry APIs
 
 const PORT = process.env.PORT || 5000;
 
