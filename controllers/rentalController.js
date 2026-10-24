@@ -940,6 +940,14 @@ exports.endRentalTrip = async (req, res) => {
                     });
                 }
                 await driver.save();
+
+                // 🏆 INCENTIVE PROCESSING for Rental Booking
+                try {
+                    const incentiveController = require("./incentiveController");
+                    await incentiveController.processIncentiveForDriver(driver._id, 'Rental');
+                } catch (incErr) {
+                    console.error("Error evaluating incentive for Rental:", incErr);
+                }
             }
         }
 
@@ -1096,6 +1104,14 @@ exports.verifyRentalPayment = async (req, res) => {
                 });
             }
             await driver.save();
+
+            // 🏆 INCENTIVE PROCESSING for Rental Booking (Online)
+            try {
+                const incentiveController = require("./incentiveController");
+                await incentiveController.processIncentiveForDriver(driver._id, 'Rental');
+            } catch (incErr) {
+                console.error("Error evaluating incentive for Rental (Online):", incErr);
+            }
         }
 
         // === ADDED: Notify User via Socket & FCM for Completion ===
