@@ -12,6 +12,7 @@ const {
     getActiveRentalPackages,
     bookRental,
     getUserRentalBookings,
+    getRentalBookingDetails,
     endRentalTrip,
     cancelRentalBooking,
     deleteRentalBookingAdmin,
@@ -36,6 +37,7 @@ router.delete("/package/:id", auth, checkPermission("RENTAL_PACKAGE_DELETE"), de
 router.get("/packages", getActiveRentalPackages);
 router.post("/book", auth, userOnly, bookRental);
 router.get("/my-bookings", auth, userOnly, getUserRentalBookings);
+router.get("/bookings/:id", auth, getRentalBookingDetails);
 router.put("/bookings/:id/cancel", auth, userOnly, cancelRentalBooking);
 
 // Driver Routes (Simplified)

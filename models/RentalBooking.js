@@ -37,7 +37,7 @@ const rentalBookingSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ["Pending", "Accepted", "Arrived", "Started", "Completed", "Cancelled"],
+        enum: ["Pending", "Accepted", "Arrived", "Started", "Completed", "Cancelled", "Expired"],
         default: "Pending"
     },
     cancelReason: {
@@ -56,6 +56,12 @@ const rentalBookingSchema = new mongoose.Schema({
     endTime: {
         type: Date,
         default: null
+    },
+    driverLocation: {
+        latitude: { type: Number, default: null },
+        longitude: { type: Number, default: null },
+        heading: { type: Number, default: 0 },
+        lastUpdated: { type: Date, default: null }
     },
     totalDistanceTravelled: {
         type: Number,

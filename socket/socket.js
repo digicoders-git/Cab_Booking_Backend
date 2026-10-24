@@ -1,6 +1,7 @@
 const { Server } = require("socket.io");
 const Driver = require("../models/Driver");
 const Booking = require("../models/Booking");
+const RentalBooking = require("../models/RentalBooking");
 
 
 let io;
@@ -181,6 +182,25 @@ const initSocket = (server) => {
                     });
                 }
 
+                // Broadcast to Rental User if current rental trip is active
+                const activeRentalBookings = await RentalBooking.find({
+                    driver: driverId,
+                    status: { $in: ["Accepted", "Arrived", "Started"] }
+                }).select("user _id");
+
+                if (activeRentalBookings && activeRentalBookings.length > 0) {
+                    activeRentalBookings.forEach(rb => {
+                        const payloadWithBookingId = { ...updatePayload, bookingId: rb._id.toString() };
+
+                        // Emit to Rental User Personal App Room
+                        if (rb.user) {
+                            const userRoom = rb.user.toString();
+                            io.to(userRoom).emit("driver_location_update", payloadWithBookingId);
+                            console.log(`📢 Live Rental Location Update -> User Room: ${userRoom}`);
+                        }
+                    });
+                }
+
                 // --- STEP 2: SMART DB UPDATE (Har 2 Minute mein ek baar) ---
                 const now = Date.now();
                 const lastUpdate = lastDBUpdate[driverId] || 0;
@@ -193,9 +213,24 @@ const initSocket = (server) => {
                         currentHeading: heading || 0
                     });
 
-                    // NEW: Update active bookings with new location for persistence
+                    // Update regular active bookings
                     await Booking.updateMany(
                         { assignedDriver: driverId, bookingStatus: { $in: ["Accepted", "Ongoing"] } },
+                        {
+                            $set: {
+                                driverLocation: {
+                                    latitude,
+                                    longitude,
+                                    heading: heading || 0,
+                                    lastUpdated: new Date()
+                                }
+                            }
+                        }
+                    );
+
+                    // Update active rental bookings with latest driver location
+                    await RentalBooking.updateMany(
+                        { driver: driverId, status: { $in: ["Accepted", "Arrived", "Started"] } },
                         {
                             $set: {
                                 driverLocation: {

@@ -166,7 +166,8 @@ const startRentalWaterfallMatching = async (bookingId) => {
             setTimeout(async () => {
                 const b = await RentalBooking.findById(bookingId);
                 if (b && b.status === "Pending") {
-                    b.status = "Cancelled";
+                    b.status = "Expired";
+                    b.cancelReason = "No online drivers available near pickup location";
                     await b.save();
                     try {
                         const io = getIO();
@@ -174,8 +175,8 @@ const startRentalWaterfallMatching = async (bookingId) => {
                         if (b.user) {
                             io.to(b.user.toString()).emit("booking_update", {
                                 bookingId: b._id,
-                                status: "Cancelled",
-                                message: "No drivers available near your location."
+                                status: "Expired",
+                                message: "No drivers available near your location. Rental request expired."
                             });
                         }
                     } catch (_) {}
@@ -210,7 +211,8 @@ const startRentalWaterfallMatching = async (bookingId) => {
             setTimeout(async () => {
                 const b = await RentalBooking.findById(bookingId);
                 if (b && b.status === "Pending") {
-                    b.status = "Cancelled";
+                    b.status = "Expired";
+                    b.cancelReason = `No drivers found within ${maxRadiusKm} km radius`;
                     await b.save();
                     try {
                         const io = getIO();
@@ -218,8 +220,8 @@ const startRentalWaterfallMatching = async (bookingId) => {
                         if (b.user) {
                             io.to(b.user.toString()).emit("booking_update", {
                                 bookingId: b._id,
-                                status: "Cancelled",
-                                message: `No drivers available within ${maxRadiusKm} km of your pickup location.`
+                                status: "Expired",
+                                message: `No drivers available within ${maxRadiusKm} km of your pickup location. Rental request expired.`
                             });
                         }
                     } catch (_) {}
@@ -245,7 +247,8 @@ const startRentalWaterfallMatching = async (bookingId) => {
                 // Check if total booking timeout reached
                 if (Date.now() - startTime >= maxDurationMs) {
                     console.log(`⏰ [Rental Waterfall] Booking ${bookingId} expired after ${timeoutMinutes} minutes.`);
-                    currentBooking.status = "Cancelled";
+                    currentBooking.status = "Expired";
+                    currentBooking.cancelReason = "Request timed out. No driver accepted in time";
                     await currentBooking.save();
 
                     const io = getIO();
@@ -253,8 +256,8 @@ const startRentalWaterfallMatching = async (bookingId) => {
                     if (currentBooking.user) {
                         io.to(currentBooking.user.toString()).emit("booking_update", {
                             bookingId: currentBooking._id,
-                            status: "Cancelled",
-                            message: "No drivers accepted your rental request. Please try again."
+                            status: "Expired",
+                            message: "Rental request expired as no drivers accepted in time. Please try again."
                         });
                     }
                     return;
@@ -272,7 +275,8 @@ const startRentalWaterfallMatching = async (bookingId) => {
                 // Stop when all candidates have been tried once — DO NOT repeat to the same drivers
                 if (currentIndex >= sortedCandidates.length) {
                     console.log(`🏁 [Rental Waterfall] All ${sortedCandidates.length} eligible drivers have been requested once. No repeats. Ending waterfall.`);
-                    currentBooking.status = "Cancelled";
+                    currentBooking.status = "Expired";
+                    currentBooking.cancelReason = "All nearby drivers missed or declined the request";
                     await currentBooking.save();
 
                     const io = getIO();
@@ -280,8 +284,8 @@ const startRentalWaterfallMatching = async (bookingId) => {
                     if (currentBooking.user) {
                         io.to(currentBooking.user.toString()).emit("booking_update", {
                             bookingId: currentBooking._id,
-                            status: "Cancelled",
-                            message: "No drivers accepted your rental request. Please try again."
+                            status: "Expired",
+                            message: "Nearby drivers were busy or did not accept. Rental request expired. Please try again."
                         });
                     }
                     return;
@@ -397,9 +401,26 @@ exports.getUserRentalBookings = async (req, res) => {
         const bookings = await RentalBooking.find({ user: req.user.id })
             .populate("rentalPackage")
             .populate("carCategory", "name image")
-            .populate("driver", "name phone vehicleNumber")
+            .populate("driver", "name phone image currentLocation currentHeading carDetails rating")
             .sort({ createdAt: -1 });
         res.json({ success: true, bookings });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.getRentalBookingDetails = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const booking = await RentalBooking.findById(id)
+            .populate("rentalPackage")
+            .populate("carCategory", "name image")
+            .populate("driver", "name phone image currentLocation currentHeading carDetails rating")
+            .populate("user", "name phone");
+
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        res.json({ success: true, booking });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -590,15 +611,25 @@ exports.acceptRentalBooking = async (req, res) => {
             return res.status(400).json({ success: false, message: "Booking is no longer available" });
         }
 
-        booking.driver = req.user.id;
-        booking.status = "Accepted";
-        await booking.save();
-
         const Driver = require("../models/Driver");
-        await Driver.findByIdAndUpdate(req.user.id, {
+        const assignedDriver = await Driver.findByIdAndUpdate(req.user.id, {
             isAvailable: false,
             currentRideType: "Rental"
-        });
+        }, { new: true });
+
+        booking.driver = req.user.id;
+        booking.status = "Accepted";
+
+        // Store initial driver GPS location on booking
+        if (assignedDriver && assignedDriver.currentLocation && assignedDriver.currentLocation.latitude) {
+            booking.driverLocation = {
+                latitude: assignedDriver.currentLocation.latitude,
+                longitude: assignedDriver.currentLocation.longitude,
+                heading: assignedDriver.currentHeading || 0,
+                lastUpdated: new Date()
+            };
+        }
+        await booking.save();
 
         // Notify other drivers to remove it from their screen
         try {
@@ -610,17 +641,24 @@ exports.acceptRentalBooking = async (req, res) => {
 
         const populatedBooking = await RentalBooking.findById(id)
             .populate("user", "name phone")
-            .populate("carCategory", "name")
-            .populate("rentalPackage");
+            .populate("carCategory", "name image")
+            .populate("rentalPackage")
+            .populate("driver", "name phone image currentLocation currentHeading carDetails rating");
 
-        // === ADDED: Notify User via Socket & FCM ===
+        // === NOTIFY USER VIA SOCKET & FCM ===
         if (populatedBooking.user) {
             try {
                 // Socket Notification
                 const io = require("../socket/socket").getIO();
                 io.to(populatedBooking.user._id.toString()).emit("booking_update", {
                     bookingId: populatedBooking._id,
-                    status: "Accepted"
+                    status: "Accepted",
+                    driver: populatedBooking.driver,
+                    driverLocation: populatedBooking.driverLocation || {
+                        latitude: populatedBooking.driver?.currentLocation?.latitude,
+                        longitude: populatedBooking.driver?.currentLocation?.longitude,
+                        heading: populatedBooking.driver?.currentHeading || 0
+                    }
                 });
 
                 // FCM Notification
@@ -630,7 +668,7 @@ exports.acceptRentalBooking = async (req, res) => {
                     const { sendPushNotification } = require("../utils/fcmNotification");
                     await sendPushNotification(rider.fcmToken, {
                         title: "🚖 Rental Ride Accepted!",
-                        body: `Driver is on the way to pick you up.`,
+                        body: `Driver ${populatedBooking.driver?.name || ''} is on the way to pick you up.`,
                         data: {
                             type: "ride_accepted",
                             bookingId: populatedBooking._id.toString()
@@ -682,16 +720,23 @@ exports.startRentalRide = async (req, res) => {
 
         const populatedBooking = await RentalBooking.findById(bookingId)
             .populate("user", "name phone")
-            .populate("carCategory", "name")
-            .populate("rentalPackage");
+            .populate("carCategory", "name image")
+            .populate("rentalPackage")
+            .populate("driver", "name phone image currentLocation currentHeading carDetails rating");
 
-        // === ADDED: Notify User via Socket & FCM ===
+        // === NOTIFY USER VIA SOCKET & FCM ===
         if (populatedBooking.user) {
             try {
                 const io = require("../socket/socket").getIO();
                 io.to(populatedBooking.user._id.toString()).emit("booking_update", {
                     bookingId: populatedBooking._id,
-                    status: "Started"
+                    status: "Started",
+                    driver: populatedBooking.driver,
+                    driverLocation: populatedBooking.driverLocation || {
+                        latitude: populatedBooking.driver?.currentLocation?.latitude,
+                        longitude: populatedBooking.driver?.currentLocation?.longitude,
+                        heading: populatedBooking.driver?.currentHeading || 0
+                    }
                 });
 
                 const User = require("../models/User");
