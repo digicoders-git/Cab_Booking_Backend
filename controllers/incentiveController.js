@@ -2,6 +2,7 @@ const Incentive = require('../models/Incentive');
 const DriverIncentiveProgress = require('../models/DriverIncentiveProgress');
 const Driver = require('../models/Driver');
 const Transaction = require('../models/Transaction');
+const { parseISTDateTime } = require('../utils/timeHelper');
 
 // Create a new Incentive (Admin)
 exports.createIncentive = async (req, res) => {
@@ -14,8 +15,8 @@ exports.createIncentive = async (req, res) => {
             targetType,
             targetCount,
             rewardAmount,
-            startDate,
-            endDate,
+            startDate: startDate ? parseISTDateTime(startDate, false) : new Date(),
+            endDate: endDate ? parseISTDateTime(endDate, true) : null,
             createdBy: req.user.id
         });
 

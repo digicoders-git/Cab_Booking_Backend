@@ -13,6 +13,7 @@ const FixedBooking = require("../models/FixedBooking");
 const CarCategory = require("../models/CarCategory");
 const User = require("../models/User");
 const { sendPushNotification } = require("../utils/fcmNotification");
+const { getStartOfTodayIST } = require("../utils/timeHelper");
 
 // Register Driver (Open Registration - Pending Admin Approval)
 // Driver can register with car details
@@ -1234,9 +1235,9 @@ exports.getDriverReport = async (req, res) => {
             Booking.countDocuments({ assignedDriver: driverId, bookingStatus: "Cancelled" })
         ]);
 
-        // 3. Fetch Earnings Summary (Today, This Week, This Month)
+        // 3. Fetch Earnings Summary (Today, This Week, This Month) in IST
         const now = new Date();
-        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const startOfToday = getStartOfTodayIST();
         const startOfWeek = new Date(startOfToday);
         startOfWeek.setDate(now.getDate() - now.getDay());
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -1411,8 +1412,7 @@ exports.setDestinationFilter = async (req, res) => {
         const driver = await Driver.findById(driverId);
         if (!driver) return res.status(404).json({ success: false, message: "Driver not found" });
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const today = getStartOfTodayIST();
 
         // Reset count if it's a new day
         if (!driver.destinationFilterDate || driver.destinationFilterDate < today) {

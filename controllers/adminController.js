@@ -12,6 +12,7 @@ const CarCategory = require("../models/CarCategory")
 const Support = require("../models/Support")
 const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness")
 const { sendPushNotification } = require("../utils/fcmNotification")
+const { getStartOfTodayIST, getEndOfTodayIST, parseISTDateTime } = require("../utils/timeHelper")
 
 exports.registerAdmin = async (req, res) => {
     try {
@@ -350,6 +351,7 @@ exports.getDashboardStats = async (req, res) => {
         const agentLiabilities = (await Agent.aggregate([{ $group: { _id: null, total: { $sum: "$walletBalance" } } }]))[0]?.total || 0;
         const fleetLiabilities = (await Fleet.aggregate([{ $group: { _id: null, total: { $sum: "$walletBalance" } } }]))[0]?.total || 0;
         const vendorLiabilities = (await Vendor.aggregate([{ $group: { _id: null, total: { $sum: "$walletBalance" } } }]))[0]?.total || 0;
+        const startOfTodayIST = getStartOfTodayIST();
 
         const stats = {
             counts: {
@@ -380,11 +382,11 @@ exports.getDashboardStats = async (req, res) => {
                     cashPayments: await Booking.countDocuments({ paymentMethod: "Cash" }),
                     sharedRides: await Booking.countDocuments({ rideType: "Shared" }),
                     privateRides: await Booking.countDocuments({ rideType: "Private" }),
-                    todayBookings: await Booking.countDocuments({ createdAt: { $gte: new Date().setHours(0, 0, 0, 0) } })
+                    todayBookings: await Booking.countDocuments({ createdAt: { $gte: startOfTodayIST } })
                 },
                 users: {
                     total: await User.countDocuments(),
-                    today: await User.countDocuments({ createdAt: { $gte: new Date().setHours(0, 0, 0, 0) } })
+                    today: await User.countDocuments({ createdAt: { $gte: startOfTodayIST } })
                 }
             },
             driverStats: {
@@ -394,12 +396,12 @@ exports.getDashboardStats = async (req, res) => {
                 busy: await Driver.countDocuments({ isApproved: true, isAvailable: false }),
                 idle: await Driver.countDocuments({ isApproved: true, isOnline: true, isAvailable: true }),
                 rejected: await Driver.countDocuments({ isRejected: true }),
-                today: await Driver.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } })
+                today: await Driver.countDocuments({ createdAt: { $gte: startOfTodayIST } })
             },
             partnerStats: {
-                todayAgents: await Agent.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } }),
-                todayFleets: await Fleet.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } }),
-                todayVendors: await Vendor.countDocuments({ createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } })
+                todayAgents: await Agent.countDocuments({ createdAt: { $gte: startOfTodayIST } }),
+                todayFleets: await Fleet.countDocuments({ createdAt: { $gte: startOfTodayIST } }),
+                todayVendors: await Vendor.countDocuments({ createdAt: { $gte: startOfTodayIST } })
             },
             payoutStats: {
                 totalPayouts: (await Transaction.aggregate([
@@ -420,11 +422,11 @@ exports.getDashboardStats = async (req, res) => {
             },
             todayFinancials: {
                 revenue: (await Booking.aggregate([
-                    { $match: { bookingStatus: "Completed", createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } } },
+                    { $match: { bookingStatus: "Completed", createdAt: { $gte: startOfTodayIST } } },
                     { $group: { _id: null, total: { $sum: "$actualFare" } } }
                 ]))[0]?.total || 0,
                 profit: (await Transaction.aggregate([
-                    { $match: { userModel: "Admin", category: "Commission", createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) } } },
+                    { $match: { userModel: "Admin", category: "Commission", createdAt: { $gte: startOfTodayIST } } },
                     { $group: { _id: null, total: { $sum: "$amount" } } }
                 ]))[0]?.total || 0
             },
@@ -1051,10 +1053,8 @@ exports.exportTaxReport = async (req, res) => {
 
         const now = new Date();
         if (timeframe === 'daily') {
-            const startOfDay = new Date(now);
-            startOfDay.setHours(0, 0, 0, 0);
-            const endOfDay = new Date(now);
-            endOfDay.setHours(23, 59, 59, 999);
+            const startOfDay = getStartOfTodayIST();
+            const endOfDay = getEndOfTodayIST();
             dateFilter = { $gte: startOfDay, $lte: endOfDay };
         } else if (timeframe === 'weekly') {
             const lastWeek = new Date(now);
@@ -1388,14 +1388,14 @@ exports.getCityWiseReport = async (req, res) => {
             dateQuery.createdAt = {};
             if (startDate) {
                 const sTime = startTime ? startTime : "00:00:00";
-                const start = new Date(`${startDate}T${sTime.length === 5 ? sTime + ':00' : sTime}`);
+                const start = parseISTDateTime(`${startDate}T${sTime.length === 5 ? sTime + ':00' : sTime}`);
                 if (!isNaN(start.getTime())) {
                     dateQuery.createdAt.$gte = start;
                 }
             }
             if (endDate) {
                 const eTime = endTime ? endTime : "23:59:59";
-                const end = new Date(`${endDate}T${eTime.length === 5 ? eTime + ':59.999' : eTime}`);
+                const end = parseISTDateTime(`${endDate}T${eTime.length === 5 ? eTime + ':59.999' : eTime}`);
                 if (!isNaN(end.getTime())) {
                     dateQuery.createdAt.$lte = end;
                 }

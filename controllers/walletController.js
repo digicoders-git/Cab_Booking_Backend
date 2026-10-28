@@ -4,6 +4,7 @@ const Agent = require("../models/Agent");
 const Fleet = require("../models/Fleet");
 const Admin = require("../models/Admin");
 const User = require("../models/User");
+const { getStartOfTodayIST, getEndOfTodayIST, parseISTDateTime } = require("../utils/timeHelper");
 const { RazorpayHandler } = require("../utils/RazorpayHandler");
 const razorpayHandler = RazorpayHandler.getInstance();
 
@@ -215,10 +216,8 @@ exports.exportTransactions = async (req, res) => {
 
         const now = new Date();
         if (timeframe === 'daily') {
-            const startOfDay = new Date(now);
-            startOfDay.setHours(0, 0, 0, 0);
-            const endOfDay = new Date(now);
-            endOfDay.setHours(23, 59, 59, 999);
+            const startOfDay = getStartOfTodayIST();
+            const endOfDay = getEndOfTodayIST();
             dateFilter = { $gte: startOfDay, $lte: endOfDay };
         } else if (timeframe === 'weekly') {
             const lastWeek = new Date(now);
@@ -231,7 +230,7 @@ exports.exportTransactions = async (req, res) => {
             const startOfYear = new Date(now.getFullYear(), 0, 1);
             dateFilter = { $gte: startOfYear, $lte: new Date() };
         } else if (timeframe === 'custom' && startDate && endDate) {
-            dateFilter = { $gte: new Date(startDate), $lte: new Date(endDate) };
+            dateFilter = { $gte: parseISTDateTime(startDate, false), $lte: parseISTDateTime(endDate, true) };
         }
 
         const filter = {};

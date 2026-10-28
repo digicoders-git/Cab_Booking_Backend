@@ -1,4 +1,5 @@
 const StateTax = require("../models/StateTax");
+const { parseISTDateTime } = require("../utils/timeHelper");
 
 // 1. Admin: Create a new State Tax
 exports.createStateTax = async (req, res) => {
@@ -91,8 +92,8 @@ exports.calculateTaxesInternal = async ({ pickupAddress, dropAddress, carCategor
 
     if (tripType === 'RoundTrip') {
         if (pickupDate && returnDate) {
-            const pDate = new Date(pickupDate);
-            const rDate = new Date(returnDate);
+            const pDate = parseISTDateTime(pickupDate, false);
+            const rDate = parseISTDateTime(returnDate, false);
             
             // Normalize to midnight to compare calendar days
             const pDay = Date.UTC(pDate.getFullYear(), pDate.getMonth(), pDate.getDate());

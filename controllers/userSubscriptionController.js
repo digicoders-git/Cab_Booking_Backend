@@ -4,6 +4,7 @@ const User = require('../models/User');
 const { RazorpayHandler } = require('../utils/RazorpayHandler');
 const razorpayHandler = RazorpayHandler.getInstance();
 const Admin = require('../models/Admin');
+const { getStartOfTodayIST, formatTo12Hr } = require('../utils/timeHelper');
 
 // Get all active plans for users
 exports.getActivePlans = async (req, res) => {
@@ -31,9 +32,10 @@ exports.buySubscription = async (req, res) => {
         const userRecord = await User.findById(req.user.id);
         if (!userRecord) return res.status(404).json({ success: false, message: "User not found" });
 
-        const startDate = new Date();
-        const endDate = new Date();
-        endDate.setDate(startDate.getDate() + plan.validityDays);
+        const startDate = getStartOfTodayIST();
+        const endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + plan.validityDays);
+        endDate.setMilliseconds(endDate.getMilliseconds() - 1);
 
         const subscription = new UserSubscription({
             user: req.user.id,
@@ -41,8 +43,8 @@ exports.buySubscription = async (req, res) => {
             pickup: plan.pickup,
             drop: plan.drop,
             routeDistanceKm: plan.distanceKm,
-            pickupTime,
-            returnTime,
+            pickupTime: formatTo12Hr(pickupTime),
+            returnTime: returnTime ? formatTo12Hr(returnTime) : null,
             startDate,
             endDate,
             paymentStatus: 'Pending',

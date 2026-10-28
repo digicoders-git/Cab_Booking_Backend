@@ -1,6 +1,7 @@
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
+const { getISTDateString, getISTTimeString } = require('./timeHelper');
 
 // Helper to convert millimeters to points (PDFKit uses 72 points per inch)
 const mm = (val) => val * 2.83465;
@@ -87,11 +88,11 @@ exports.generateBulkBookingReceipt = (booking, res) => {
             // Invoice Info (Right side)
             doc.font('Helvetica-Bold');
             doc.text(`Invoice No. : PT/${booking._id.toString().slice(-3).toUpperCase()}`, mm(130), mm(80));
-            doc.text(`Invoice Date : ${new Date().toLocaleDateString('en-GB')}`, mm(130), mm(88));
-            doc.text(`Pickup Date : ${new Date(booking.pickupDateTime).toLocaleDateString('en-GB')}`, mm(130), mm(96));
+            doc.text(`Invoice Date : ${getISTDateString()}`, mm(130), mm(88));
+            doc.text(`Pickup Date : ${getISTDateString(booking.pickupDateTime)}`, mm(130), mm(96));
 
             if (booking.tripType === 'RoundTrip' && booking.returnDateTime) {
-                doc.text(`Return Date : ${new Date(booking.returnDateTime).toLocaleDateString('en-GB')}`, mm(130), mm(104));
+                doc.text(`Return Date : ${getISTDateString(booking.returnDateTime)}`, mm(130), mm(104));
             } else {
                 doc.text(`Duration : ${booking.numberOfDays || 1} Day(s)`, mm(130), mm(104));
             }
@@ -297,7 +298,7 @@ exports.generateDriverBulkPayoutReceipt = (booking, driverId, res) => {
             doc.font('Helvetica').text(`DP/${booking._id.toString().slice(-6).toUpperCase()}`, mm(150), mm(yAfterLogo + 20));
 
             doc.font('Helvetica-Bold').text("Date :", mm(125), mm(yAfterLogo + 26));
-            doc.font('Helvetica').text(new Date().toLocaleDateString('en-GB'), mm(150), mm(yAfterLogo + 26));
+            doc.font('Helvetica').text(getISTDateString(), mm(150), mm(yAfterLogo + 26));
 
             doc.font('Helvetica-Bold').text("Trip Status :", mm(125), mm(yAfterLogo + 32));
             doc.font('Helvetica').text(assignment?.status || "Unknown", mm(150), mm(yAfterLogo + 32));
@@ -434,11 +435,11 @@ exports.generateSecurityReceipt = (booking, res) => {
 
             doc.font('Helvetica-Bold');
             doc.text(`Receipt No. : SEC/${booking._id.toString().slice(-3).toUpperCase()}`, mm(130), mm(77));
-            doc.text(`Date : ${new Date().toLocaleDateString('en-GB')}`, mm(130), mm(83));
-            doc.text(`Pickup Date : ${new Date(booking.pickupDateTime).toLocaleDateString('en-GB')}`, mm(130), mm(89));
+            doc.text(`Date : ${getISTDateString()}`, mm(130), mm(83));
+            doc.text(`Pickup Date : ${getISTDateString(booking.pickupDateTime)}`, mm(130), mm(89));
 
             if (booking.tripType === 'RoundTrip' && booking.returnDateTime) {
-                doc.text(`Return Date : ${new Date(booking.returnDateTime).toLocaleDateString('en-GB')}`, mm(130), mm(95));
+                doc.text(`Return Date : ${getISTDateString(booking.returnDateTime)}`, mm(130), mm(95));
             } else {
                 doc.text(`Duration : ${booking.numberOfDays || 1} Day(s)`, mm(130), mm(95));
             }
@@ -647,8 +648,8 @@ exports.generateAgentLeadReceipt = async (lead, res) => {
 
             doc.font('Helvetica-Bold');
             doc.text(`Receipt No. : LEAD/${lead._id.toString().slice(-3).toUpperCase()}`, mm(130), mm(86));
-            doc.text(`Date : ${new Date().toLocaleDateString('en-GB')}`, mm(130), mm(92));
-            doc.text(`Pickup Date : ${new Date(lead.pickupDateTime).toLocaleDateString('en-GB')}`, mm(130), mm(98));
+            doc.text(`Date : ${getISTDateString()}`, mm(130), mm(92));
+            doc.text(`Pickup Date : ${getISTDateString(lead.pickupDateTime)}`, mm(130), mm(98));
             doc.text(`Vehicle : ${lead.carCategory?.name || 'Cab'}`, mm(130), mm(104));
             doc.text(`Lead Status : ${lead.status}`, mm(130), mm(110));
             doc.text(`Booking ID : #${lead._id.toString().slice(-8).toUpperCase()}`, mm(130), mm(116));
@@ -787,7 +788,7 @@ exports.generateDriverCommissionReceipt = async (lead, res) => {
 
             doc.font('Helvetica-Bold');
             doc.text(`Invoice No. : COM/${lead._id.toString().slice(-3).toUpperCase()}`, mm(130), mm(86));
-            doc.text(`Date : ${new Date().toLocaleDateString('en-GB')}`, mm(130), mm(92));
+            doc.text(`Date : ${getISTDateString()}`, mm(130), mm(92));
             doc.text(`Vehicle : ${lead.carCategory?.name || 'Cab'}`, mm(130), mm(98));
             
             let paymentStatusStr = "Paid (In Escrow)";
@@ -919,7 +920,7 @@ exports.generateFixedBookingReceipt = (booking, res) => {
 
             doc.font('Helvetica-Bold');
             doc.text("Invoice No. : FX/" + booking._id.toString().slice(-3).toUpperCase(), mm(130), mm(80));
-            doc.text("Date : " + new Date().toLocaleDateString('en-GB'), mm(130), mm(88));
+            doc.text("Date : " + getISTDateString(), mm(130), mm(88));
             doc.text("Trip Type : " + (booking.tripType || 'Fixed Package'), mm(130), mm(96));
             doc.text("Vehicle : " + (booking.carCategory?.name || 'Cab'), mm(130), mm(104));
 
@@ -1058,7 +1059,7 @@ exports.generateNormalBookingReceipt = (booking, res) => {
 
             doc.font('Helvetica-Bold');
             doc.text(`Invoice No. : TX/${booking._id.toString().slice(-3).toUpperCase()}`, mm(130), mm(80));
-            doc.text(`Date : ${new Date().toLocaleDateString('en-GB')}`, mm(130), mm(88));
+            doc.text(`Date : ${getISTDateString()}`, mm(130), mm(88));
             doc.text(`Trip Type : ${booking.rideType || booking.tripType || 'One-Way'}`, mm(130), mm(96));
             doc.text(`Vehicle : ${booking.carCategory?.name || 'Cab'}`, mm(130), mm(104));
 
@@ -1172,7 +1173,7 @@ exports.generateDriverReportPdf = (driverData, res) => {
             doc.font('Helvetica').text(driverData.email || "N/A", mm(55), mm(91));
             
             doc.font('Helvetica-Bold').text("Joined On:", mm(20), mm(98));
-            doc.font('Helvetica').text(driverData.createdAt ? new Date(driverData.createdAt).toLocaleDateString('en-GB') : "N/A", mm(55), mm(98));
+            doc.font('Helvetica').text(driverData.createdAt ? getISTDateString(driverData.createdAt) : "N/A", mm(55), mm(98));
 
             // 2. Wallet Info
             doc.fontSize(14).font('Helvetica-Bold').text("2. Financial Overview (Wallet)", mm(15), mm(115));
@@ -1212,7 +1213,7 @@ exports.generateDriverReportPdf = (driverData, res) => {
                         doc.addPage();
                         currentY = 20;
                     }
-                    const date = ride.pickupDateTime ? new Date(ride.pickupDateTime).toLocaleDateString('en-GB') : "N/A";
+                    const date = ride.pickupDateTime ? getISTDateString(ride.pickupDateTime) : "N/A";
                     const type = ride.tripType || "OneWay";
                     // Extract city from full address to keep it short
                     const pickup = (ride.pickup?.address || "N/A").split(',')[0].substring(0, 25);
@@ -1266,7 +1267,7 @@ exports.generateDriverReportPdf = (driverData, res) => {
                         doc.addPage();
                         txnY = 20;
                     }
-                    const date = txn.createdAt ? new Date(txn.createdAt).toLocaleDateString('en-GB') : "N/A";
+                    const date = txn.createdAt ? getISTDateString(txn.createdAt) : "N/A";
                     const category = (txn.category || "General").substring(0, 20);
                     const desc = (txn.description || "N/A").substring(0, 35);
                     const type = txn.type;
@@ -1352,7 +1353,7 @@ exports.generateUserReportPdf = (userData, res) => {
             doc.font('Helvetica').text(userData.email || "N/A", mm(55), mm(91));
             
             doc.font('Helvetica-Bold').text("Joined On:", mm(20), mm(98));
-            doc.font('Helvetica').text(userData.stats?.joinedDate ? new Date(userData.stats.joinedDate).toLocaleDateString('en-GB') : "N/A", mm(55), mm(98));
+            doc.font('Helvetica').text(userData.stats?.joinedDate ? getISTDateString(userData.stats.joinedDate) : "N/A", mm(55), mm(98));
 
             // 2. Activity Overview
             doc.fontSize(14).font('Helvetica-Bold').text("2. Activity Overview", mm(15), mm(115));
@@ -1391,7 +1392,7 @@ exports.generateUserReportPdf = (userData, res) => {
                         doc.addPage();
                         currentY = 20;
                     }
-                    const date = ride.date ? new Date(ride.date).toLocaleDateString('en-GB') : "N/A";
+                    const date = ride.date ? getISTDateString(ride.date) : "N/A";
                     const type = ride.type || "City Ride";
                     // Extract city from full address to keep it short
                     const pickup = (ride.pickup || "N/A").split(',')[0].substring(0, 25);

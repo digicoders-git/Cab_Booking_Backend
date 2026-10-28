@@ -12,6 +12,7 @@ const Agent = require("../models/Agent");
 const Offer = require("../models/Offer");
 const stateTaxController = require("./stateTaxController");
 const Transaction = require("../models/Transaction");
+const { getISTTimeString, getISTHourMinute, parseISTDateTime, formatTo12Hr } = require("../utils/timeHelper");
 // Helper: Calculate Area-specific pricing overrides (GEO-SPATIAL VERSION)
 const getAreaSpecificRates = async (pickupLat, pickupLng, defaultBase, defaultPrivateRate, defaultSharedRate) => {
     try {
@@ -44,7 +45,8 @@ const getAreaSpecificRates = async (pickupLat, pickupLng, defaultBase, defaultPr
 
         for (const area of activeAreas) {
             // --- NEW: Recurring Schedule Check ---
-            const currentDayStr = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][now.getDay()];
+            const istTimeInfo = getISTHourMinute(now);
+            const currentDayStr = istTimeInfo.dayName;
             
             if (area.daysOfWeek && area.daysOfWeek.length > 0) {
                 if (!area.daysOfWeek.includes(currentDayStr)) {
@@ -53,7 +55,7 @@ const getAreaSpecificRates = async (pickupLat, pickupLng, defaultBase, defaultPr
             }
 
             if (area.startTime && area.endTime) {
-                const currentHourMin = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+                const currentHourMin = istTimeInfo.timeStr;
                 if (currentHourMin < area.startTime || currentHourMin > area.endTime) {
                     continue; // Skip because current time is outside the peak hours
                 }
@@ -312,7 +314,7 @@ exports.getAllFareEstimates = async (req, res) => {
 
             const now = new Date();
             const dropTime = new Date(now.getTime() + (arrivalMins + travelTimeMins) * 60000);
-            const dropTimeStr = dropTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const dropTimeStr = getISTTimeString(dropTime);
 
             let cabOption = {
                 _id: category._id, // Add this for frontend compatibility
@@ -552,8 +554,8 @@ exports.createBooking = async (req, res) => {
             drop: { address: dropAddress, latitude: dropLat, longitude: dropLng },
             estimatedDistanceKm: distanceKm,
             estimatedTimeMin: calculatedTimeMin, // NEW: Traffic logic
-            pickupDate: pickupDate || new Date(),
-            pickupTime: pickupTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            pickupDate: pickupDate ? parseISTDateTime(pickupDate) : new Date(),
+            pickupTime: formatTo12Hr(pickupTime),
             selectedSeats: selectedSeats || [], // Track chosen spots
             stops: stops || [], // NEW: Multi-stop support
             originalFare: originalGrossFare,

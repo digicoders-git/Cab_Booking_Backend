@@ -23,6 +23,7 @@ const { generateBulkBookingReceipt, generateDriverBulkPayoutReceipt } = require(
 const Driver = require("../models/Driver");
 const Vendor = require("../models/Vendor");
 const { getAreaSpecificRates } = require("./bookingController");
+const { parseISTDateTime } = require("../utils/timeHelper");
 // const { PaymentHandler, validateHMAC_SHA256 } = require("../utils/PaymentHandler");
 // const paymentHandler = PaymentHandler.getInstance();
 const { RazorpayHandler } = require("../utils/RazorpayHandler");
@@ -192,9 +193,10 @@ exports.createBulkBooking = async (req, res) => {
         const newBooking = await BulkBooking.create({
             createdBy: req.user.id,
             createdByModel: creatorModel,
-            pickup, drop, pickupDateTime,
+            pickup, drop, 
+            pickupDateTime: parseISTDateTime(pickupDateTime),
             tripType: tripType || 'OneWay',
-            returnDateTime: tripType === 'RoundTrip' ? returnDateTime : null,
+            returnDateTime: tripType === 'RoundTrip' && returnDateTime ? parseISTDateTime(returnDateTime) : null,
             numberOfDays: numberOfDays || 1,
             totalDistance: totalDistance || 0,
             carsRequired, systemEstimatedPrice, offeredPrice: finalOfferedPrice, priceModifiedPercentage, notes,
@@ -2412,6 +2414,7 @@ exports.checkAreaSurcharge = async (req, res) => {
         const { latitude, longitude } = req.body;
         if (!latitude || !longitude) return res.json({ multiplier: 1 });
         const { getAreaSpecificRates } = require("./bookingController");
+const { parseISTDateTime } = require("../utils/timeHelper");
         const areaRates = await getAreaSpecificRates(latitude, longitude, 1, 1, 1);
         res.json({ multiplier: Number((areaRates.bulkRateMultiplier || 1).toFixed(2)) });
     } catch (error) {

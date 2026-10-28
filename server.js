@@ -1,3 +1,4 @@
+process.env.TZ = "Asia/Kolkata";
 const express = require("express");
 const cors = require("cors");
 const http = require("http");
@@ -32,6 +33,7 @@ const incentiveRoutes = require("./routes/incentiveRoutes"); // NEW: Driver Ince
 
 const { autoExpireBookings } = require("./controllers/bulkBookingController");
 const { autoExpireAreaPricing } = require("./controllers/areaPricingController");
+const { autoExpireAgentLeads } = require("./controllers/agentLeadController");
 
 const app = express();
 app.set('trust proxy', true);
@@ -97,9 +99,11 @@ server.listen(PORT, () => {
     // Automation: Check and Expire time-bound area pricing every 5 minutes
     setInterval(() => {
         autoExpireAreaPricing();
+    autoExpireAgentLeads();
     }, 5 * 60 * 1000);
 
     // Run once immediately on start
     autoExpireBookings();
     autoExpireAreaPricing();
+    autoExpireAgentLeads();
 });

@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { getISTTimeString } = require("../utils/timeHelper");
 
 const bookingSchema = new mongoose.Schema({
   // Who created the booking?
@@ -87,7 +88,7 @@ const bookingSchema = new mongoose.Schema({
   },
   pickupTime: { 
     type: String, 
-    default: () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    default: () => getISTTimeString()
   },
 
 

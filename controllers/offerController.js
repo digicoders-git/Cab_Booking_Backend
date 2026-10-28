@@ -1,4 +1,5 @@
 const Offer = require("../models/Offer");
+const { parseISTDateTime } = require("../utils/timeHelper");
 
 // 1. Create Offer (Admin Only)
 exports.createOffer = async (req, res) => {
@@ -17,7 +18,7 @@ exports.createOffer = async (req, res) => {
             discountType: discountType || "FLAT",
             maxDiscountAmount: maxDiscountAmount || null,
             bookingType,
-            validTill,
+            validTill: parseISTDateTime(validTill, true),
             isActive,
             orderIndex: orderIndex !== undefined && orderIndex !== '' ? Number(orderIndex) : 0
         });
@@ -56,6 +57,10 @@ exports.updateOffer = async (req, res) => {
 
         if (updates.orderIndex !== undefined && updates.orderIndex !== '') {
             updates.orderIndex = Number(updates.orderIndex);
+        }
+
+        if (updates.validTill) {
+            updates.validTill = parseISTDateTime(updates.validTill, true);
         }
 
         const updatedOffer = await Offer.findByIdAndUpdate(id, updates, { new: true });

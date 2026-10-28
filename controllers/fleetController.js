@@ -6,6 +6,7 @@ const Transaction = require("../models/Transaction");
 const jwt = require("jsonwebtoken");
 const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness");
 const { sendPushNotification } = require("../utils/fcmNotification");
+const { getStartOfTodayIST, getEndOfTodayIST } = require("../utils/timeHelper");
 
 // Create Fleet (Admin Only)
 exports.createFleet = async (req, res) => {
@@ -767,10 +768,8 @@ exports.exportTaxReport = async (req, res) => {
         const now = new Date();
         
         if (timeframe === 'daily') {
-            const startOfDay = new Date(now);
-            startOfDay.setHours(0, 0, 0, 0);
-            const endOfDay = new Date(now);
-            endOfDay.setHours(23, 59, 59, 999);
+            const startOfDay = getStartOfTodayIST();
+            const endOfDay = getEndOfTodayIST();
             dateFilter = { $gte: startOfDay, $lte: endOfDay };
         } else if (timeframe === 'weekly') {
             const lastWeek = new Date(now);

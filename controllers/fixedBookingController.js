@@ -10,6 +10,7 @@ const { RazorpayHandler } = require("../utils/RazorpayHandler");
 const razorpayHandler = RazorpayHandler.getInstance();
 const { getIO } = require("../socket/socket");
 const { sendPushNotification } = require("../utils/fcmNotification");
+const { parseISTDateTime, getISTTimeString, formatTo12Hr } = require("../utils/timeHelper");
 
 // Helper to notify Client (either User or Agent) safely
 const notifyClient = async (booking, event, socketData, pushPayload) => {
@@ -195,8 +196,8 @@ exports.bookFixedRoute = async (req, res) => {
             carCategory: route.carCategory,
             price: route.price,
             adminCommission: route.adminCommission,
-            pickupDate,
-            pickupTime,
+            pickupDate: pickupDate ? parseISTDateTime(pickupDate) : new Date(),
+            pickupTime: formatTo12Hr(pickupTime),
             paymentMethod: paymentMethod || 'Cash',
             tripType: route.tripType || 'One-Way',
             maxTimeHours: route.maxTimeHours || 0,

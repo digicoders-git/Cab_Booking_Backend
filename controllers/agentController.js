@@ -4,6 +4,7 @@ const PDFDocument = require("pdfkit");
 const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness");
 const { Parser } = require("json2csv");
 const { sendPushNotification } = require("../utils/fcmNotification");
+const { getISTHourMinute, getStartOfDayDaysAgoIST } = require("../utils/timeHelper");
 
 // Create Agent (Admin Only)
 exports.registerAgent = async (req, res) => {
@@ -282,13 +283,9 @@ exports.getAgentDashboard = async (req, res) => {
                 createdAt: b.createdAt
             }));
 
-        // Date math for Trends
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        sevenDaysAgo.setHours(0, 0, 0, 0);
-
-        const fourteenDaysAgo = new Date(sevenDaysAgo);
-        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 7);
+        // Date math for Trends in IST
+        const sevenDaysAgo = getStartOfDayDaysAgoIST(7);
+        const fourteenDaysAgo = getStartOfDayDaysAgoIST(14);
 
         const recentTransactions = await Transaction.find({
             user: req.user.id,
@@ -330,7 +327,7 @@ exports.getAgentDashboard = async (req, res) => {
         for(let i=0; i<24; i++) peakHoursMap[i] = 0;
 
         bookings.forEach(b => {
-            const hour = new Date(b.createdAt).getHours();
+            const hour = getISTHourMinute(b.createdAt).hour;
             peakHoursMap[hour]++;
         });
 
@@ -516,7 +513,7 @@ exports.getAgentReport = async (req, res) => {
         for(let i=0; i<24; i++) peakHoursMap[i] = 0;
 
         bookings.forEach(b => {
-            const hour = new Date(b.createdAt).getHours();
+            const hour = getISTHourMinute(b.createdAt).hour;
             peakHoursMap[hour]++;
         });
 

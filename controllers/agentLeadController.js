@@ -9,6 +9,7 @@ const { sendPushNotification } = require("../utils/fcmNotification");
 // const paymentHandler = PaymentHandler.getInstance();
 const { RazorpayHandler } = require("../utils/RazorpayHandler");
 const razorpayHandler = RazorpayHandler.getInstance();
+const { parseISTDateTime } = require("../utils/timeHelper");
 
 // 1. Agent Creates a Lead
 exports.createLead = async (req, res) => {
@@ -40,7 +41,7 @@ exports.createLead = async (req, res) => {
             carCategory: carCategoryId,
             pickup: { address: pickupAddress, latitude: pickupLat, longitude: pickupLng },
             drop: { address: dropAddress, latitude: dropLat, longitude: dropLng },
-            pickupDateTime,
+            pickupDateTime: parseISTDateTime(pickupDateTime),
             totalPrice,
             agentCommission,
             driverEarning,
@@ -117,7 +118,8 @@ exports.getMarketplaceLeads = async (req, res) => {
 
         const leads = await AgentLead.find({
             status: 'Marketplace',
-            carCategory: driverCarTypeId
+            carCategory: driverCarTypeId,
+            pickupDateTime: { $gte: new Date() }
         })
             .select("-customerName -customerPhone") // Hide customer details
             .populate('createdByAgent', 'name companyName') // Show who created it
@@ -545,6 +547,22 @@ exports.completeLead = async (req, res) => {
     }
 };
 
+// Auto-expire past Agent Leads
+exports.autoExpireAgentLeads = async () => {
+    try {
+        const now = new Date();
+        const result = await AgentLead.updateMany(
+            { status: 'Marketplace', pickupDateTime: { $lt: now } },
+            { $set: { status: 'Expired' } }
+        );
+        if (result.modifiedCount > 0) {
+            console.log(`[Auto-Expire] ${result.modifiedCount} Agent Lead(s) marked as Expired.`);
+        }
+    } catch (err) {
+        console.error("Auto-expire Agent Leads error:", err.message);
+    }
+};
+
 // 5. Cancel Lead (Refund Escrow)
 exports.cancelLead = async (req, res) => {
     try {
@@ -819,5 +837,21 @@ exports.adminCompleteLead = async (req, res) => {
 
     } catch (error) {
         res.status(500).json({ success: false, message: "Server Error", error: error.message });
+    }
+};
+
+// Auto-expire past Agent Leads
+exports.autoExpireAgentLeads = async () => {
+    try {
+        const now = new Date();
+        const result = await AgentLead.updateMany(
+            { status: 'Marketplace', pickupDateTime: { $lt: now } },
+            { $set: { status: 'Expired' } }
+        );
+        if (result.modifiedCount > 0) {
+            console.log(`[Auto-Expire] ${result.modifiedCount} Agent Lead(s) marked as Expired.`);
+        }
+    } catch (err) {
+        console.error("Auto-expire Agent Leads error:", err.message);
     }
 };

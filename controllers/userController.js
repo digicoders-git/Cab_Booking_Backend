@@ -9,6 +9,7 @@ const { isEmailTaken, isPhoneTaken } = require("../utils/globalUniqueness");
 const { sendPushNotification } = require("../utils/fcmNotification");
 const Otp = require("../models/Otp");
 const { sendOtpSms } = require("../utils/sendSms");
+const { getISTTimeString } = require("../utils/timeHelper");
 
 // 1. Send OTP Placeholder API (For Frontend Flow)
 exports.sendOtp = async (req, res) => {
@@ -490,7 +491,7 @@ exports.getUserRides = async (req, res) => {
             paymentStatus: b.paymentStatus || "Pending",
             createdAt: b.createdAt,
             date: b.pickupDate || b.createdAt,
-            pickupTime: b.pickupTime || "",
+            pickupTime: b.pickupTime || getISTTimeString(b.pickupDate || b.createdAt),
             driver: b.assignedDriver ? {
                 name: b.assignedDriver.name,
                 phone: b.assignedDriver.phone,
@@ -616,7 +617,7 @@ exports.exportUserReportPdf = async (req, res) => {
             paymentStatus: b.paymentStatus || "Pending",
             createdAt: b.createdAt,
             date: b.pickupDate || b.createdAt,
-            pickupTime: b.pickupTime || "",
+            pickupTime: b.pickupTime || getISTTimeString(b.pickupDate || b.createdAt),
             driver: b.assignedDriver ? {
                 name: b.assignedDriver.name,
                 phone: b.assignedDriver.phone,

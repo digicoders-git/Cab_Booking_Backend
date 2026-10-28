@@ -1,9 +1,23 @@
 const AreaPricing = require("../models/AreaPricing");
+const { parseISTDateTime } = require("../utils/timeHelper");
+
+// Helper to normalize IST validity dates
+const normalizeAreaDates = (data) => {
+    const payload = { ...data };
+    if (payload.validFrom) {
+        payload.validFrom = parseISTDateTime(payload.validFrom, false);
+    }
+    if (payload.validUntil) {
+        payload.validUntil = parseISTDateTime(payload.validUntil, true);
+    }
+    return payload;
+};
 
 // 1. Create Area Pricing
 exports.createAreaPricing = async (req, res) => {
     try {
-        const area = await AreaPricing.create(req.body);
+        const payload = normalizeAreaDates(req.body);
+        const area = await AreaPricing.create(payload);
         res.status(201).json({ success: true, area });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -23,7 +37,8 @@ exports.getAllAreaPricings = async (req, res) => {
 // 3. Update Area Pricing
 exports.updateAreaPricing = async (req, res) => {
     try {
-        const area = await AreaPricing.findByIdAndUpdate(req.params.id, req.body, { returnDocument: 'after' });
+        const payload = normalizeAreaDates(req.body);
+        const area = await AreaPricing.findByIdAndUpdate(req.params.id, payload, { returnDocument: 'after' });
         if (!area) return res.status(404).json({ success: false, message: "Area not found" });
         res.json({ success: true, area });
     } catch (error) {
