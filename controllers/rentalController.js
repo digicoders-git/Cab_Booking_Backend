@@ -944,7 +944,7 @@ exports.endRentalTrip = async (req, res) => {
                 // 🏆 INCENTIVE PROCESSING for Rental Booking
                 try {
                     const incentiveController = require("./incentiveController");
-                    await incentiveController.processIncentiveForDriver(driver._id, 'Rental');
+                    await incentiveController.processIncentiveForDriver(driver._id, 'Rental', booking._id);
                 } catch (incErr) {
                     console.error("Error evaluating incentive for Rental:", incErr);
                 }
@@ -1108,7 +1108,7 @@ exports.verifyRentalPayment = async (req, res) => {
             // 🏆 INCENTIVE PROCESSING for Rental Booking (Online)
             try {
                 const incentiveController = require("./incentiveController");
-                await incentiveController.processIncentiveForDriver(driver._id, 'Rental');
+                await incentiveController.processIncentiveForDriver(driver._id, 'Rental', booking._id);
             } catch (incErr) {
                 console.error("Error evaluating incentive for Rental (Online):", incErr);
             }

@@ -917,14 +917,12 @@ exports.endTrip = async (req, res) => {
         // 🏆 INCENTIVE PROCESSING
         try {
             const incentiveController = require('./incentiveController');
-            // Depending on your schema, booking.rideType is "Private" or "Shared" or "Rental"
-            // For general 'Normal' vs 'Fixed' let's pass a broader type. If booking has a flag 'isFixedRoute', we use that.
-            let bType = booking.rideType; 
+            // 🏆 INCENTIVE PROCESSING (Cash / Direct End)
+            let bType = 'Normal'; 
             if (booking.fixedRouteId) bType = 'Fixed';
             if (booking.rentalPackage) bType = 'Rental';
-            if (!bType) bType = 'Normal'; // Fallback
             
-            await incentiveController.processIncentiveForDriver(driver._id, bType);
+            await incentiveController.processIncentiveForDriver(driver._id, bType, booking._id);
         } catch (incErr) {
             console.error("Error evaluating incentive:", incErr);
         }
@@ -1517,6 +1515,18 @@ exports.verifyTripPayment = async (req, res) => {
         }
 
         await exports.processTripSettlement(booking, driver);
+
+        // 🏆 INCENTIVE PROCESSING (Online Payment End)
+        try {
+            const incentiveController = require('./incentiveController');
+            let bType = 'Normal';
+            if (booking.fixedRouteId) bType = 'Fixed';
+            if (booking.rentalPackage) bType = 'Rental';
+            await incentiveController.processIncentiveForDriver(driver._id, bType, booking._id);
+        } catch (incErr) {
+            console.error('Error evaluating incentive for online trip:', incErr);
+        }
+
         await driver.save();
 
         // Notify Rider & Admin

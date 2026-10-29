@@ -312,7 +312,8 @@ exports.loginDriver = async (req, res) => {
 exports.getDriverProfile = async (req, res) => {
     try {
         const driver = await Driver.findById(req.user.id)
-            .select("-password");
+            .select("-password")
+            .populate("carDetails.carType", "name seats image");
 
         if (!driver) {
             return res.status(404).json({
@@ -419,8 +420,9 @@ exports.updateDriverProfile = async (req, res) => {
             updateData["carDetails.carNumber"]         = carNumber;
             updateData["carDetails.carModel"]          = carModel;
             updateData["carDetails.carBrand"]          = carBrand;
-            updateData["carDetails.carType"]           = carType;
-            updateData["carDetails.seatCapacity"]      = seatCapacity || 4;
+            // Car Category is assigned/managed by Admin/Vendor and remains protected during driver self-updates
+            updateData["carDetails.carType"]           = driverRecord.carDetails?.carType || carType;
+            updateData["carDetails.seatCapacity"]      = seatCapacity || driverRecord.carDetails?.seatCapacity || 4;
             updateData["carDetails.carColor"]          = carColor;
             updateData["carDetails.manufacturingYear"] = manufacturingYear;
             updateData["carDetails.insuranceExpiry"]   = insuranceExpiry;

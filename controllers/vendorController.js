@@ -1,6 +1,9 @@
 const Vendor = require("../models/Vendor");
 const Driver = require("../models/Driver");
 const Fleet = require("../models/Fleet");
+const FleetCar = require("../models/FleetCar");
+const FleetDriver = require("../models/FleetDriver");
+require("../models/CarCategory");
 const Transaction = require("../models/Transaction");
 const Booking = require("../models/Booking");
 const jwt = require("jsonwebtoken");
@@ -653,9 +656,232 @@ exports.getAllVendors = async (req, res) => {
     try {
         const vendors = await Vendor.find()
             .populate("createdBy", "name email")
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean();
 
-        res.json({ success: true, count: vendors.length, vendors });
+        if (vendors.length === 0) {
+            return res.json({ success: true, count: 0, vendors: [] });
+        }
+
+        const vendorIds = vendors.map(v => v._id);
+
+        // Fetch all fleets created by these vendors
+        const allFleets = await Fleet.find({ createdBy: { $in: vendorIds } }).select('_id createdBy').lean();
+        const fleetMap = {};
+        const allFleetIds = [];
+        allFleets.forEach(f => {
+            const vId = f.createdBy.toString();
+            if (!fleetMap[vId]) fleetMap[vId] = [];
+            fleetMap[vId].push(f._id);
+            allFleetIds.push(f._id);
+        });
+
+        // Fetch all drivers created by these vendors or their fleets
+        const allDrivers = await Driver.find({
+            $or: [
+                { createdBy: { $in: vendorIds } },
+                { createdBy: { $in: allFleetIds } }
+            ]
+        }).select('createdBy createdByModel isApproved carDetails').lean();
+
+        // Fetch all fleet cars
+        const allFleetCars = await FleetCar.find({ fleetId: { $in: allFleetIds } })
+            .select('fleetId isApproved').lean();
+
+        // Map live counts to each vendor
+        const vendorsWithCounts = vendors.map(vendor => {
+            const vIdStr = vendor._id.toString();
+            const vendorFleetIds = (fleetMap[vIdStr] || []).map(id => id.toString());
+
+            const vendorDrivers = allDrivers.filter(d => {
+                const cById = d.createdBy?.toString();
+                return cById === vIdStr || (cById && vendorFleetIds.includes(cById));
+            });
+
+            const vendorFleetCars = allFleetCars.filter(fc => {
+                const fId = fc.fleetId?.toString();
+                return fId && vendorFleetIds.includes(fId);
+            });
+
+            const totalDrivers = vendorDrivers.length;
+            const approvedDrivers = vendorDrivers.filter(d => d.isApproved).length;
+
+            const driverCars = vendorDrivers.filter(d => d.carDetails && d.carDetails.carNumber);
+            const approvedDriverCars = driverCars.filter(d => d.isApproved);
+
+            const totalCars = driverCars.length + vendorFleetCars.length;
+            const approvedCars = approvedDriverCars.length + vendorFleetCars.filter(c => c.isApproved).length;
+
+            return {
+                ...vendor,
+                totalDriversCount: totalDrivers,
+                approvedDriversCount: approvedDrivers,
+                totalCarsCount: totalCars,
+                approvedCarsCount: approvedCars
+            };
+        });
+
+        res.json({ success: true, count: vendorsWithCounts.length, vendors: vendorsWithCounts });
+
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// ============================================================
+// 9B. Get Vendor Vehicles & Drivers (Admin Only)
+// ============================================================
+exports.getVendorVehiclesAndDrivers = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const vendor = await Vendor.findById(id).select("-password").lean();
+
+        if (!vendor) {
+            return res.status(404).json({ success: false, message: "Vendor nahi mila" });
+        }
+
+        const fleets = await Fleet.find({ createdBy: id }).select("_id name companyName").lean();
+        const fleetIds = fleets.map(f => f._id);
+
+        // Fetch Drivers
+        const drivers = await Driver.find({
+            $or: [
+                { createdBy: id },
+                { createdBy: { $in: fleetIds } }
+            ]
+        }).populate("carDetails.carType", "name").select("-password").lean();
+
+        const fleetDriversTable = await FleetDriver.find({ fleetId: { $in: fleetIds } })
+            .select("-password").lean();
+
+        // Fetch Fleet Cars
+        const fleetCars = await FleetCar.find({ fleetId: { $in: fleetIds } })
+            .populate("carType", "name")
+            .populate("fleetId", "name companyName")
+            .lean();
+
+        const formattedDrivers = drivers.map(d => ({
+            _id: d._id,
+            name: d.name,
+            email: d.email,
+            phone: d.phone,
+            image: d.image,
+            licenseNumber: d.licenseNumber,
+            licenseExpiry: d.licenseExpiry,
+            isApproved: Boolean(d.isApproved),
+            isActive: Boolean(d.isActive),
+            rating: d.rating || 0,
+            totalTrips: d.totalTrips || 0,
+            walletBalance: d.walletBalance || 0,
+            source: d.createdByModel === 'Fleet' ? 'Fleet Driver' : 'Direct Vendor Driver',
+            car: d.carDetails && d.carDetails.carNumber ? {
+                carNumber: d.carDetails.carNumber,
+                carBrand: d.carDetails.carBrand,
+                carModel: d.carDetails.carModel,
+                carColor: d.carDetails.carColor,
+                category: d.carDetails.carType?.name || d.carDetails.vehicleType || "Car",
+                manufacturingYear: d.carDetails.manufacturingYear,
+                isApproved: Boolean(d.isApproved),
+                documents: d.carDetails.carDocuments || {}
+            } : null
+        }));
+
+        fleetDriversTable.forEach(fd => {
+            if (!formattedDrivers.some(d => d.phone === fd.phone)) {
+                formattedDrivers.push({
+                    _id: fd._id,
+                    name: fd.name,
+                    email: fd.email,
+                    phone: fd.phone,
+                    image: fd.image,
+                    licenseNumber: fd.licenseNumber,
+                    licenseExpiry: fd.licenseExpiry,
+                    isApproved: Boolean(fd.isApproved),
+                    isActive: Boolean(fd.isActive),
+                    rating: 0,
+                    totalTrips: 0,
+                    walletBalance: 0,
+                    source: 'Fleet Driver',
+                    car: null
+                });
+            }
+        });
+
+        const formattedCars = [];
+
+        // Add drivers' cars
+        formattedDrivers.forEach(d => {
+            if (d.car) {
+                formattedCars.push({
+                    _id: `${d._id}_car`,
+                    carNumber: d.car.carNumber,
+                    carBrand: d.car.carBrand,
+                    carModel: d.car.carModel,
+                    carColor: d.car.carColor,
+                    category: d.car.category,
+                    manufacturingYear: d.car.manufacturingYear,
+                    isApproved: d.car.isApproved,
+                    isActive: d.isActive,
+                    driverId: d._id,
+                    driverName: d.name,
+                    driverPhone: d.phone,
+                    source: "Driver Vehicle",
+                    documents: d.car.documents || {}
+                });
+            }
+        });
+
+        // Add fleet cars
+        fleetCars.forEach(fc => {
+            formattedCars.push({
+                _id: fc._id,
+                carNumber: fc.carNumber,
+                carBrand: fc.carBrand,
+                carModel: fc.carModel,
+                carColor: fc.carColor,
+                category: fc.carType?.name || "Car",
+                seatCapacity: fc.seatCapacity,
+                manufacturingYear: fc.manufacturingYear,
+                isApproved: Boolean(fc.isApproved),
+                isActive: Boolean(fc.isActive),
+                driverId: null,
+                driverName: "Fleet Vehicle",
+                driverPhone: "",
+                source: fc.fleetId?.name ? `Fleet: ${fc.fleetId.name}` : "Fleet Car",
+                documents: {
+                    rc: fc.carDocuments?.rcImage,
+                    insurance: fc.carDocuments?.insuranceImage,
+                    permit: fc.carDocuments?.permitImage,
+                    puc: fc.carDocuments?.pucImage
+                }
+            });
+        });
+
+        const approvedDrivers = formattedDrivers.filter(d => d.isApproved);
+        const approvedCars = formattedCars.filter(c => c.isApproved);
+
+        res.json({
+            success: true,
+            vendor: {
+                _id: vendor._id,
+                name: vendor.name,
+                companyName: vendor.companyName,
+                assignedArea: vendor.assignedArea,
+                phone: vendor.phone,
+                email: vendor.email,
+                image: vendor.image
+            },
+            counts: {
+                totalDrivers: formattedDrivers.length,
+                approvedDrivers: approvedDrivers.length,
+                pendingDrivers: formattedDrivers.length - approvedDrivers.length,
+                totalCars: formattedCars.length,
+                approvedCars: approvedCars.length,
+                pendingCars: formattedCars.length - approvedCars.length
+            },
+            drivers: formattedDrivers,
+            cars: formattedCars
+        });
 
     } catch (error) {
         res.status(500).json({ success: false, message: "Server error", error: error.message });

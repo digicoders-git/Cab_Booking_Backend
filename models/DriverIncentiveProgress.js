@@ -6,7 +6,8 @@ const driverIncentiveProgressSchema = new mongoose.Schema({
     progressCount: { type: Number, default: 0 },
     isCompleted: { type: Boolean, default: false },
     completedAt: { type: Date },
-    amountRewarded: { type: Number, default: 0 }
+    amountRewarded: { type: Number, default: 0 },
+    completedBookingIds: { type: [String], default: [] }
 }, { timestamps: true });
 
 // Prevent duplicate entries for the same driver and incentive

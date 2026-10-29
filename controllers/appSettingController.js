@@ -8,7 +8,8 @@ exports.getSettings = async (req, res) => {
         // If settings don't exist yet, create default settings
         if (!settings) {
             settings = await AppSetting.create({
-                isShareRideEnabled: true
+                isShareRideEnabled: true,
+                isBulkOneWayEnabled: true
             });
         }
         
@@ -26,6 +27,7 @@ exports.toggleShareRide = async (req, res) => {
     try {
         const { 
             isShareRideEnabled,
+            isBulkOneWayEnabled,
             enableDriverIncentive,
             driverJoiningBonus,
             driverReferralBonus,
@@ -45,6 +47,7 @@ exports.toggleShareRide = async (req, res) => {
         }
         
         if (typeof isShareRideEnabled === 'boolean') settings.isShareRideEnabled = isShareRideEnabled;
+        if (typeof isBulkOneWayEnabled === 'boolean') settings.isBulkOneWayEnabled = isBulkOneWayEnabled;
         if (typeof enableDriverIncentive === 'boolean') settings.enableDriverIncentive = enableDriverIncentive;
         if (driverJoiningBonus !== undefined) settings.driverJoiningBonus = Number(driverJoiningBonus);
         if (driverReferralBonus !== undefined) settings.driverReferralBonus = Number(driverReferralBonus);

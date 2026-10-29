@@ -44,6 +44,19 @@ exports.createBulkBooking = async (req, res) => {
             return res.status(400).json({ success: false, message: "Missing required fields" });
         }
 
+        // --- Enforcement of Admin One-Way Bulk Booking Setting ---
+        const chosenTripType = tripType || 'OneWay';
+        if (chosenTripType === 'OneWay') {
+            const AppSetting = require("../models/AppSetting");
+            const appSetting = await AppSetting.findOne();
+            if (appSetting && appSetting.isBulkOneWayEnabled === false) {
+                return res.status(400).json({
+                    success: false,
+                    message: "One-Way bulk booking is currently disabled by Admin. Please select Round Trip."
+                });
+            }
+        }
+
         // --- NEW: Service Availability Enforcement (GPS VERSION) ---
         const isServiceable = await serviceAreaController.checkServiceAvailability(pickup.latitude, pickup.longitude);
 
@@ -1562,6 +1575,12 @@ exports.endBulkBooking = async (req, res) => {
                     }
                     if (!d.payoutSettled) {
                         await settleDriverBulkPayout(booking, d);
+                        if (d.driver) {
+                            try {
+                                const incentiveController = require('./incentiveController');
+                                await incentiveController.processIncentiveForDriver(d.driver, 'Bulk', booking._id);
+                            } catch (incErr) { }
+                        }
                     }
                 }
             } catch (err) { console.error("Driver End Settlement Error:", err.message); }
@@ -1766,7 +1785,7 @@ exports.endIndividualDriverBulkTrip = async (req, res) => {
         // 🏆 INCENTIVE PROCESSING for Bulk Booking
         try {
             const incentiveController = require('./incentiveController');
-            await incentiveController.processIncentiveForDriver(driverId, 'Bulk');
+            await incentiveController.processIncentiveForDriver(driverId, 'Bulk', booking._id);
         } catch (incErr) {
             console.error("Error evaluating incentive for Bulk:", incErr);
         }
@@ -2099,6 +2118,12 @@ exports.verifyBulkPayment = async (req, res) => {
                 for (const d of booking.assignedDrivers) {
                     if (!d.payoutSettled) {
                         await settleDriverBulkPayout(booking, d);
+                        if (d.driver) {
+                            try {
+                                const incentiveController = require('./incentiveController');
+                                await incentiveController.processIncentiveForDriver(d.driver, 'Bulk', booking._id);
+                            } catch (incErr) { }
+                        }
                     }
                 }
             } catch (err) { console.error("Driver Verification Settlement Error:", err.message); }

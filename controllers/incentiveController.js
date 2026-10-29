@@ -87,9 +87,23 @@ exports.getDriverIncentives = async (req, res) => {
     }
 };
 
+// Helper to normalize booking type across different flows
+const normalizeBookingType = (type) => {
+    if (!type) return 'Normal';
+    const s = String(type).trim().toLowerCase();
+    if (s.includes('rent')) return 'Rental';
+    if (s.includes('bulk')) return 'Bulk';
+    if (s.includes('fix')) return 'Fixed';
+    if (s.includes('norm') || s === 'private' || s === 'shared' || s === 'daily' || s === 'ride') return 'Normal';
+    return type;
+};
+
 // Logic to process incentive (Called internally when a trip completes)
-exports.processIncentiveForDriver = async (driverId, bookingType) => {
+exports.processIncentiveForDriver = async (driverId, bookingType, bookingId = null) => {
     try {
+        if (!driverId) return;
+
+        const normType = normalizeBookingType(bookingType);
         const now = new Date();
         const activeIncentives = await Incentive.find({
             isActive: true,
@@ -97,16 +111,34 @@ exports.processIncentiveForDriver = async (driverId, bookingType) => {
             endDate: { $gte: now }
         });
 
+        if (!activeIncentives || activeIncentives.length === 0) return;
+
         for (let incentive of activeIncentives) {
             // Check if bookingType matches targetType
-            if (incentive.targetType !== 'All' && incentive.targetType !== bookingType) {
+            if (incentive.targetType !== 'All' && incentive.targetType !== normType) {
                 continue; // Type mismatch
             }
 
             // Find or create progress
             let progress = await DriverIncentiveProgress.findOne({ driver: driverId, incentive: incentive._id });
             if (!progress) {
-                progress = new DriverIncentiveProgress({ driver: driverId, incentive: incentive._id });
+                progress = new DriverIncentiveProgress({ 
+                    driver: driverId, 
+                    incentive: incentive._id,
+                    completedBookingIds: []
+                });
+            }
+
+            // Prevent duplicate counting of the exact same booking
+            if (bookingId) {
+                const bIdStr = bookingId.toString();
+                if (!progress.completedBookingIds) {
+                    progress.completedBookingIds = [];
+                }
+                if (progress.completedBookingIds.includes(bIdStr)) {
+                    continue; // Already counted towards this target
+                }
+                progress.completedBookingIds.push(bIdStr);
             }
 
             if (!progress.isCompleted) {
@@ -134,11 +166,36 @@ exports.processIncentiveForDriver = async (driverId, bookingType) => {
                             status: "Completed"
                         });
                         
-                        // NOTE: Push notification logic can be added here
+                        // Push Notification to Driver
+                        try {
+                            if (driver.fcmToken) {
+                                const { sendPushNotification } = require('../utils/fcmNotification');
+                                await sendPushNotification(driver.fcmToken, {
+                                    title: "🎉 Target Achieved! Bonus Credited!",
+                                    body: `Congratulations! You hit target "${incentive.title}" and ₹${incentive.rewardAmount} bonus has been added to your wallet.`,
+                                    data: { type: "INCENTIVE_COMPLETED", incentiveId: incentive._id.toString() }
+                                });
+                            }
+                        } catch (pushErr) {
+                            console.error("Incentive FCM notification error:", pushErr.message);
+                        }
                     }
                 }
                 
                 await progress.save();
+
+                // Live socket update to driver room
+                try {
+                    const { getIO } = require('../socket/socket');
+                    const io = getIO();
+                    io.to(driverId.toString()).emit("driver_incentive_updated", {
+                        incentiveId: incentive._id,
+                        progress: progress.progressCount,
+                        isCompleted: progress.isCompleted,
+                        targetCount: incentive.targetCount,
+                        targetType: incentive.targetType
+                    });
+                } catch (socketErr) { }
             }
         }
     } catch (error) {

@@ -841,6 +841,14 @@ exports.completeBookingDriver = async (req, res) => {
 
         await booking.save();
 
+        // 🏆 INCENTIVE PROCESSING for Fixed Route Booking
+        try {
+            const incentiveController = require('./incentiveController');
+            await incentiveController.processIncentiveForDriver(driverId, 'Fixed', booking._id);
+        } catch (incErr) {
+            console.error('Error evaluating incentive for Fixed Booking:', incErr);
+        }
+
         await notifyClient(booking, 'fixedBookingCompleted', { 
             bookingId: booking._id,
             price: booking.finalPrice,

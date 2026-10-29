@@ -22,6 +22,9 @@ router.post("/create", auth, checkPermission("VENDOR_CREATE"), uploadProfile.fie
 // Get All Vendors
 router.get("/all", auth, checkPermission("VENDOR_READ"), vendorController.getAllVendors);
 
+// Get Vendor Vehicles and Drivers (Approved & All)
+router.get("/:id/vehicles-and-drivers", auth, checkPermission("VENDOR_READ"), vendorController.getVendorVehiclesAndDrivers);
+
 // Get Single Vendor
 router.get("/:id", auth, checkPermission("VENDOR_READ"), vendorController.getSingleVendor);
 

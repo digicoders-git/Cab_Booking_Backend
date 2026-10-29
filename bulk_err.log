@@ -1,6 +1,4 @@
-Error: access_denied
-    at IncomingMessage.<anonymous> (C:\Users\vivekvkraj\OneDrive\Desktop\Cab booking\CapBokkin\utils\PaymentHandler.js:258:15)
-    at Object.onceWrapper (node:events:622:28)
-    at IncomingMessage.emit (node:events:520:35)
-    at endReadableNT (node:internal/streams/readable:1729:12)
-    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+TypeError: Cannot read properties of undefined (reading 'origin')
+    at exports.createBulkBooking (C:\Users\vivekvkraj\OneDrive\Desktop\Cab booking\CapBokkin\controllers\bulkBookingController.js:383:44)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async testSetting (C:\Users\vivekvkraj\OneDrive\Desktop\Cab booking\CapBokkin\test_bulk_setting.js:70:9)

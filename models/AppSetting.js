@@ -5,6 +5,10 @@ const appSettingSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
+    isBulkOneWayEnabled: {
+        type: Boolean,
+        default: true
+    },
     enableDriverIncentive: {
         type: Boolean,
         default: false
