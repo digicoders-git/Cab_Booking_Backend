@@ -76,7 +76,7 @@ exports.registerDriver = async (req, res) => {
         }
 
         // Prepare car details object
-        const carDetails = carNumber ? {
+        const carDetails = (carNumber || vehicleType) ? {
             vehicleType: vehicleType || "Car",
             carNumber,
             carModel,
@@ -1076,7 +1076,7 @@ exports.adminUpdateDriver = async (req, res) => {
             name, email, phone, password, licenseNumber, licenseExpiry, 
             address, city, state, pincode, aadharNumber, panNumber,
             addressLatitude, addressLongitude,
-            carNumber, carModel, carBrand, carType, seatCapacity, carColor,
+            vehicleType, carNumber, carModel, carBrand, carType, seatCapacity, carColor,
             manufacturingYear, insuranceExpiry, permitExpiry, pucExpiry,
             lastServiceDate, nextServiceDate, debtLimit,
             accountNumber, ifscCode, accountHolderName, bankName,
@@ -1146,7 +1146,7 @@ exports.adminUpdateDriver = async (req, res) => {
 
         // 4. Update Car Details and Document Images
         if (
-            carNumber || carModel || carBrand || carType || lastServiceDate || nextServiceDate || 
+            vehicleType || carNumber || carModel || carBrand || carType || lastServiceDate || nextServiceDate || 
             req.files?.rcImage || req.files?.insuranceImage || req.files?.permitImage || req.files?.pucImage
         ) {
             // First initialize object if missing
@@ -1154,6 +1154,7 @@ exports.adminUpdateDriver = async (req, res) => {
             if (!driver.carDetails.carDocuments) driver.carDetails.carDocuments = {};
 
             // Update basic car text fields
+            if (vehicleType) driver.carDetails.vehicleType = vehicleType;
             if (carNumber) driver.carDetails.carNumber = carNumber;
             if (carModel) driver.carDetails.carModel = carModel;
             if (carBrand) driver.carDetails.carBrand = carBrand;
