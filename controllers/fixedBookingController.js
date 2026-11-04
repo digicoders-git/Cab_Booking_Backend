@@ -246,7 +246,16 @@ exports.bookFixedRoute = async (req, res) => {
             const payload = {
                 title: "New Package Ride Available! 🚖",
                 body: `Package trip from ${route.pickupLocation} to ${route.dropLocation} for ₹${route.price}`,
-                data: { bookingId: newBooking._id.toString(), type: "FIXED_BOOKING" }
+                data: {
+                    bookingId: newBooking._id.toString(),
+                    type: "FIXED_BOOKING",
+                    pickup: route.pickupLocation || "",
+                    drop: route.dropLocation || "",
+                    fare: (route.price || 0).toString(),
+                    tripType: route.tripType || "One-Way",
+                    maxTimeHours: (route.maxTimeHours || 0).toString(),
+                    maxDistanceKm: (route.maxDistanceKm || 0).toString()
+                }
             };
             
             drivers.forEach(driver => {
