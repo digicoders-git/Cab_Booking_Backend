@@ -80,7 +80,7 @@ exports.findAndAssignDriver = async (req, res) => {
 // Helper function for Internal use (Without req/res)
 exports.autoMatchDriver = async (bookingId) => {
     try {
-        const booking = await Booking.findById(bookingId);
+        const booking = await Booking.findById(bookingId).populate('user', 'name phone');
         if (!booking || booking.bookingStatus !== "Pending") {
             return { success: false, status: 400, message: "Booking not found or not in Pending status" };
         }
@@ -282,13 +282,17 @@ exports.autoMatchDriver = async (bookingId) => {
             const totalDiscount = (booking.discountAmount || 0) + (booking.firstRideDiscount || 0);
             const fullFare = booking.originalFare || (booking.fareEstimate + totalDiscount);
 
+            // 🎯 Determine passenger name and phone
+            const pName = (booking.passengerDetails?.name || (booking.user ? booking.user.name : '') || 'Passenger').toString();
+            const pPhone = (booking.passengerDetails?.phone || (booking.user ? booking.user.phone : '') || '').toString();
+
             // 🎯 LIVE NOTIFICATION: Tell Driver about the New Request!
             try {
                 io.to(driver._id.toString()).emit("new_ride_request", {
                     bookingId: booking._id,
                     requestId: newRequest._id,
-                    passengerName: booking.passengerDetails?.name || 'Passenger',
-                    passengerPhone: booking.passengerDetails?.phone || 'N/A',
+                    passengerName: pName,
+                    passengerPhone: pPhone,
                     pickup: booking.pickup.address,
                     drop: booking.drop.address,
                     stops: booking.stops || [],
@@ -323,8 +327,8 @@ exports.autoMatchDriver = async (bookingId) => {
                     bookingId: booking._id ? booking._id.toString() : '',
                     requestId: newRequest._id ? newRequest._id.toString() : '',
                     type: "NEW_RIDE_REQUEST",
-                    passengerName: (booking.passengerDetails?.name || 'Passenger').toString(),
-                    passengerPhone: (booking.passengerDetails?.phone || '').toString(),
+                    passengerName: pName,
+                    passengerPhone: pPhone,
                     pickup: (booking.pickup && booking.pickup.address) ? booking.pickup.address : '',
                     drop: (booking.drop && booking.drop.address) ? booking.drop.address : '',
                     stops: JSON.stringify(booking.stops || []),
