@@ -202,6 +202,7 @@ exports.bookFixedRoute = async (req, res) => {
             tripType: route.tripType || 'One-Way',
             maxTimeHours: route.maxTimeHours || 0,
             extraTimeChargePerHour: route.extraTimeChargePerHour || 0,
+            distanceKm: route.distanceKm || 0,
             maxDistanceKm: route.maxDistanceKm || 0,
             extraDistanceChargePerKm: route.extraDistanceChargePerKm || 0,
             startOtp: Math.floor(1000 + Math.random() * 9000).toString()
@@ -729,11 +730,25 @@ exports.verifyOnlinePayment = async (req, res) => {
     }
 };
 
+// Helper to get distance between two lat/lng points in KM (Haversine Formula)
+function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+    const R = 6371; // Earth radius in km
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
 // Driver starts booking (OTP Verification)
 exports.startBookingDriver = async (req, res) => {
     try {
         const { id } = req.params;
-        const { otp } = req.body;
+        const { otp, startLat, startLng } = req.body;
         const driverId = req.user.id;
 
         const booking = await FixedBooking.findById(id);
@@ -751,6 +766,13 @@ exports.startBookingDriver = async (req, res) => {
 
         booking.status = 'Started';
         booking.startedAt = new Date();
+        if (startLat && startLng) {
+            booking.startLat = parseFloat(startLat);
+            booking.startLng = parseFloat(startLng);
+        } else {
+            booking.startLat = booking.pickupLat;
+            booking.startLng = booking.pickupLng;
+        }
         await booking.save();
 
         await notifyClient(booking, 'fixedBookingStarted', { bookingId: booking._id }, {
@@ -772,7 +794,7 @@ exports.completeBookingDriver = async (req, res) => {
     try {
         const { id } = req.params;
         const driverId = req.user.id;
-        const { totalDistanceDriven } = req.body; // Extract total distance
+        const { totalDistanceDriven, startLat, startLng, endLat, endLng } = req.body;
 
         const booking = await FixedBooking.findById(id);
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
@@ -788,6 +810,18 @@ exports.completeBookingDriver = async (req, res) => {
         booking.status = 'Completed';
         booking.completedAt = new Date();
 
+        if (endLat && endLng) {
+            booking.endLat = parseFloat(endLat);
+            booking.endLng = parseFloat(endLng);
+        } else {
+            booking.endLat = booking.dropLat;
+            booking.endLng = booking.dropLng;
+        }
+        if (!booking.startLat && startLat) {
+            booking.startLat = parseFloat(startLat);
+            booking.startLng = parseFloat(startLng);
+        }
+
         // Calculate time penalty if applicable
         let finalPrice = booking.price;
         let extraCharges = 0;
@@ -798,18 +832,39 @@ exports.completeBookingDriver = async (req, res) => {
 
             if (durationHours > booking.maxTimeHours) {
                 const extraHours = Math.ceil(durationHours - booking.maxTimeHours);
-                extraCharges = extraHours * booking.extraTimeChargePerHour;
+                extraCharges = extraHours * (booking.extraTimeChargePerHour || 0);
                 finalPrice += extraCharges;
             }
         }
 
-        let extraDistanceCharges = 0;
+        // Distance determination:
+        // Priority 1: actual distance measured by driver app (if > 0)
+        // Priority 2: Road distance calculated between start coordinates and end coordinates (with 1.25x road factor)
         let actualDistance = totalDistanceDriven ? parseFloat(totalDistanceDriven) : 0;
         
-        if (actualDistance > 0 && booking.maxDistanceKm > 0) {
-            if (actualDistance > booking.maxDistanceKm) {
-                const extraKm = Math.ceil(actualDistance - booking.maxDistanceKm);
-                extraDistanceCharges = extraKm * booking.extraDistanceChargePerKm;
+        const sLat = booking.startLat || booking.pickupLat;
+        const sLng = booking.startLng || booking.pickupLng;
+        const eLat = booking.endLat || booking.dropLat;
+        const eLng = booking.endLng || booking.dropLng;
+
+        const straightLineKm = getDistanceFromLatLonInKm(sLat, sLng, eLat, eLng);
+        const estimatedRoadKm = Math.round(straightLineKm * 1.25 * 10) / 10;
+
+        if (actualDistance <= 0 && estimatedRoadKm > 0) {
+            actualDistance = estimatedRoadKm;
+        }
+
+        let extraDistanceCharges = 0;
+        const allowedLimitKm = (booking.maxDistanceKm && booking.maxDistanceKm > 0) 
+            ? booking.maxDistanceKm 
+            : (booking.distanceKm && booking.distanceKm > 0 ? booking.distanceKm : 0);
+        
+        const extraPerKmRate = booking.extraDistanceChargePerKm || 0;
+
+        if (actualDistance > 0 && allowedLimitKm > 0 && extraPerKmRate > 0) {
+            if (actualDistance > allowedLimitKm) {
+                const extraKm = Math.ceil(actualDistance - allowedLimitKm);
+                extraDistanceCharges = extraKm * extraPerKmRate;
                 finalPrice += extraDistanceCharges;
             }
         }

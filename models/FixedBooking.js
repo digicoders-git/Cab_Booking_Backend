@@ -148,6 +148,26 @@ const fixedBookingSchema = new mongoose.Schema({
         type: String,
         default: null
     },
+    startLat: {
+        type: Number,
+        default: null
+    },
+    startLng: {
+        type: Number,
+        default: null
+    },
+    endLat: {
+        type: Number,
+        default: null
+    },
+    endLng: {
+        type: Number,
+        default: null
+    },
+    distanceKm: {
+        type: Number,
+        default: 0
+    },
     startedAt: {
         type: Date,
         default: null
