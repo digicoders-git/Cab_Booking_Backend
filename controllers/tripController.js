@@ -323,13 +323,18 @@ exports.autoMatchDriver = async (bookingId) => {
                     bookingId: booking._id ? booking._id.toString() : '',
                     requestId: newRequest._id ? newRequest._id.toString() : '',
                     type: "NEW_RIDE_REQUEST",
+                    passengerName: (booking.passengerDetails?.name || 'Passenger').toString(),
+                    passengerPhone: (booking.passengerDetails?.phone || '').toString(),
                     pickup: (booking.pickup && booking.pickup.address) ? booking.pickup.address : '',
                     drop: (booking.drop && booking.drop.address) ? booking.drop.address : '',
-                    fare: (booking.fareEstimate || 0).toString(),
+                    stops: JSON.stringify(booking.stops || []),
+                    fare: (fullFare || booking.fareEstimate || 0).toString(),
                     distance: (booking.estimatedDistanceKm || 0).toString(),
-                    rideType: booking.rideType || 'Private',
+                    rideType: (booking.rideType || 'Private').toString(),
+                    seatsBooked: (booking.seatsBooked || 1).toString(),
                     stopsCount: (booking.stops ? booking.stops.length : 0).toString(),
                     expiresAt: (Date.now() + 16000).toString(),
+                    sentAt: Date.now().toString()
                 };
                 
                 console.log(`[TEST DEBUG] Sending FCM Payload to driver ${driver.name}:`, payloadData);
@@ -1962,14 +1967,22 @@ exports.initiateTripCompletion = async (req, res) => {
                     category.baseFare, category.privateRatePerKm, category.sharedRatePerSeatPerKm
                 );
 
+                // --- Safety Net: Protect driver if GPS signal dropped or app was in background ---
+                let effectiveDistanceKm = parseFloat(actualDistanceKm);
+                const estimatedDistance = booking.estimatedDistanceKm || 0;
+                if (estimatedDistance > 0 && effectiveDistanceKm < (estimatedDistance * 0.6)) {
+                    console.log(`⚠️ [FARE SAFETY] actualDistance (${effectiveDistanceKm} km) suspiciously low vs estimated (${estimatedDistance} km). Using estimated.`);
+                    effectiveDistanceKm = estimatedDistance;
+                }
+
                 let newFare = areaRates.baseFare;
                 const normalizedRideType = booking.rideType ? booking.rideType.toLowerCase() : "";
                 
                 if (normalizedRideType === "private") {
-                    newFare += (areaRates.privateRate * parseFloat(actualDistanceKm));
+                    newFare += (areaRates.privateRate * effectiveDistanceKm);
                 } else if (normalizedRideType === "shared") {
                     const finalSeats = booking.seatsBooked || 1;
-                    newFare += (areaRates.sharedRate * parseFloat(actualDistanceKm) * finalSeats);
+                    newFare += (areaRates.sharedRate * effectiveDistanceKm * finalSeats);
                 }
 
                 const taxResult = await stateTaxController.calculateTaxesInternal({
