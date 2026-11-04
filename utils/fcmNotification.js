@@ -5,25 +5,33 @@ const Driver = require("../models/Driver");
 /**
  * Send a push notification to a specific device token
  * @param {string} token - The FCM registration token
- * @param {object} payload - { title, body, data }
+ * @param {object} payload - { title, body, data, ttl }
  */
 const sendPushNotification = async (token, payload) => {
   if (!token) return null;
+
+  // Determine TTL in seconds (short TTL 35s for live ride requests, 86400s for general messages)
+  const isRealtimeRequest = ['FIXED_BOOKING', 'NEW_RIDE_REQUEST', 'NEW_RENTAL_REQUEST'].includes(payload.data?.type);
+  const ttlSeconds = payload.ttl ? Number(payload.ttl) : (isRealtimeRequest ? 35 : 86400);
+
   const message = {
     // 🔕 REMOVED 'notification' key to prevent duplicate/default notifications
     // Only 'data' is sent so the frontend/service-worker can show a custom notification with buttons.
     data: {
       ...(payload.data || {}),
-      title: payload.title,
-      body: payload.body,
+      sentAt: (payload.data && payload.data.sentAt) ? payload.data.sentAt.toString() : Date.now().toString(),
+      title: payload.title || '',
+      body: payload.body || '',
     },
     token: token,
     android: {
       priority: 'high',
+      ttl: ttlSeconds * 1000,
     },
     apns: {
       headers: {
         'apns-priority': '10',
+        'apns-expiration': (Math.floor(Date.now() / 1000) + ttlSeconds).toString(),
       },
     },
   };
@@ -52,22 +60,28 @@ const sendPushNotification = async (token, payload) => {
 /**
  * Send a push notification to a specific TOPIC (e.g., 'all', 'driver', 'fleet')
  * @param {string} topic - The topic name
- * @param {object} payload - { title, body, data }
+ * @param {object} payload - { title, body, data, ttl }
  */
 const sendTopicNotification = async (topic, payload) => {
+  const isRealtimeRequest = ['FIXED_BOOKING', 'NEW_RIDE_REQUEST', 'NEW_RENTAL_REQUEST'].includes(payload.data?.type);
+  const ttlSeconds = payload.ttl ? Number(payload.ttl) : (isRealtimeRequest ? 35 : 86400);
+
   const message = {
     data: {
       ...(payload.data || {}),
-      title: payload.title,
-      body: payload.body,
+      sentAt: (payload.data && payload.data.sentAt) ? payload.data.sentAt.toString() : Date.now().toString(),
+      title: payload.title || '',
+      body: payload.body || '',
     },
     topic: topic,
     android: {
       priority: 'high',
+      ttl: ttlSeconds * 1000,
     },
     apns: {
       headers: {
         'apns-priority': '10',
+        'apns-expiration': (Math.floor(Date.now() / 1000) + ttlSeconds).toString(),
       },
     },
   };
@@ -89,8 +103,9 @@ const sendConditionNotification = async (condition, payload) => {
     const message = {
       data: {
         ...(payload.data || {}),
-        title: payload.title,
-        body: payload.body,
+        sentAt: (payload.data && payload.data.sentAt) ? payload.data.sentAt.toString() : Date.now().toString(),
+        title: payload.title || '',
+        body: payload.body || '',
       },
       condition: condition,
     };
@@ -116,7 +131,7 @@ const subscribeToTopic = async (token, topic) => {
 
 module.exports = { 
     sendPushNotification, 
-    sendTopicNotification,
+    sendTopicNotification, 
     sendConditionNotification,
     subscribeToTopic
 };

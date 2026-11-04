@@ -254,8 +254,11 @@ exports.bookFixedRoute = async (req, res) => {
                     fare: (route.price || 0).toString(),
                     tripType: route.tripType || "One-Way",
                     maxTimeHours: (route.maxTimeHours || 0).toString(),
-                    maxDistanceKm: (route.maxDistanceKm || 0).toString()
-                }
+                    maxDistanceKm: (route.maxDistanceKm || 0).toString(),
+                    sentAt: Date.now().toString(),
+                    createdAt: (newBooking.createdAt ? newBooking.createdAt.toISOString() : new Date().toISOString())
+                },
+                ttl: 35
             };
             
             drivers.forEach(driver => {
