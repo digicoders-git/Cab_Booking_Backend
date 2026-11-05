@@ -470,7 +470,7 @@ exports.updateDriverProfile = async (req, res) => {
 // Toggle Online/Offline Status
 exports.toggleOnlineStatus = async (req, res) => {
     try {
-        const { latitude, longitude } = req.body;
+        const { latitude, longitude, isOnline } = req.body;
         const driver = await Driver.findById(req.user.id);
 
         if (!driver) {
@@ -480,15 +480,18 @@ exports.toggleOnlineStatus = async (req, res) => {
             });
         }
 
+        // Determine target status explicitly if provided, otherwise toggle
+        const targetOnline = (typeof isOnline === 'boolean') ? isOnline : !driver.isOnline;
+
         // Check debt limit before allowing to go online
-        if (!driver.isOnline && driver.walletBalance < (driver.debtLimit || -500)) {
+        if (targetOnline && driver.walletBalance < (driver.debtLimit || -500)) {
             return res.status(403).json({
                 success: false,
                 message: `Cannot go online. Your debt (₹${Math.abs(driver.walletBalance)}) exceeds the limit. Please recharge.`
             });
         }
 
-        driver.isOnline = !driver.isOnline;
+        driver.isOnline = targetOnline;
         
         // Update location if coordinates are provided in the request
         if (latitude !== undefined && longitude !== undefined) {
