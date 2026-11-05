@@ -1928,6 +1928,136 @@ exports.processTripSettlement = async (booking, driver) => {
 // USER-SIDE PAYMENT FLOW (NEW API)
 // ==========================================
 
+// Helper to calculate dynamic fare based on actual distance
+async function calculateDynamicTripFare(booking, actualDistanceKm) {
+    // Find existing wait charges (if actualFare was modified during stops)
+    const waitCharges = (booking.actualFare > booking.fareEstimate) 
+                        ? (booking.actualFare - booking.fareEstimate) 
+                        : 0;
+
+    let finalFareToCollect = booking.fareEstimate; 
+    let effectiveDistanceKm = booking.estimatedDistanceKm || 0;
+
+    if (actualDistanceKm !== undefined && actualDistanceKm !== null && !isNaN(actualDistanceKm)) {
+        const category = await CarCategory.findById(booking.carCategory);
+        if (category) {
+            const pickupLat = booking.pickup?.latitude;
+            const pickupLng = booking.pickup?.longitude;
+            const areaRates = await bookingController.getAreaSpecificRates(
+                pickupLat, pickupLng,
+                category.baseFare, category.privateRatePerKm, category.sharedRatePerSeatPerKm
+            );
+
+            // --- Smart Distance & Duration Calculation ---
+            effectiveDistanceKm = parseFloat(actualDistanceKm);
+            const estimatedDistance = booking.estimatedDistanceKm || 0;
+            
+            // Calculate elapsed trip duration in minutes
+            let tripDurationMinutes = 0;
+            if (booking.tripData && booking.tripData.startedAt) {
+                tripDurationMinutes = Math.floor((Date.now() - new Date(booking.tripData.startedAt).getTime()) / 60000);
+            }
+
+            if (isNaN(effectiveDistanceKm) || effectiveDistanceKm <= 0.05) {
+                // Distance is 0 (or near zero <= 50m)
+                if (tripDurationMinutes >= 10 && estimatedDistance > 0) {
+                    console.log(`⚠️ [FARE SAFETY] Ride took ${tripDurationMinutes} mins but GPS distance is 0. Using estimated distance: ${estimatedDistance} km`);
+                    effectiveDistanceKm = estimatedDistance;
+                } else {
+                    console.log(`🛑 [PICKUP DROP] Ride ended after ${tripDurationMinutes} mins at pickup (0 KM). Charging Base Fare only.`);
+                    effectiveDistanceKm = 0;
+                }
+            } else {
+                console.log(`✅ [FARE CALC] Recalculating fare using real driven distance: ${effectiveDistanceKm} km (Duration: ${tripDurationMinutes} mins)`);
+            }
+
+            let newFare = areaRates.baseFare;
+            const normalizedRideType = booking.rideType ? booking.rideType.toLowerCase() : "";
+            
+            if (normalizedRideType === "private") {
+                newFare += (areaRates.privateRate * effectiveDistanceKm);
+            } else if (normalizedRideType === "shared") {
+                const finalSeats = booking.seatsBooked || 1;
+                newFare += (areaRates.sharedRate * effectiveDistanceKm * finalSeats);
+            }
+
+            const taxResult = await stateTaxController.calculateTaxesInternal({
+                pickupAddress: booking.pickup?.address, 
+                dropAddress: booking.drop?.address, 
+                carCategoryId: booking.carCategory, 
+                tripType: "OneWay"
+            });
+
+            if (taxResult && taxResult.totalTax > 0) {
+                newFare += taxResult.totalTax;
+            }
+
+            // --- Apply 5% Exclusive GST (2.5% CGST + 2.5% SGST) ---
+            newFare = newFare * 1.05;
+            newFare = Math.round(newFare);
+
+            // Deduct both Promo Coupon and First Ride Welcome Discount
+            const totalDiscountToDeduct = (booking.discountAmount || 0) + (booking.firstRideDiscount || 0);
+            if (totalDiscountToDeduct > 0) {
+                newFare = Math.max(0, newFare - totalDiscountToDeduct);
+            }
+
+            finalFareToCollect = newFare;
+            
+            if (booking.previousDues) {
+                finalFareToCollect += booking.previousDues;
+            }
+        }
+    }
+
+    // --- Traffic Surcharge Logic ---
+    let trafficSurcharge = 0;
+    if (booking.tripData && booking.tripData.startedAt) {
+        const actualMinutes = Math.floor((Date.now() - new Date(booking.tripData.startedAt).getTime()) / 60000);
+        const categoryRules = await CarCategory.findById(booking.carCategory);
+        if (categoryRules) {
+            const bufferMin = categoryRules.trafficBufferMin !== undefined ? categoryRules.trafficBufferMin : 10;
+            const ratePerMin = categoryRules.ratePerMinute || 0;
+            const allowedTime = (booking.estimatedTimeMin || 0) + bufferMin;
+            if (actualMinutes > allowedTime) {
+                const extraMinutes = actualMinutes - allowedTime;
+                trafficSurcharge = extraMinutes * ratePerMin;
+            }
+        }
+    }
+
+    const totalFare = finalFareToCollect + waitCharges + trafficSurcharge;
+    return {
+        finalFare: totalFare,
+        effectiveDistanceKm,
+        waitCharges,
+        trafficSurcharge
+    };
+}
+
+// Preview Trip Fare endpoint for Driver App (before completing)
+exports.previewTripFare = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const { actualDistanceKm } = req.body;
+
+        const booking = await Booking.findById(bookingId);
+        if (!booking) {
+            return res.status(404).json({ success: false, message: "Booking not found" });
+        }
+
+        const result = await calculateDynamicTripFare(booking, actualDistanceKm);
+        return res.json({
+            success: true,
+            fare: result.finalFare,
+            distanceKm: result.effectiveDistanceKm,
+            isRecalculated: true
+        });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
 exports.initiateTripCompletion = async (req, res) => {
     try {
         const { bookingId } = req.params;
@@ -1951,115 +2081,13 @@ exports.initiateTripCompletion = async (req, res) => {
             }
         }
 
-        // --- NEW: Dynamic Fare Recalculation (Option A) ---
+        // --- Dynamic Fare Recalculation ---
         const { actualDistanceKm } = req.body;
+        const result = await calculateDynamicTripFare(booking, actualDistanceKm);
         
-        // Find existing wait charges (if actualFare was modified during stops)
-        const waitCharges = (booking.actualFare > booking.fareEstimate) 
-                            ? (booking.actualFare - booking.fareEstimate) 
-                            : 0;
-
-        let finalFareToCollect = booking.fareEstimate; 
-
-        if (actualDistanceKm !== undefined && actualDistanceKm !== null && !isNaN(actualDistanceKm)) {
-            const category = await CarCategory.findById(booking.carCategory);
-            if (category) {
-                const pickupLat = booking.pickup?.latitude;
-                const pickupLng = booking.pickup?.longitude;
-                const areaRates = await bookingController.getAreaSpecificRates(
-                    pickupLat, pickupLng,
-                    category.baseFare, category.privateRatePerKm, category.sharedRatePerSeatPerKm
-                );
-
-                // --- Smart Distance & Duration Calculation ---
-                let effectiveDistanceKm = parseFloat(actualDistanceKm);
-                const estimatedDistance = booking.estimatedDistanceKm || 0;
-                
-                // Calculate elapsed trip duration in minutes
-                let tripDurationMinutes = 0;
-                if (booking.tripData && booking.tripData.startedAt) {
-                    tripDurationMinutes = Math.floor((Date.now() - new Date(booking.tripData.startedAt).getTime()) / 60000);
-                }
-
-                if (isNaN(effectiveDistanceKm) || effectiveDistanceKm <= 0.05) {
-                    // Distance is 0 (or near zero <= 50m)
-                    if (tripDurationMinutes >= 10 && estimatedDistance > 0) {
-                        // Driver drove for 10-15+ minutes, but phone GPS died/off: Protect driver with estimated distance
-                        console.log(`⚠️ [FARE SAFETY] Ride took ${tripDurationMinutes} mins but GPS distance is 0. Using estimated distance: ${estimatedDistance} km`);
-                        effectiveDistanceKm = estimatedDistance;
-                    } else {
-                        // Ride ended immediately / within a few minutes at pickup: Charge Base Fare only (0 KM distance)
-                        console.log(`🛑 [PICKUP DROP] Ride ended after ${tripDurationMinutes} mins at pickup (0 KM). Charging Base Fare only.`);
-                        effectiveDistanceKm = 0;
-                    }
-                } else {
-                    // Real vehicle movement detected (> 0.05 KM, e.g. 2 KM, 5 KM, 14 KM)
-                    console.log(`✅ [FARE CALC] Recalculating fare using real driven distance: ${effectiveDistanceKm} km (Duration: ${tripDurationMinutes} mins)`);
-                }
-                booking.actualDistanceKm = effectiveDistanceKm;
-
-                let newFare = areaRates.baseFare;
-                const normalizedRideType = booking.rideType ? booking.rideType.toLowerCase() : "";
-                
-                if (normalizedRideType === "private") {
-                    newFare += (areaRates.privateRate * effectiveDistanceKm);
-                } else if (normalizedRideType === "shared") {
-                    const finalSeats = booking.seatsBooked || 1;
-                    newFare += (areaRates.sharedRate * effectiveDistanceKm * finalSeats);
-                }
-
-                const taxResult = await stateTaxController.calculateTaxesInternal({
-                    pickupAddress: booking.pickup?.address, 
-                    dropAddress: booking.drop?.address, 
-                    carCategoryId: booking.carCategory, 
-                    tripType: "OneWay"
-                });
-
-                if (taxResult && taxResult.totalTax > 0) {
-                    newFare += taxResult.totalTax;
-                }
-
-                // --- Apply 5% Exclusive GST (2.5% CGST + 2.5% SGST) ---
-                newFare = newFare * 1.05;
-
-                newFare = Math.round(newFare);
-
-                // Deduct both Promo Coupon and First Ride Welcome Discount
-                const totalDiscountToDeduct = (booking.discountAmount || 0) + (booking.firstRideDiscount || 0);
-                if (totalDiscountToDeduct > 0) {
-                    newFare = Math.max(0, newFare - totalDiscountToDeduct);
-                }
-
-                finalFareToCollect = newFare;
-                
-                // Add previousDues ONLY if we recalculated from distance (since fareEstimate already has them)
-                if (booking.previousDues) {
-                    finalFareToCollect += booking.previousDues;
-                }
-            }
-        }
-
-        // --- NEW: Traffic Surcharge Logic ---
-        let trafficSurcharge = 0;
-        if (booking.tripData && booking.tripData.startedAt) {
-            const actualMinutes = Math.floor((Date.now() - booking.tripData.startedAt.getTime()) / 60000);
-            
-            const categoryRules = await CarCategory.findById(booking.carCategory);
-
-            if (categoryRules) {
-                const bufferMin = categoryRules.trafficBufferMin !== undefined ? categoryRules.trafficBufferMin : 10;
-                const ratePerMin = categoryRules.ratePerMinute || 0;
-                const allowedTime = (booking.estimatedTimeMin || 0) + bufferMin;
-
-                if (actualMinutes > allowedTime) {
-                    const extraMinutes = actualMinutes - allowedTime;
-                    trafficSurcharge = extraMinutes * ratePerMin;
-                }
-            }
-        }
-        
-        booking.trafficSurcharge = trafficSurcharge;
-        booking.actualFare = finalFareToCollect + waitCharges + trafficSurcharge;
+        booking.actualDistanceKm = result.effectiveDistanceKm;
+        booking.trafficSurcharge = result.trafficSurcharge;
+        booking.actualFare = result.finalFare;
         booking.bookingStatus = "Payment_Pending";
         await booking.save();
 

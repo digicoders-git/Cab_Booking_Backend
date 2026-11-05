@@ -16,6 +16,7 @@ const {
     initiateTripPayment,
     verifyTripPayment,
     initiateTripCompletion,
+    previewTripFare,
     selectPaymentMethod,
     confirmCashCollection,
     getPublicTrackingDetails
@@ -63,6 +64,7 @@ router.post("/execute/verify-payment", auth, driverOnly, verifyTripPayment);
 router.all("/execute/payment-return", require("../controllers/tripController").paymentReturn);
 
 // 9. User-Side Payment Flow APIs
+router.post("/execute/:bookingId/preview-fare", auth, driverOnly, previewTripFare);
 router.post("/execute/:bookingId/initiate-completion", auth, driverOnly, initiateTripCompletion);
 router.post("/execute/:bookingId/select-payment", auth, selectPaymentMethod); // Removed userOnly strictly since Agent could also be the one paying if they booked it? Let's keep it simple with just auth for now.
 router.post("/execute/:bookingId/confirm-cash", auth, driverOnly, confirmCashCollection);
