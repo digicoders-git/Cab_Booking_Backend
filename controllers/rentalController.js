@@ -1158,6 +1158,8 @@ exports.verifyRentalPayment = async (req, res) => {
     try {
         const { bookingId, razorpay_payment_id, razorpay_payment_link_id, razorpay_payment_link_reference_id, razorpay_payment_link_status, razorpay_signature } = req.body;
         
+        console.log("🚕 [verifyRentalPayment] Verification request for booking:", bookingId, "data:", req.body);
+
         const booking = await RentalBooking.findById(bookingId).populate("rentalPackage");
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
 
@@ -1168,26 +1170,59 @@ exports.verifyRentalPayment = async (req, res) => {
         const { RazorpayHandler } = require("../utils/RazorpayHandler");
         const razorpayHandler = RazorpayHandler.getInstance();
         
-        const isValid = razorpayHandler.validateSignature(
-            razorpay_payment_id, 
-            razorpay_payment_link_id, 
-            razorpay_payment_link_reference_id, 
-            razorpay_payment_link_status, 
-            razorpay_signature
-        );
+        let isValid = false;
 
-        if (!isValid) {
-            return res.status(400).json({ success: false, message: "Invalid payment signature" });
+        // 1. Try validating Razorpay signature if provided
+        if (razorpay_payment_id && razorpay_signature) {
+            try {
+                isValid = razorpayHandler.validateSignature(
+                    razorpay_payment_id, 
+                    razorpay_payment_link_id, 
+                    razorpay_payment_link_reference_id, 
+                    razorpay_payment_link_status, 
+                    razorpay_signature
+                );
+            } catch (sigErr) {
+                console.error("Signature validation error:", sigErr.message);
+            }
         }
 
-        if (razorpay_payment_link_status !== "paid") {
-            return res.status(400).json({ success: false, message: "Payment not completed" });
+        // 2. Direct Razorpay API verification fallback
+        if (!isValid) {
+            const linkId = razorpay_payment_link_id || booking.paymentLinkId;
+            if (linkId) {
+                try {
+                    const plink = await razorpayHandler.razorpay.paymentLink.fetch(linkId);
+                    if (plink && (plink.status === "paid" || plink.amount_paid >= plink.amount)) {
+                        isValid = true;
+                        console.log("✅ [verifyRentalPayment] Verified directly via Razorpay Payment Link API:", linkId);
+                    }
+                } catch (linkErr) {
+                    console.error("Payment link fetch error:", linkErr.message);
+                }
+            } else if (razorpay_payment_id) {
+                try {
+                    const payment = await razorpayHandler.razorpay.payments.fetch(razorpay_payment_id);
+                    if (payment && (payment.status === "captured" || payment.status === "authorized")) {
+                        isValid = true;
+                        console.log("✅ [verifyRentalPayment] Verified directly via Razorpay Payments API:", razorpay_payment_id);
+                    }
+                } catch (payErr) {
+                    console.error("Payment fetch error:", payErr.message);
+                }
+            }
+        }
+
+        if (!isValid) {
+            return res.status(400).json({ success: false, message: "Payment verification failed. Payment not confirmed." });
         }
 
         await finalizeRentalOnlinePayment(booking);
+        console.log("🎉 [verifyRentalPayment] Booking finalized & marked Completed in MongoDB:", booking._id);
 
-        res.json({ success: true, message: "Payment verified and Trip Completed", booking });
+        res.json({ success: true, message: "Payment verified and Trip Completed Successfully", booking });
     } catch (error) {
+        console.error("❌ [verifyRentalPayment Error]:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
