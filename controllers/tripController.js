@@ -1971,13 +1971,32 @@ exports.initiateTripCompletion = async (req, res) => {
                     category.baseFare, category.privateRatePerKm, category.sharedRatePerSeatPerKm
                 );
 
-                // --- Safety Net: Protect driver if GPS signal dropped or app was in background ---
+                // --- Smart Distance & Duration Calculation ---
                 let effectiveDistanceKm = parseFloat(actualDistanceKm);
                 const estimatedDistance = booking.estimatedDistanceKm || 0;
-                if (estimatedDistance > 0 && effectiveDistanceKm < (estimatedDistance * 0.6)) {
-                    console.log(`⚠️ [FARE SAFETY] actualDistance (${effectiveDistanceKm} km) suspiciously low vs estimated (${estimatedDistance} km). Using estimated.`);
-                    effectiveDistanceKm = estimatedDistance;
+                
+                // Calculate elapsed trip duration in minutes
+                let tripDurationMinutes = 0;
+                if (booking.tripData && booking.tripData.startedAt) {
+                    tripDurationMinutes = Math.floor((Date.now() - new Date(booking.tripData.startedAt).getTime()) / 60000);
                 }
+
+                if (isNaN(effectiveDistanceKm) || effectiveDistanceKm <= 0.05) {
+                    // Distance is 0 (or near zero <= 50m)
+                    if (tripDurationMinutes >= 10 && estimatedDistance > 0) {
+                        // Driver drove for 10-15+ minutes, but phone GPS died/off: Protect driver with estimated distance
+                        console.log(`⚠️ [FARE SAFETY] Ride took ${tripDurationMinutes} mins but GPS distance is 0. Using estimated distance: ${estimatedDistance} km`);
+                        effectiveDistanceKm = estimatedDistance;
+                    } else {
+                        // Ride ended immediately / within a few minutes at pickup: Charge Base Fare only (0 KM distance)
+                        console.log(`🛑 [PICKUP DROP] Ride ended after ${tripDurationMinutes} mins at pickup (0 KM). Charging Base Fare only.`);
+                        effectiveDistanceKm = 0;
+                    }
+                } else {
+                    // Real vehicle movement detected (> 0.05 KM, e.g. 2 KM, 5 KM, 14 KM)
+                    console.log(`✅ [FARE CALC] Recalculating fare using real driven distance: ${effectiveDistanceKm} km (Duration: ${tripDurationMinutes} mins)`);
+                }
+                booking.actualDistanceKm = effectiveDistanceKm;
 
                 let newFare = areaRates.baseFare;
                 const normalizedRideType = booking.rideType ? booking.rideType.toLowerCase() : "";
