@@ -86,6 +86,7 @@ app.use("/api/rentals", rentalRoutes); // NEW: Rental Bookings
 app.use("/api/rental", rentalRoutes); // Aliased for compatibility
 app.use("/api/incentives", incentiveRoutes); // NEW: Driver Incentives
 app.use("/api/contact", require("./routes/contactRoutes")); // Public Contact / Inquiry APIs
+app.use("/api/test", require("./routes/testRoutes")); // Standalone Test APIs (name & password)
 
 const PORT = process.env.PORT || 5000;
 
