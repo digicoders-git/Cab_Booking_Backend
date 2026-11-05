@@ -767,7 +767,7 @@ exports.endRentalTrip = async (req, res) => {
     try {
         const { bookingId, totalDistanceTravelled, paymentMethod } = req.body; // Driver submits distance and payment method
 
-        const booking = await RentalBooking.findById(bookingId).populate("rentalPackage");
+        const booking = await RentalBooking.findById(bookingId).populate("rentalPackage").populate("user");
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
 
         if (booking.status === "Completed") {
@@ -850,6 +850,8 @@ exports.endRentalTrip = async (req, res) => {
                 }
             }
             // =========================================================
+
+            console.log("🚕 [endRentalTrip] Online payment link generated successfully for booking:", booking._id, "Total Fare: ₹" + totalFare, "URL:", sessionResponse.payment_links.web);
 
             return res.json({ 
                 success: true, 
