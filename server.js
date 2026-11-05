@@ -83,6 +83,7 @@ app.use("/api/taxes/state-taxes", require("./routes/stateTaxRoutes")); // NEW: S
 app.use("/api/settings", require("./routes/appSettingRoutes")); // NEW: Global App Settings
 app.use("/api/fixed-routes", fixedRouteRoutes); // NEW: Fixed Routes Marketplace
 app.use("/api/rentals", rentalRoutes); // NEW: Rental Bookings
+app.use("/api/rental", rentalRoutes); // Aliased for compatibility
 app.use("/api/incentives", incentiveRoutes); // NEW: Driver Incentives
 app.use("/api/contact", require("./routes/contactRoutes")); // Public Contact / Inquiry APIs
 
