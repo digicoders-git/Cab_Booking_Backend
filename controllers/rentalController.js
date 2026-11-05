@@ -809,22 +809,28 @@ exports.endRentalTrip = async (req, res) => {
         const razorpayHandler = RazorpayHandler.getInstance();
 
         if (paymentMethod === 'Online') {
+            const source = (req.body && req.body.source) ? req.body.source : 'app';
+            const protocol = req.get('host').includes('localhost') ? 'http' : 'https';
+            const return_url = `${protocol}://${req.get('host')}/api/rental/verify-payment-callback?bookingId=${booking._id}&source=${source}`;
+
             // Do NOT complete yet, just generate link and return
             // Razorpay limit for reference_id is 40 chars. 'r_' + 6 chars of ID + '_' + 13 chars of timestamp = 22 chars.
             const sessionResponse = await razorpayHandler.orderSession({
                 amount: totalFare,
                 order_id: `r_${booking._id.toString().slice(-6)}_${Date.now()}`, 
                 customer_phone: booking.user?.phone || "+919999999999",
-                return_url: `${process.env.FRONTEND_URL || 'http://localhost:5174'}/driver/rental/${booking._id}?bookingId=${booking._id}`
+                return_url: return_url
             });
             
-            // Save fare details for later completion
+            // Save fare details, paymentLinkId and paymentUrl for later completion
             booking.fareDetails.extraKmFare = extraKmFare;
             booking.fareDetails.extraTimeFare = extraTimeFare;
             booking.fareDetails.totalFare = totalFare;
             booking.fareDetails.adminCommission = adminCommission;
             booking.totalDistanceTravelled = totalDistanceTravelled;
             booking.paymentMethod = 'Online';
+            booking.paymentLinkId = sessionResponse.id;
+            booking.paymentUrl = sessionResponse.payment_links.web;
             await booking.save();
 
             // === ADDED: Notify User via Socket for Payment Request ===
@@ -849,7 +855,8 @@ exports.endRentalTrip = async (req, res) => {
                 success: true, 
                 message: "Please complete payment", 
                 requirePayment: true,
-                paymentUrl: sessionResponse.payment_links.web 
+                paymentUrl: sessionResponse.payment_links.web,
+                finalFare: totalFare
             });
         }
 
@@ -951,6 +958,21 @@ exports.endRentalTrip = async (req, res) => {
             }
         }
 
+        // === NOTIFY DRIVER VIA SOCKET ===
+        if (booking.driver) {
+            try {
+                const io = require("../socket/socket").getIO();
+                io.to(booking.driver.toString()).emit("rental_payment_verified", {
+                    bookingId: booking._id,
+                    status: "Completed",
+                    finalFare: booking.fareDetails.totalFare,
+                    paymentMethod: booking.paymentMethod || "Cash"
+                });
+            } catch (err) {
+                console.error("Socket error on rental payment driver notify:", err.message);
+            }
+        }
+
         // === ADDED: Notify User via Socket & FCM for Completion ===
         if (booking.user) {
             try {
@@ -988,6 +1010,148 @@ exports.endRentalTrip = async (req, res) => {
     }
 };
 
+async function finalizeRentalOnlinePayment(booking) {
+    if (booking.status === "Completed") return booking;
+
+    booking.status = "Completed";
+    booking.paymentStatus = "Completed";
+    booking.endTime = booking.endTime || new Date();
+    await booking.save();
+
+    const Admin = require("../models/Admin");
+    const Driver = require("../models/Driver");
+    const Transaction = require("../models/Transaction");
+    
+    const driver = await Driver.findById(booking.driver);
+    const admin = await Admin.findOne();
+    
+    const adminCommission = booking.fareDetails.adminCommission || 0;
+    const totalFare = booking.fareDetails.totalFare || 0;
+    
+    if (driver) {
+        const driverCut = totalFare - adminCommission;
+        driver.isAvailable = true;
+        driver.currentRideType = null;
+        driver.totalEarnings = (driver.totalEarnings || 0) + driverCut;
+
+        const isFleetDriver = driver.createdByModel === "Fleet" && driver.createdBy;
+        let fleet = null;
+        if (isFleetDriver) {
+            const Fleet = require("../models/Fleet");
+            fleet = await Fleet.findById(driver.createdBy);
+        }
+
+        if (isFleetDriver && fleet) {
+            fleet.walletBalance = (fleet.walletBalance || 0) + driverCut;
+            fleet.totalEarnings = (fleet.totalEarnings || 0) + driverCut;
+            await fleet.save();
+
+            await Transaction.create({
+                user: fleet._id,
+                userModel: 'Fleet',
+                amount: driverCut,
+                type: 'Credit',
+                category: 'Ride Earning',
+                status: 'Completed',
+                relatedBooking: booking._id,
+                description: `Earnings from Fleet Driver ${driver.name} (Rental Trip #${booking.bookingId || booking._id})`
+            });
+
+            await Transaction.create({
+                user: driver._id,
+                userModel: 'Driver',
+                amount: driverCut,
+                type: 'Credit',
+                category: 'Ride Earning',
+                status: 'Completed',
+                relatedBooking: booking._id,
+                description: `Ride Earnings (Credited to Fleet Owner ${fleet.name}) for Rental Trip #${booking.bookingId || booking._id}`
+            });
+        } else {
+            driver.walletBalance = (driver.walletBalance || 0) + driverCut;
+            await Transaction.create({
+                user: driver._id,
+                userModel: 'Driver',
+                amount: driverCut,
+                type: 'Credit',
+                category: 'Ride Earning',
+                status: 'Completed',
+                relatedBooking: booking._id,
+                description: `Earnings for Rental Trip #${booking.bookingId || booking._id} (Paid Online)`
+            });
+        }
+
+        if (admin) {
+            admin.walletBalance = (admin.walletBalance || 0) + adminCommission;
+            admin.totalEarnings = (admin.totalEarnings || 0) + adminCommission;
+            await admin.save();
+            await Transaction.create({
+                user: admin._id,
+                userModel: 'Admin',
+                amount: adminCommission,
+                type: 'Credit',
+                category: 'Commission',
+                status: 'Completed',
+                relatedBooking: booking._id,
+                description: `Admin commission from Rental Trip #${booking.bookingId || booking._id} (Online)`
+            });
+        }
+        await driver.save();
+
+        try {
+            const incentiveController = require("./incentiveController");
+            await incentiveController.processIncentiveForDriver(driver._id, 'Rental', booking._id);
+        } catch (incErr) {
+            console.error("Error evaluating incentive for Rental (Online):", incErr);
+        }
+    }
+
+    if (booking.driver) {
+        try {
+            const io = require("../socket/socket").getIO();
+            io.to(booking.driver.toString()).emit("rental_payment_verified", {
+                bookingId: booking._id,
+                status: "Completed",
+                finalFare: booking.fareDetails.totalFare,
+                paymentMethod: booking.paymentMethod || "Online"
+            });
+        } catch (err) {
+            console.error("Socket error on rental payment driver notify:", err.message);
+        }
+    }
+
+    if (booking.user) {
+        try {
+            const io = require("../socket/socket").getIO();
+            const userId = booking.user._id || booking.user;
+            io.to(userId.toString()).emit("booking_update", {
+                bookingId: booking._id,
+                status: "Completed",
+                finalFare: booking.fareDetails.totalFare,
+                paymentMethod: "Online"
+            });
+
+            const User = require("../models/User");
+            const rider = await User.findById(userId);
+            if (rider && rider.fcmToken) {
+                const { sendPushNotification } = require("../utils/fcmNotification");
+                await sendPushNotification(rider.fcmToken, {
+                    title: "🏁 Rental Trip Completed!",
+                    body: `Payment verified. Hope you had a great ride!`,
+                    data: {
+                        type: "TRIP_COMPLETED",
+                        bookingId: booking._id.toString()
+                    }
+                });
+            }
+        } catch (err) {
+            console.error("Socket/FCM Error on rental verify payment:", err.message);
+        }
+    }
+
+    return booking;
+}
+
 exports.verifyRentalPayment = async (req, res) => {
     try {
         const { bookingId, razorpay_payment_id, razorpay_payment_link_id, razorpay_payment_link_reference_id, razorpay_payment_link_status, razorpay_signature } = req.body;
@@ -1018,134 +1182,133 @@ exports.verifyRentalPayment = async (req, res) => {
             return res.status(400).json({ success: false, message: "Payment not completed" });
         }
 
-        booking.status = "Completed";
-        booking.endTime = new Date();
-        await booking.save();
-
-        const Admin = require("../models/Admin");
-        const Driver = require("../models/Driver");
-        const Transaction = require("../models/Transaction");
-        
-        const driver = await Driver.findById(booking.driver);
-        const admin = await Admin.findOne();
-        
-        const adminCommission = booking.fareDetails.adminCommission;
-        const totalFare = booking.fareDetails.totalFare;
-        
-        if (driver) {
-            const driverCut = totalFare - adminCommission;
-            driver.isAvailable = true;
-            driver.currentRideType = null;
-            driver.totalEarnings = (driver.totalEarnings || 0) + driverCut;
-
-            const isFleetDriver = driver.createdByModel === "Fleet" && driver.createdBy;
-            let fleet = null;
-            if (isFleetDriver) {
-                const Fleet = require("../models/Fleet");
-                fleet = await Fleet.findById(driver.createdBy);
-            }
-
-            if (isFleetDriver && fleet) {
-                // Actual Wallet Balance goes ONLY to Fleet Owner! (Zero Duplication)
-                fleet.walletBalance = (fleet.walletBalance || 0) + driverCut;
-                fleet.totalEarnings = (fleet.totalEarnings || 0) + driverCut;
-                await fleet.save();
-
-                await Transaction.create({
-                    user: fleet._id,
-                    userModel: 'Fleet',
-                    amount: driverCut,
-                    type: 'Credit',
-                    category: 'Ride Earning',
-                    status: 'Completed',
-                    relatedBooking: booking._id,
-                    description: `Earnings from Fleet Driver ${driver.name} (Rental Trip #${booking.bookingId || booking._id})`
-                });
-
-                // Driver gets statement/history record ONLY (wallet balance not increased to prevent duplicate payouts)
-                await Transaction.create({
-                    user: driver._id,
-                    userModel: 'Driver',
-                    amount: driverCut,
-                    type: 'Credit',
-                    category: 'Ride Earning',
-                    status: 'Completed',
-                    relatedBooking: booking._id,
-                    description: `Ride Earnings (Credited to Fleet Owner ${fleet.name}) for Rental Trip #${booking.bookingId || booking._id}`
-                });
-            } else {
-                // Independent driver gets actual money into their wallet
-                driver.walletBalance = (driver.walletBalance || 0) + driverCut;
-                await Transaction.create({
-                    user: driver._id,
-                    userModel: 'Driver',
-                    amount: driverCut,
-                    type: 'Credit',
-                    category: 'Ride Earning',
-                    status: 'Completed',
-                    relatedBooking: booking._id,
-                    description: `Earnings for Rental Trip #${booking.bookingId || booking._id} (Paid Online)`
-                });
-            }
-
-            if (admin) {
-                admin.walletBalance = (admin.walletBalance || 0) + adminCommission;
-                admin.totalEarnings = (admin.totalEarnings || 0) + adminCommission;
-                await admin.save();
-                await Transaction.create({
-                    user: admin._id,
-                    userModel: 'Admin',
-                    amount: adminCommission,
-                    type: 'Credit',
-                    category: 'Commission',
-                    status: 'Completed',
-                    relatedBooking: booking._id,
-                    description: `Admin commission from Rental Trip #${booking.bookingId || booking._id} (Online)`
-                });
-            }
-            await driver.save();
-
-            // 🏆 INCENTIVE PROCESSING for Rental Booking (Online)
-            try {
-                const incentiveController = require("./incentiveController");
-                await incentiveController.processIncentiveForDriver(driver._id, 'Rental', booking._id);
-            } catch (incErr) {
-                console.error("Error evaluating incentive for Rental (Online):", incErr);
-            }
-        }
-
-        // === ADDED: Notify User via Socket & FCM for Completion ===
-        if (booking.user) {
-            try {
-                const io = require("../socket/socket").getIO();
-                const userId = booking.user._id || booking.user;
-                io.to(userId.toString()).emit("booking_update", {
-                    bookingId: booking._id,
-                    status: "Completed",
-                    finalFare: booking.fareDetails.totalFare,
-                    paymentMethod: "Online"
-                });
-
-                const User = require("../models/User");
-                const rider = await User.findById(userId);
-                if (rider && rider.fcmToken) {
-                    const { sendPushNotification } = require("../utils/fcmNotification");
-                    await sendPushNotification(rider.fcmToken, {
-                        title: "🏁 Rental Trip Completed!",
-                        body: `Payment verified. Hope you had a great ride!`,
-                        data: {
-                            type: "TRIP_COMPLETED",
-                            bookingId: booking._id.toString()
-                        }
-                    });
-                }
-            } catch (err) {
-                console.error("Socket/FCM Error on rental verify payment:", err.message);
-            }
-        }
-        // ==========================================================
+        await finalizeRentalOnlinePayment(booking);
 
         res.json({ success: true, message: "Payment verified and Trip Completed", booking });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.verifyRentalPaymentCallback = async (req, res) => {
+    try {
+        const { bookingId, source, razorpay_payment_id, razorpay_payment_link_id, razorpay_payment_link_reference_id, razorpay_payment_link_status, razorpay_signature } = req.query;
+        
+        const booking = await RentalBooking.findById(bookingId).populate("rentalPackage");
+        if (!booking) return res.status(404).send("Booking not found");
+
+        if (booking.status === "Completed") {
+            if (source === 'app') {
+                return res.redirect(`kwikcab://payment-success?booking_id=${booking._id}&status=success`);
+            }
+            return res.send(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Payment Successful</title>
+                    <style>
+                        body { background: #0D0D14; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; text-align: center; }
+                        .card { background: #161622; border: 1px solid #282838; border-radius: 24px; padding: 36px 24px; max-width: 380px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+                        .check-icon { width: 72px; height: 72px; background: rgba(34, 197, 94, 0.15); border: 2px solid #22C55E; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 36px; color: #22C55E; }
+                        h2 { margin: 0 0 10px; font-size: 22px; font-weight: 700; color: #fff; }
+                        p { color: #A0A0B2; font-size: 14px; line-height: 1.5; margin: 0; }
+                    </style>
+                </head>
+                <body>
+                    <div class="card">
+                        <div class="check-icon">✓</div>
+                        <h2>Payment Verified!</h2>
+                        <p>Your payment has been successfully recorded. The driver has been notified and the trip is complete. You can close this page now.</p>
+                    </div>
+                </body>
+                </html>
+            `);
+        }
+
+        const { RazorpayHandler } = require("../utils/RazorpayHandler");
+        const razorpayHandler = RazorpayHandler.getInstance();
+
+        if (razorpay_payment_id && razorpay_signature) {
+            const isValid = razorpayHandler.validateSignature(
+                razorpay_payment_id,
+                razorpay_payment_link_id,
+                razorpay_payment_link_reference_id,
+                razorpay_payment_link_status,
+                razorpay_signature
+            );
+            if (!isValid) {
+                return res.status(400).send("Invalid payment signature");
+            }
+        }
+
+        await finalizeRentalOnlinePayment(booking);
+
+        if (source === 'app') {
+            return res.redirect(`kwikcab://payment-success?booking_id=${booking._id}&status=success`);
+        }
+
+        return res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Payment Successful</title>
+                <style>
+                    body { background: #0D0D14; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; text-align: center; }
+                    .card { background: #161622; border: 1px solid #282838; border-radius: 24px; padding: 36px 24px; max-width: 380px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+                    .check-icon { width: 72px; height: 72px; background: rgba(34, 197, 94, 0.15); border: 2px solid #22C55E; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 36px; color: #22C55E; }
+                    h2 { margin: 0 0 10px; font-size: 22px; font-weight: 700; color: #fff; }
+                    p { color: #A0A0B2; font-size: 14px; line-height: 1.5; margin: 0; }
+                </style>
+            </head>
+            <body>
+                <div class="card">
+                    <div class="check-icon">✓</div>
+                    <h2>Payment Successful!</h2>
+                    <p>Your payment has been received and verified. The driver has been notified. You can close this screen now.</p>
+                </div>
+            </body>
+            </html>
+        `);
+    } catch (error) {
+        console.error("Error in verifyRentalPaymentCallback:", error);
+        res.status(500).send("Server Error: " + error.message);
+    }
+};
+
+exports.checkRentalPaymentStatus = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const booking = await RentalBooking.findById(bookingId).populate("rentalPackage");
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        if (booking.status === "Completed") {
+            return res.json({ success: true, isPaid: true, status: "Completed", booking });
+        }
+
+        // Check directly with Razorpay if booking has paymentLinkId
+        if (booking.paymentLinkId) {
+            try {
+                const { RazorpayHandler } = require("../utils/RazorpayHandler");
+                const razorpayHandler = RazorpayHandler.getInstance();
+                const plink = await razorpayHandler.razorpay.paymentLink.fetch(booking.paymentLinkId);
+                if (plink && (plink.status === "paid" || plink.amount_paid >= plink.amount)) {
+                    await finalizeRentalOnlinePayment(booking);
+                    return res.json({ success: true, isPaid: true, status: "Completed", booking });
+                }
+            } catch (rzpErr) {
+                console.error("Error checking razorpay payment link:", rzpErr.message);
+            }
+        }
+
+        return res.json({ 
+            success: true, 
+            isPaid: false, 
+            status: booking.status,
+            paymentStatus: booking.paymentStatus,
+            paymentUrl: booking.paymentUrl 
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

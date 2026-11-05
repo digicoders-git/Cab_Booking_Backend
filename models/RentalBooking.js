@@ -77,6 +77,14 @@ const rentalBookingSchema = new mongoose.Schema({
         enum: ["Cash", "Online", "Wallet"],
         default: "Cash"
     },
+    paymentLinkId: {
+        type: String,
+        default: null
+    },
+    paymentUrl: {
+        type: String,
+        default: null
+    },
     fareDetails: {
         baseFare: { type: Number, default: 0 },
         extraKmFare: { type: Number, default: 0 },

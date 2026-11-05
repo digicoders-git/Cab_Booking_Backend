@@ -21,6 +21,8 @@ const {
     getDriverRentalBookings,
     rejectRentalBooking,
     verifyRentalPayment,
+    verifyRentalPaymentCallback,
+    checkRentalPaymentStatus,
     driverCancelRentalBooking
 } = require("../controllers/rentalController");
 
@@ -48,5 +50,7 @@ router.put("/bookings/:id/driver-cancel", auth, driverOnly, driverCancelRentalBo
 router.post("/start-trip", auth, driverOnly, startRentalRide);
 router.post("/end-trip", auth, driverOnly, endRentalTrip);
 router.post("/verify-payment", auth, driverOnly, verifyRentalPayment);
+router.get("/verify-payment-callback", verifyRentalPaymentCallback);
+router.get("/check-payment-status/:bookingId", auth, checkRentalPaymentStatus);
 
 module.exports = router;
