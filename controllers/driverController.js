@@ -322,9 +322,17 @@ exports.getDriverProfile = async (req, res) => {
             });
         }
 
+        const driverObj = driver.toObject();
+        if (driverObj.totalEarnings !== undefined && driverObj.totalEarnings !== null) {
+            driverObj.totalEarnings = Math.round(Number(driverObj.totalEarnings || 0) * 100) / 100;
+        }
+        if (driverObj.walletBalance !== undefined && driverObj.walletBalance !== null) {
+            driverObj.walletBalance = Math.round(Number(driverObj.walletBalance || 0) * 100) / 100;
+        }
+
         res.json({
             success: true,
-            driver
+            driver: driverObj
         });
 
     } catch (error) {
@@ -692,9 +700,17 @@ exports.getSingleDriver = async (req, res) => {
             });
         }
 
+        const driverObj = driver.toObject();
+        if (driverObj.totalEarnings !== undefined && driverObj.totalEarnings !== null) {
+            driverObj.totalEarnings = Math.round(Number(driverObj.totalEarnings || 0) * 100) / 100;
+        }
+        if (driverObj.walletBalance !== undefined && driverObj.walletBalance !== null) {
+            driverObj.walletBalance = Math.round(Number(driverObj.walletBalance || 0) * 100) / 100;
+        }
+
         res.json({
             success: true,
-            driver
+            driver: driverObj
         });
 
     } catch (error) {
@@ -809,9 +825,17 @@ exports.getDriverLocation = async (req, res) => {
             });
         }
 
+        const driverObj = driver.toObject();
+        if (driverObj.totalEarnings !== undefined && driverObj.totalEarnings !== null) {
+            driverObj.totalEarnings = Math.round(Number(driverObj.totalEarnings || 0) * 100) / 100;
+        }
+        if (driverObj.walletBalance !== undefined && driverObj.walletBalance !== null) {
+            driverObj.walletBalance = Math.round(Number(driverObj.walletBalance || 0) * 100) / 100;
+        }
+
         res.json({
             success: true,
-            driver
+            driver: driverObj
         });
 
     } catch (error) {

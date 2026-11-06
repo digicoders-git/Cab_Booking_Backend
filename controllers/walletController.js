@@ -41,11 +41,19 @@ exports.getWalletDetails = async (req, res) => {
         const transactions = await Transaction.find({ user: userId, userModel: userModel })
             .sort({ createdAt: -1 });
 
+        const sanitizedTransactions = transactions.map(t => {
+            const doc = t.toObject ? t.toObject() : { ...t };
+            if (doc.amount !== undefined && doc.amount !== null && !isNaN(doc.amount)) {
+                doc.amount = Math.round(Number(doc.amount) * 100) / 100;
+            }
+            return doc;
+        });
+
         res.json({
             success: true,
-            walletBalance: userData.walletBalance || 0,
-            totalEarnings: userData.totalEarnings || 0,
-            transactions
+            walletBalance: Math.round(Number(userData.walletBalance || 0) * 100) / 100,
+            totalEarnings: Math.round(Number(userData.totalEarnings || 0) * 100) / 100,
+            transactions: sanitizedTransactions
         });
 
     } catch (error) {
