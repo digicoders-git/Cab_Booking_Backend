@@ -404,10 +404,10 @@ exports.getDashboardStats = async (req, res) => {
                 todayVendors: await Vendor.countDocuments({ createdAt: { $gte: startOfTodayIST } })
             },
             payoutStats: {
-                totalPayouts: (await Transaction.aggregate([
+                totalPayouts: Math.round(((await Transaction.aggregate([
                     { $match: { category: "Withdrawal", status: "Completed" } },
                     { $group: { _id: null, total: { $sum: "$amount" } } }
-                ]))[0]?.total || 0,
+                ]))[0]?.total || 0) * 100) / 100,
                 pendingPayoutsCount: await Transaction.countDocuments({ category: "Withdrawal", status: "Pending" })
             },
             infrastructure: {
@@ -416,19 +416,19 @@ exports.getDashboardStats = async (req, res) => {
                 inactiveAreas: await ServiceArea.countDocuments({ isActive: false })
             },
             earnings: {
-                adminWallet: admin ? admin.walletBalance : 0,
-                totalEarnings: admin ? admin.totalEarnings : 0,
-                partnerLiabilities: driverLiabilities + agentLiabilities + fleetLiabilities + vendorLiabilities
+                adminWallet: admin ? Math.round((admin.walletBalance || 0) * 100) / 100 : 0,
+                totalEarnings: admin ? Math.round((admin.totalEarnings || 0) * 100) / 100 : 0,
+                partnerLiabilities: Math.round((driverLiabilities + agentLiabilities + fleetLiabilities + vendorLiabilities) * 100) / 100
             },
             todayFinancials: {
-                revenue: (await Booking.aggregate([
+                revenue: Math.round(((await Booking.aggregate([
                     { $match: { bookingStatus: "Completed", createdAt: { $gte: startOfTodayIST } } },
                     { $group: { _id: null, total: { $sum: "$actualFare" } } }
-                ]))[0]?.total || 0,
-                profit: (await Transaction.aggregate([
+                ]))[0]?.total || 0) * 100) / 100,
+                profit: Math.round(((await Transaction.aggregate([
                     { $match: { userModel: "Admin", category: "Commission", createdAt: { $gte: startOfTodayIST } } },
                     { $group: { _id: null, total: { $sum: "$amount" } } }
-                ]))[0]?.total || 0
+                ]))[0]?.total || 0) * 100) / 100
             },
             verifications: {
                 pendingDrivers: await Driver.countDocuments({ isApproved: false, isRejected: false }),
@@ -444,8 +444,8 @@ exports.getDashboardStats = async (req, res) => {
 
         const adminData = await Admin.findById(req.user.id);
         if (adminData) {
-            stats.earnings.adminWallet = adminData.walletBalance || 0;
-            stats.earnings.totalEarnings = adminData.totalEarnings || 0;
+            stats.earnings.adminWallet = Math.round((adminData.walletBalance || 0) * 100) / 100;
+            stats.earnings.totalEarnings = Math.round((adminData.totalEarnings || 0) * 100) / 100;
         }
 
         res.json({

@@ -582,8 +582,10 @@ exports.createOnlinePayment = async (req, res) => {
         const booking = await FixedBooking.findById(id).populate('user');
         if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
 
+        // If booking is currently set to Cash, allow switching to Online
         if (booking.paymentMethod !== 'Online') {
-            return res.status(400).json({ success: false, message: "Booking is not set for online payment" });
+            booking.paymentMethod = 'Online';
+            await booking.save();
         }
         if (booking.paymentStatus === 'Completed') {
             return res.status(400).json({ success: false, message: "Payment already completed" });
@@ -592,7 +594,7 @@ exports.createOnlinePayment = async (req, res) => {
             return res.status(400).json({ success: false, message: "Ride must be completed before payment" });
         }
 
-        const source = (req.body && req.body.source) ? req.body.source : 'web';
+        const source = (req.body && req.body.source) ? req.body.source : 'app';
         const protocol = req.get('host').includes('localhost') ? 'http' : 'https';
         const return_url = `${protocol}://${req.get('host')}/api/fixed-routes/bookings/${booking._id}/verify-payment?source=${source}`;
 
@@ -602,13 +604,19 @@ exports.createOnlinePayment = async (req, res) => {
 
             currency: 'INR',
             order_id: `fb_${booking._id.toString().slice(-6)}_${Date.now()}`,
-            customer_id: booking.user.name || "Customer",
-            customer_email: booking.user.email || "customer@example.com",
-            customer_phone: booking.user.phone || "",
+            customer_id: booking.user?.name || booking.customerName || "Customer",
+            customer_email: booking.user?.email || "customer@example.com",
+            customer_phone: booking.user?.phone || booking.customerPhone || "",
             return_url: return_url
         });
 
-        res.status(200).json({ success: true, session: sessionResponse });
+        const paymentUrl = sessionResponse.payment_links?.web || sessionResponse.payment_links?.mobile || sessionResponse.short_url;
+
+        res.status(200).json({ 
+            success: true, 
+            session: sessionResponse,
+            paymentUrl: paymentUrl
+        });
     } catch (error) {
         console.error("Error creating online payment:", error);
         res.status(500).json({ success: false, message: "Server error", error: error.message });
@@ -739,6 +747,27 @@ exports.verifyOnlinePayment = async (req, res) => {
     } catch (error) {
         console.error("Error verifying online payment:", error);
         res.status(500).json({ success: false, message: "Server error", error: error.message });
+    }
+};
+
+// Check payment status for Fixed Booking (used by Driver App / Customer App)
+exports.checkPaymentStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const booking = await FixedBooking.findById(id);
+        if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+
+        return res.status(200).json({
+            success: true,
+            paymentStatus: booking.paymentStatus,
+            status: booking.status,
+            isPaid: booking.paymentStatus === 'Completed',
+            finalPrice: (booking.finalPrice && booking.finalPrice > 0) ? booking.finalPrice : booking.price,
+            booking
+        });
+    } catch (error) {
+        console.error("Error checking payment status:", error);
+        return res.status(500).json({ success: false, message: "Server error", error: error.message });
     }
 };
 
@@ -927,7 +956,29 @@ exports.completeBookingDriver = async (req, res) => {
         });
         await notifyClient(booking, 'booking_update', { bookingId: booking._id });
 
-        res.status(200).json({ success: true, message: "Booking marked as completed", booking });
+        let paymentUrl = null;
+        if (booking.paymentMethod === 'Online') {
+            try {
+                const protocol = req.get('host').includes('localhost') ? 'http' : 'https';
+                const return_url = `${protocol}://${req.get('host')}/api/fixed-routes/bookings/${booking._id}/verify-payment?source=app`;
+                const finalAmount = (booking.finalPrice && booking.finalPrice > 0) ? booking.finalPrice : booking.price;
+                const populated = await FixedBooking.findById(booking._id).populate('user');
+                const sessionResponse = await razorpayHandler.orderSession({
+                    amount: finalAmount,
+                    currency: 'INR',
+                    order_id: `fb_${booking._id.toString().slice(-6)}_${Date.now()}`,
+                    customer_id: populated?.user?.name || populated?.customerName || "Customer",
+                    customer_email: populated?.user?.email || "customer@example.com",
+                    customer_phone: populated?.user?.phone || populated?.customerPhone || "",
+                    return_url: return_url
+                });
+                paymentUrl = sessionResponse.payment_links?.web || sessionResponse.payment_links?.mobile || sessionResponse.short_url;
+            } catch (pErr) {
+                console.error("Could not pre-generate paymentUrl on completion:", pErr.message);
+            }
+        }
+
+        res.status(200).json({ success: true, message: "Booking marked as completed", booking, paymentUrl });
     } catch (error) {
         console.error("Error completing booking:", error);
         res.status(500).json({ success: false, message: "Server error", error: error.message });

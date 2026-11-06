@@ -23,8 +23,9 @@ router.get('/routes/active', fixedRouteController.getActiveRoutes); // User can 
 router.post('/bookings', auth, fixedBookingController.bookFixedRoute); // User booking
 router.get('/bookings/my-bookings', auth, fixedBookingController.getMyFixedBookings); // User fetches their own bookings
 router.put('/bookings/:id/cancel', auth, fixedBookingController.cancelBookingUser); // User cancels their own booking
-router.post('/bookings/:id/pay', auth, fixedBookingController.createOnlinePayment); // User creates payment
+router.post('/bookings/:id/pay', auth, fixedBookingController.createOnlinePayment); // User/Driver creates payment
 router.get('/bookings/:id/verify-payment', fixedBookingController.verifyOnlinePayment); // User verifies payment via Redirect
+router.get('/bookings/:id/verify-status', auth, fixedBookingController.checkPaymentStatus); // Check if payment completed
 router.get('/bookings/:id/receipt', auth, fixedBookingController.downloadReceipt); // Download Fixed Booking Receipt
 
 // === Marketplace & All Bookings (Admin) ===
