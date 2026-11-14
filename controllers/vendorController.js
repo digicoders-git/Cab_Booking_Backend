@@ -494,6 +494,7 @@ exports.createDriver = async (req, res) => {
             name, email, phone, password,
             licenseNumber, licenseExpiry,
             address, city, state, pincode,
+            addressLatitude, addressLongitude,
             carNumber, carModel, carBrand, carType, carColor, manufacturingYear,
             accountNumber, ifscCode, accountHolderName, bankName
         } = req.body;
@@ -530,10 +531,23 @@ exports.createDriver = async (req, res) => {
             rcImage, insuranceImage, permitImage, pucImage
         };
 
+        // Generate unique referral code
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let referralCode;
+        let isUnique = false;
+        while (!isUnique) {
+            referralCode = 'KWIK' + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+            const existing = await Driver.findOne({ referralCode });
+            if (!existing) isUnique = true;
+        }
+
         const driver = await Driver.create({
             name, email, phone, password, image,
+            referralCode,
             licenseNumber, licenseExpiry,
             address, city, state, pincode,
+            addressLatitude: addressLatitude ? parseFloat(addressLatitude) : null,
+            addressLongitude: addressLongitude ? parseFloat(addressLongitude) : null,
             carDetails,
             bankDetails,
             documents,
@@ -1123,6 +1137,7 @@ exports.updateVendorDriver = async (req, res) => {
             name, email, phone, password,
             licenseNumber, licenseExpiry,
             address, city, state, pincode,
+            addressLatitude, addressLongitude,
             carNumber, carModel, carBrand, carType, carColor, manufacturingYear,
             accountNumber, ifscCode, accountHolderName, bankName
         } = req.body;
@@ -1150,6 +1165,12 @@ exports.updateVendorDriver = async (req, res) => {
         if (city) driver.city = city;
         if (state) driver.state = state;
         if (pincode) driver.pincode = pincode;
+        if (addressLatitude !== undefined && addressLatitude !== null && addressLatitude !== "") {
+            driver.addressLatitude = parseFloat(addressLatitude);
+        }
+        if (addressLongitude !== undefined && addressLongitude !== null && addressLongitude !== "") {
+            driver.addressLongitude = parseFloat(addressLongitude);
+        }
 
         // --- 3. Car Details Update ---
         const carDetailsUpdate = { ...driver.carDetails.toObject() };
