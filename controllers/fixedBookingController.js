@@ -82,7 +82,10 @@ const deductCashCommissionOnCompletion = async (booking) => {
             return;
         }
         const commission = booking.adminCommission || 0;
-        if (commission <= 0) {
+        const totalTax = (booking.cgst || 0) + (booking.sgst || 0);
+        const totalAdminCut = commission + totalTax;
+
+        if (totalAdminCut <= 0) {
             booking.commissionDeducted = true;
             return;
         }
@@ -100,25 +103,27 @@ const deductCashCommissionOnCompletion = async (booking) => {
         }
 
         if (fleet) {
-            fleet.walletBalance = (fleet.walletBalance || 0) - commission;
+            fleet.walletBalance = (fleet.walletBalance || 0) - totalAdminCut;
             await fleet.save();
             payerModel = 'Fleet';
             payerId = fleet._id;
         } else {
-            driver.walletBalance = (driver.walletBalance || 0) - commission;
+            driver.walletBalance = (driver.walletBalance || 0) - totalAdminCut;
             await driver.save();
         }
+
+        const taxDesc = totalTax > 0 ? ` (Commission: ₹${commission}, GST: ₹${totalTax})` : ``;
 
         // Payer Debit Transaction
         await Transaction.create({
             user: payerId,
             userModel: payerModel,
-            amount: commission,
+            amount: totalAdminCut,
             type: 'Debit',
             category: 'Commission',
             status: 'Completed',
             relatedBooking: booking._id,
-            description: `Admin commission for Fixed Route Booking #${booking._id.toString().slice(-6).toUpperCase()} (Cash Ride Completed)`
+            description: `Admin commission & GST for Fixed Route Booking #${booking._id.toString().slice(-6).toUpperCase()}${taxDesc} (Cash Ride Completed)`
         });
 
         // If Fleet, also log debit transaction for driver record
@@ -126,31 +131,31 @@ const deductCashCommissionOnCompletion = async (booking) => {
             await Transaction.create({
                 user: driver._id,
                 userModel: 'Driver',
-                amount: commission,
+                amount: totalAdminCut,
                 type: 'Debit',
                 category: 'Commission',
                 status: 'Completed',
                 relatedBooking: booking._id,
-                description: `Admin commission for Fixed Route Booking #${booking._id.toString().slice(-6).toUpperCase()} (Deducted from Fleet Owner)`
+                description: `Admin commission & GST for Fixed Route Booking #${booking._id.toString().slice(-6).toUpperCase()}${taxDesc} (Deducted from Fleet Owner)`
             });
         }
 
         // Admin Credit
         const admin = await Admin.findOne();
         if (admin) {
-            admin.walletBalance = (admin.walletBalance || 0) + commission;
-            admin.totalEarnings = (admin.totalEarnings || 0) + commission;
+            admin.walletBalance = (admin.walletBalance || 0) + totalAdminCut;
+            admin.totalEarnings = (admin.totalEarnings || 0) + totalAdminCut;
             await admin.save();
 
             await Transaction.create({
                 user: admin._id,
                 userModel: 'Admin',
-                amount: commission,
+                amount: totalAdminCut,
                 type: 'Credit',
                 category: 'Commission',
                 status: 'Completed',
                 relatedBooking: booking._id,
-                description: `Admin commission for Fixed Route Booking #${booking._id.toString().slice(-6).toUpperCase()} (Cash Ride Completed)`
+                description: `Admin commission & GST for Fixed Route Booking #${booking._id.toString().slice(-6).toUpperCase()}${taxDesc} (Cash Ride Completed)`
             });
         }
 
@@ -400,7 +405,9 @@ exports.acceptBookingDriver = async (req, res) => {
             }
             const debtLimit = (payerEntity.debtLimit !== undefined && payerEntity.debtLimit !== null) ? payerEntity.debtLimit : 0;
             const commission = booking.adminCommission || 0;
-            if ((payerEntity.walletBalance - commission) < debtLimit) {
+            const totalTax = (booking.cgst || 0) + (booking.sgst || 0);
+            const totalDeduction = commission + totalTax;
+            if ((payerEntity.walletBalance - totalDeduction) < debtLimit) {
                 const isFleet = driver.createdByModel === 'Fleet' && driver.createdBy;
                 return res.status(400).json({ 
                     success: false, 
@@ -459,25 +466,27 @@ exports.cancelBookingDriver = async (req, res) => {
             return res.status(400).json({ success: false, message: "Cannot cancel this booking" });
         }
 
-        // Refund commission if deducted
+        // Refund commission & GST if deducted
         if (booking.commissionDeducted) {
+            const totalTax = (booking.cgst || 0) + (booking.sgst || 0);
+            const totalRefund = (booking.adminCommission || 0) + totalTax;
             const driver = await Driver.findById(driverId);
             if (driver) {
-                driver.walletBalance += booking.adminCommission;
+                driver.walletBalance += totalRefund;
                 await driver.save();
                 await Transaction.create({
-                    user: driverId, userModel: 'Driver', amount: booking.adminCommission, type: 'Credit',
-                    category: 'Refund', status: 'Completed', description: `Commission refund for cancelled booking ${booking._id}`
+                    user: driverId, userModel: 'Driver', amount: totalRefund, type: 'Credit',
+                    category: 'Refund', status: 'Completed', description: `Commission & GST refund for cancelled booking ${booking._id}`
                 });
             }
             const admin = await Admin.findOne();
             if (admin) {
-                admin.walletBalance -= booking.adminCommission;
-                admin.totalEarnings -= booking.adminCommission;
+                admin.walletBalance -= totalRefund;
+                admin.totalEarnings -= totalRefund;
                 await admin.save();
                 await Transaction.create({
-                    user: admin._id, userModel: 'Admin', amount: booking.adminCommission, type: 'Debit',
-                    category: 'Refund', status: 'Completed', description: `Commission refund for cancelled booking ${booking._id}`
+                    user: admin._id, userModel: 'Admin', amount: totalRefund, type: 'Debit',
+                    category: 'Refund', status: 'Completed', description: `Commission & GST refund for cancelled booking ${booking._id}`
                 });
             }
         }
@@ -514,13 +523,15 @@ exports.cancelBookingUser = async (req, res) => {
 
         // If it was already accepted, we need to refund the driver
         if (previousStatus === 'Accepted' && booking.commissionDeducted && booking.assignedDriver) {
+            const totalTax = (booking.cgst || 0) + (booking.sgst || 0);
+            const totalRefund = (booking.adminCommission || 0) + totalTax;
             const driver = await Driver.findById(booking.assignedDriver);
             if (driver) {
-                driver.walletBalance += booking.adminCommission;
+                driver.walletBalance += totalRefund;
                 await driver.save();
                 await Transaction.create({
-                    user: booking.assignedDriver, userModel: 'Driver', amount: booking.adminCommission, type: 'Credit',
-                    category: 'Refund', status: 'Completed', description: `Commission refund for cancelled booking ${booking._id} (User Cancelled)`
+                    user: booking.assignedDriver, userModel: 'Driver', amount: totalRefund, type: 'Credit',
+                    category: 'Refund', status: 'Completed', description: `Commission & GST refund for cancelled booking ${booking._id} (User Cancelled)`
                 });
                 
                 // FCM to Driver
@@ -534,12 +545,12 @@ exports.cancelBookingUser = async (req, res) => {
             }
             const admin = await Admin.findOne();
             if (admin) {
-                admin.walletBalance -= booking.adminCommission;
-                admin.totalEarnings -= booking.adminCommission;
+                admin.walletBalance -= totalRefund;
+                admin.totalEarnings -= totalRefund;
                 await admin.save();
                 await Transaction.create({
-                    user: admin._id, userModel: 'Admin', amount: booking.adminCommission, type: 'Debit',
-                    category: 'Refund', status: 'Completed', description: `Commission refund for cancelled booking ${booking._id} (User Cancelled)`
+                    user: admin._id, userModel: 'Admin', amount: totalRefund, type: 'Debit',
+                    category: 'Refund', status: 'Completed', description: `Commission & GST refund for cancelled booking ${booking._id} (User Cancelled)`
                 });
             }
         }
@@ -655,7 +666,10 @@ exports.verifyOnlinePayment = async (req, res) => {
         const Admin = require("../models/Admin");
 
         const totalPaid = (booking.finalPrice && booking.finalPrice > 0) ? booking.finalPrice : booking.price;
-        const driverEarning = totalPaid - (booking.adminCommission || 0);
+        const totalTax = (booking.cgst || 0) + (booking.sgst || 0);
+        const adminCommission = booking.adminCommission || 0;
+        const totalAdminCut = adminCommission + totalTax;
+        const driverEarning = Math.max(0, totalPaid - totalAdminCut);
         
         if (booking.assignedDriver) {
             const driver = await Driver.findById(booking.assignedDriver);
@@ -711,16 +725,17 @@ exports.verifyOnlinePayment = async (req, res) => {
             }
         }
 
-        // Admin gets the commission
+        // Admin gets the commission & GST
         const admin = await Admin.findOne();
         if (admin) {
-            admin.walletBalance = (admin.walletBalance || 0) + booking.adminCommission;
-            admin.totalEarnings = (admin.totalEarnings || 0) + booking.adminCommission;
+            admin.walletBalance = (admin.walletBalance || 0) + totalAdminCut;
+            admin.totalEarnings = (admin.totalEarnings || 0) + totalAdminCut;
             await admin.save();
 
+            const taxDesc = totalTax > 0 ? ` (Commission: ₹${adminCommission}, GST: ₹${totalTax})` : ``;
             await Transaction.create({
-                user: admin._id, userModel: 'Admin', amount: booking.adminCommission, type: 'Credit',
-                category: 'Commission', status: 'Completed', description: `Commission for Fixed Route Booking ${booking._id} (Online Payment)`
+                user: admin._id, userModel: 'Admin', amount: totalAdminCut, type: 'Credit',
+                category: 'Commission', status: 'Completed', description: `Commission & GST for Fixed Route Booking ${booking._id}${taxDesc} (Online Payment)`
             });
         }
 
@@ -1038,7 +1053,9 @@ exports.acceptBookingAdmin = async (req, res) => {
                 }
                 const debtLimit = (payerEntity.debtLimit !== undefined && payerEntity.debtLimit !== null) ? payerEntity.debtLimit : 0;
                 const commission = booking.adminCommission || 0;
-                if ((payerEntity.walletBalance - commission) < debtLimit) {
+                const totalTax = (booking.cgst || 0) + (booking.sgst || 0);
+                const totalDeduction = commission + totalTax;
+                if ((payerEntity.walletBalance - totalDeduction) < debtLimit) {
                     const isFleet = driver.createdByModel === 'Fleet' && driver.createdBy;
                     return res.status(400).json({ 
                         success: false, 
